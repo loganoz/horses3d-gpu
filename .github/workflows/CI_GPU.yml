@@ -51,7 +51,6 @@ jobs:
           make install
           echo "METIS_DIR=$HOME/metis" >> $GITHUB_ENV
           echo "LD_LIBRARY_PATH=$HOME/metis/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "$HOME/metis/lib" >> $GITHUB_PATH
           echo "$HOME/metis/bin" >> $GITHUB_PATH
       
       - name: Check METIS PATH
@@ -75,4 +74,4 @@ jobs:
       - name: Build NS solver
         run: |
           cd Solver
-          make ns COMPILER=gfortran COMM=PARALLEL WITH_METIS=YES
+          make ns COMPILER=gfortran COMM=PARALLEL WITH_METIS=YES METIS_DIR=$METIS_DIR
