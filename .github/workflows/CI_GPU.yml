@@ -1,51 +1,67 @@
-name: Build Horses3D NS Solver (CPU, MPI)
+name: Fortran CI
 
-on:
-  push:
-    branches: [ main ]
-  pull_request:
+on: [push, pull_request]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - compiler: gcc
+            version: 13
+          #- compiler: nvidia-hpc
+          #  version: 25.1
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-    - name: Setup Fortran
-      uses: fortran-lang/setup-fortran@v1
-      with:
-        compiler: gfortran
-        version: 13
+      # Install compiler first
+      - name: Setup Fortran
+        uses: fortran-lang/setup-fortran@v1.6.3
+        with:
+          compiler: ${{ matrix.compiler }}
+          version: ${{ matrix.version }}
 
-    - name: Setup MPI
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libopenmpi-dev openmpi-bin
+      # Cache NVIDIA HPC SDK only for nvfortran
+      - name: Cache NVIDIA HPC SDK
+        if: matrix.compiler == 'nvidia-hpc'
+        uses: actions/cache@v4
+        with:
+          # This is the actual path setup-fortran installs the SDK to
+          path: |
+            ~/.fortran-lang/cache/nvidia-hpc/linux-x86_64-${{ matrix.version }}
+          key: nvhpc-${{ runner.os }}-v${{ matrix.version }}
+          restore-keys: |
+            nvhpc-${{ runner.os }}-
 
-    - name: Install Metis
-      run: |
-        sudo apt-get install -y cmake
-        git clone https://github.com/KarypisLab/METIS.git
-        cd METIS
-        git checkout tags/v5.1.0
-        make config prefix=$HOME/metis
-        make
-        make install
-        echo "METIS_DIR=$HOME/metis" >> $GITHUB_ENV
-
-    - name: Export compiler environment
-      run: |
-        echo "FC=gfortran" >> $GITHUB_ENV
-        echo "CC=gcc" >> $GITHUB_ENV
-        echo "CXX=g++" >> $GITHUB_ENV
-        echo "MPIFC=mpifort" >> $GITHUB_ENV
-
-    - name: Configure Horses3D
-      run: |
-        ./configure
-
-    - name: Build NS solver
-      run: |
-        make ns COMPILER=gfortran COMM=PARALLEL WITH_METIS=YES
+      - name: Setup MPI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopenmpi-dev openmpi-bin
+  
+      - name: Install Metis
+        run: |
+          sudo apt-get install -y cmake
+          git clone https://github.com/KarypisLab/METIS.git
+          cd METIS
+          git checkout tags/v5.1.0
+          make config prefix=$HOME/metis
+          make
+          make install
+          echo "METIS_DIR=$HOME/metis" >> $GITHUB_ENV
+  
+      - name: Export compiler environment
+        run: |
+          echo "FC=gfortran" >> $GITHUB_ENV
+          echo "CC=gcc" >> $GITHUB_ENV
+          echo "CXX=g++" >> $GITHUB_ENV
+          echo "MPIFC=mpifort" >> $GITHUB_ENV
+  
+      - name: Configure Horses3D
+        run: |
+          ./configure
+  
+      - name: Build NS solver
+        run: |
+          make ns COMPILER=gfortran COMM=PARALLEL WITH_METIS=YES
