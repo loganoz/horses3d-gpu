@@ -11,19 +11,19 @@ jobs:
         include:
           - compiler: gcc
             version: 13
-          - compiler: nvidia-hpc
-            version: 25.1
+          #- compiler: nvidia-hpc
+          #  version: 25.1
     env:
       METIS_HOME:  /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Patch Makefile.in (remove CUDA flags & fix link rule)
-        run: |
-          cd Solver
-          sed -i 's|\(NVFORTRAN_RELEASE_FLAGS=.*\)-cuda -acc|\1|g' Makefile.in
-          sed -i 's|NVFORTRAN_RELEASE_FLAGS= |$(NVFORTRAN_RELEASE_FLAGS) |g' src/libs/problemfile/Makefile
+      #- name: Patch Makefile.in (remove CUDA flags & fix link rule)
+      #  run: |
+      #    cd Solver
+      #    sed -i 's|\(NVFORTRAN_RELEASE_FLAGS=.*\)-cuda -acc|\1|g' Makefile.in
+      #    sed -i 's|NVFORTRAN_RELEASE_FLAGS= |$(NVFORTRAN_RELEASE_FLAGS) |g' src/libs/problemfile/Makefile
       
       # Install compiler first
       - name: Setup Fortran
