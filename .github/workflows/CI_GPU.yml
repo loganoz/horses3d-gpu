@@ -90,7 +90,7 @@ jobs:
         if: matrix.compiler == 'nvidia-hpc'
         run: |
           # Override system mpifort with NVIDIA MPI wrapper
-          sudo ln -sf /opt/nvidia/hpc_sdk/Linux_x86_64/25.1/comm_libs/mpi/bin/mpifort /usr/local/bin/mpifort
+          sudo ln -sf /opt/nvidia/hpc_sdk/Linux_x86_64/25.1/comm_libs/mpi/bin/mpifort /bin/mpifort
 
           which mpifort
           mpifort --version
