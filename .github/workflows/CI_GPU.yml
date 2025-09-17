@@ -58,7 +58,13 @@ jobs:
           echo "METIS_DIR=${METIS_DIR}"
           ldconfig -p | grep metis || true
 
-      # Adjust Makefile flags for gfortran
+      # Configure HORSES3D
+      - name: Configure HORSES3D
+        run: |
+          cd Solver
+          ./configure 
+
+      # Patch Makefile flags for GNU build (after configure!)
       - name: Patch Makefile for GNU build
         if: matrix.compiler == 'gcc'
         run: |
@@ -68,11 +74,7 @@ jobs:
       - name: Build HORSES3D NS
         run: |
           cd Solver
-          if [[ "${{ matrix.compiler }}" == "gcc" ]]; then
-            make ns COMM=PARALLEL WITH_METIS=YES
-          else
-            make ns COMPILER=nvfortran COMM=PARALLEL WITH_METIS=YES
-          fi
+          make ns -j$(nproc)
 
       # List outputs
       - name: List executables
