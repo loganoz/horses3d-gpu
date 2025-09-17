@@ -103,4 +103,9 @@ jobs:
           
           cd Solver
           make ns COMPILER=nvfortran COMM=PARALLEL WITH_METIS=YES
-     
+
+      - name: Run BoxAroundCirclePirozzoli
+        working-directory: ./Solver/test/Euler/BoxAroundCirclePirozzoli
+        run: |
+          mpiexec -n 8 ./horses3d.ns BoxAroundCirclePirozzoli.control
+        if: '!cancelled()'     
