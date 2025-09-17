@@ -32,7 +32,7 @@ jobs:
         enable_threads: ['NO']
 
     env:
-      METIS_HOME:  /home/runner/work/horses3d-gpu/horses3d/metis-5.1.0/build/Linux-x86_64
+      METIS_HOME:  /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64
       INTEL_COMPILER_DIR : /opt/intel/oneapi/compiler/2024.1
     # Steps represent a sequence of tasks that will be executed as part of the job
 
@@ -88,8 +88,8 @@ jobs:
           cd metis-5.1.0
           make config cc=icx
           make
-          mv /home/runner/work/horses3d-gpu/horses3d/metis-5.1.0/build/Linux-x86_64/libmetis /home/runner/work/horses3d-gpu/horses3d/metis-5.1.0/build/Linux-x86_64/lib
-          mv /home/runner/work/horses3d-gpu/horses3d/metis-5.1.0/build/Linux-x86_64/programs /home/runner/work/horses3d-gpu/horses3d/metis-5.1.0/build/Linux-x86_64/bin
+          mv /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/libmetis /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/lib
+          mv /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/programs /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/bin
 #          export METIS_HOME=~/metis-5.1.0/build/Linux-x86_64
 #          echo $METIS_HOME
 
@@ -103,8 +103,8 @@ jobs:
           cd metis-5.1.0
           make config cc=gcc
           make
-          mv /home/runner/work/horses3d-gpu/horses3d/metis-5.1.0/build/Linux-x86_64/libmetis /home/runner/work/horses3d-gpu/horses3d/metis-5.1.0/build/Linux-x86_64/lib
-          mv /home/runner/work/horses3d-gpu/horses3d/metis-5.1.0/build/Linux-x86_64/programs /home/runner/work/horses3d-gpu/horses3d/metis-5.1.0/build/Linux-x86_64/bin
+          mv /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/libmetis /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/lib
+          mv /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/programs /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/bin
 
       - name: Check METIS PATH
         run: echo $METIS_HOME
@@ -146,7 +146,7 @@ jobs:
         working-directory: ./Solver/test/Euler/UniformFlow/SETUP
         run: |
           source /opt/intel/oneapi/setvars.sh || true
-          make MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
         if: '!cancelled()'
 
       - name: Run UniformFlow
