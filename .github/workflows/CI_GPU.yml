@@ -45,7 +45,7 @@ jobs:
           sudo apt-get install -y cmake
           git clone https://github.com/KarypisLab/METIS.git
           cd METIS
-          git checkout tags/v5.1.0
+          git checkout 3b4ca7c  # Commit hash for METIS 5.1.0
           make config prefix=$HOME/metis
           make
           make install
