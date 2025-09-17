@@ -1,83 +1,44 @@
-name: HORSES3D MPI + GPU Build
+name: HORSES3D CPU Build
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - compiler: gcc
-            version: 13
-          - compiler: nvidia-hpc
-            version: 24.11
 
     steps:
+      # 1. Checkout the repo
       - uses: actions/checkout@v4
 
-      # Setup Fortran compiler
-      - name: Setup Fortran
-        uses: fortran-lang/setup-fortran@v1.6.3
-        with:
-          compiler: ${{ matrix.compiler }}
-          version: ${{ matrix.version }}
-
-      # Install CPU dependencies (GNU toolchain + MPI + METIS)
-      - name: Install dependencies (gfortran build)
-        if: matrix.compiler == 'gcc'
+      # 2. Install system dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             gfortran openmpi-bin libopenmpi-dev \
-            libmetis-dev zlib1g-dev
-          echo "METIS_DIR=/usr" >> $GITHUB_ENV
+            cmake make git zlib1g-dev wget tar
 
-      # Install GPU dependencies (NVHPC + METIS)
-      - name: Install METIS (nvfortran build)
-        if: matrix.compiler == 'nvidia-hpc'
+      # 3. Setup gfortran (ensures consistent version)
+      - name: Setup Fortran
+        uses: fortran-lang/setup-fortran@v1.6.3
+        with:
+          compiler: gfortran
+          version: 13
+
+      # 4. Download and install METIS
+      - name: Install METIS
         run: |
-          sudo apt-get update
-          sudo apt-get install -y make cmake g++ zlib1g-dev
-          git clone https://github.com/KarypisLab/METIS.git
-          cd METIS
-          make config shared=1
-          make -j$(nproc)
-          sudo make install
-          echo "METIS_DIR=/usr/local" >> $GITHUB_ENV
-          cd ..
-          rm -rf METIS
+          wget http://glaros.dtc.umn.edu/gkhome/fetch/sw/metis/metis-5.1.0.tar.gz
+          tar -xzf metis-5.1.0.tar.gz
+          cd metis-5.1.0
+          make config prefix=$PWD/build
+          make -j$(nproc) install
+          echo "METIS_DIR=$PWD/build" >> $GITHUB_ENV
 
-      # Show environment
-      - name: Show compilers and MPI
-        run: |
-          echo "FC=${FC}"
-          ${FC} --version
-          which mpifort || true
-          mpifort --version || true
-          echo "METIS_DIR=${METIS_DIR}"
-          ldconfig -p | grep metis || true
-
-      # Configure HORSES3D
+      # 5. Configure HORSES3D
       - name: Configure HORSES3D
         run: |
           cd Solver
-          ./configure 
-
-      # Patch Makefile flags for GNU build (after configure!)
-      - name: Patch Makefile for GNU build
-        if: matrix.compiler == 'gcc'
-        run: |
-          sed -i '42s|.*|GNU_RELEASE_FLAGS= -cpp -ffree-line-length-0 -O3 -ftree-vectorize -ftree-vectorizer-verbose=0 -fbackslash -D_has_Quad -fallow-argument-mismatch|' Solver/Makefile
-
-      # Build HORSES3D Navier-Stokes solver
-      - name: Build HORSES3D NS
-        run: |
-          cd Solver
-          make ns -j$(nproc)
-
-      # List outputs
-      - name: List executables
-        run: |
-          echo "Built executables:"
-          find Solver -maxdepth 2 -type f -executable -print || true
+          ./configure
