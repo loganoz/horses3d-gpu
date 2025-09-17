@@ -8,17 +8,17 @@ jobs:
     strategy:
       matrix:
         include:
-          - compiler: gcc
+          - compiler: gfortran
             version: 13
-          #- compiler: nvidia-hpc
-          #  version: 25.1
+          - compiler: nvidia-hpc
+            version: 25.1
     env:
-      METIS_HOME:  /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64      
+      METIS_HOME: /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64
 
     steps:
       - uses: actions/checkout@v4
 
-      # Install compiler first
+      # Install Fortran compiler
       - name: Setup Fortran
         uses: fortran-lang/setup-fortran@v1.6.3
         with:
@@ -30,42 +30,56 @@ jobs:
         if: matrix.compiler == 'nvidia-hpc'
         uses: actions/cache@v4
         with:
-          # This is the actual path setup-fortran installs the SDK to
           path: |
             ~/.fortran-lang/cache/nvidia-hpc/linux-x86_64-${{ matrix.version }}
           key: nvhpc-${{ runner.os }}-v${{ matrix.version }}
           restore-keys: |
             nvhpc-${{ runner.os }}-
 
+      # Install MPI
       - name: Setup MPI
         run: |
           sudo apt-get update
           sudo apt-get install -y libopenmpi-dev openmpi-bin
-  
-      - name: Install METIS (gnu)
+
+      # Install METIS only for gfortran
+      - name: Install METIS
         if: matrix.compiler == 'gfortran'
         run: |
-          wget "https://src.fedoraproject.org/lookaside/pkgs/metis/metis-5.1.0.tar.gz/5465e67079419a69e0116de24fce58fe/metis-5.1.0.tar.gz" 
+          wget "https://src.fedoraproject.org/lookaside/pkgs/metis/metis-5.1.0.tar.gz/5465e67079419a69e0116de24fce58fe/metis-5.1.0.tar.gz"
           tar -xvf metis-5.1.0.tar.gz
           cd metis-5.1.0
           make config cc=gcc
           make
-          mv /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/libmetis /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/lib
-          mv /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/programs /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/bin
+          mv build/Linux-x86_64/libmetis build/Linux-x86_64/lib
+          mv build/Linux-x86_64/programs build/Linux-x86_64/bin
 
+      # Set compiler environment variables
       - name: Export compiler environment
         run: |
-          echo "FC=gfortran" >> $GITHUB_ENV
-          echo "CC=gcc" >> $GITHUB_ENV
-          echo "CXX=g++" >> $GITHUB_ENV
+          if [ "${{ matrix.compiler }}" = "gfortran" ]; then
+            echo "FC=gfortran" >> $GITHUB_ENV
+            echo "CC=gcc" >> $GITHUB_ENV
+            echo "CXX=g++" >> $GITHUB_ENV
+          else
+            echo "FC=nvfortran" >> $GITHUB_ENV
+            echo "CC=nvc" >> $GITHUB_ENV
+            echo "CXX=nvc++" >> $GITHUB_ENV
+          fi
           echo "MPIFC=mpifort" >> $GITHUB_ENV
-  
+
+      # Configure Horses3D
       - name: Configure Horses3D
         run: |
           cd Solver
           ./configure
-  
+
+      # Build NS solver
       - name: Build NS solver
         run: |
           cd Solver
-          make ns COMPILER=gfortran COMM=PARALLEL WITH_METIS=YES ENABLE_THREADS=NO
+          if [ "${{ matrix.compiler }}" = "gfortran" ]; then
+            make ns COMPILER=gfortran COMM=PARALLEL WITH_METIS=YES ENABLE_THREADS=NO
+          else
+            make ns COMPILER=nvfortran COMM=PARALLEL WITH_METIS=NO 
+          fi
