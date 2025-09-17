@@ -26,6 +26,12 @@ jobs:
           compiler: ${{ matrix.compiler }}
           version: ${{ matrix.version }}
 
+      - name: Patch Makefile for CI (disable GPU)
+        if: matrix.compiler == 'nvidia-hpc'
+        run: |
+          cd Solver
+          sed -i 's|\(NVFORTRAN_RELEASE_FLAGS=.*\)-cuda -acc|NVFORTRAN_RELEASE_FLAGS= \1|g' makefile.in
+
       # Cache NVIDIA HPC SDK only for nvfortran
       - name: Cache NVIDIA HPC SDK
         if: matrix.compiler == 'nvidia-hpc'
