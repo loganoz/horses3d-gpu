@@ -1,0 +1,72 @@
+name: HORSES3D GPU-MPI Build
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - compiler: gcc
+            version: 13
+          - compiler: nvidia-hpc
+            version: 25.1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Setup Fortran compiler
+      - name: Setup Fortran
+        uses: fortran-lang/setup-fortran@v1.6.3
+        with:
+          compiler: ${{ matrix.compiler }}
+          version: ${{ matrix.version }}
+
+      # Install MPI + METIS for GNU builds
+      - name: Install MPI + METIS (for gfortran)
+        if: matrix.compiler == 'gcc'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libopenmpi-dev openmpi-bin \
+            libmetis-dev
+
+      # Install METIS manually for NVIDIA builds
+      - name: Install METIS (for nvfortran)
+        if: matrix.compiler == 'nvidia-hpc'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ make
+          git clone https://github.com/KarypisLab/METIS.git
+          cd METIS
+          make config shared=1
+          make -j$(nproc)
+          sudo make install
+          cd ..
+          rm -rf METIS
+
+      # Show compilers and MPI
+      - name: Show environment
+        run: |
+          echo "FC=${FC}"
+          ${FC} --version
+          which mpifort || true
+          mpifort --version || true
+          ldconfig -p | grep metis || true
+
+      # Build HORSES3D
+      - name: Build HORSES3D
+        run: |
+          cd Solver
+          chmod +x configure || true
+          MPIFORT=$(which mpifort || echo ${FC})
+          echo "Using MPIFORT=${MPIFORT}"
+          ./configure FC=${FC} MPIFC=${MPIFORT} COMM=PARALLEL PLATFORM=LINUX MODE=RELEASE
+          make -j$(nproc) all
+
+      # List outputs
+      - name: List build outputs
+        run: |
+          echo "Built executables:"
+          find Solver -maxdepth 2 -type f -executable -print || true
