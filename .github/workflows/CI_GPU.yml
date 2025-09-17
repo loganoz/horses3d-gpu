@@ -67,7 +67,13 @@ jobs:
             echo "CXX=nvc++" >> $GITHUB_ENV
             echo "MPIFC=/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/comm_libs/mpi/bin/mpifort" >> $GITHUB_ENV
           fi
+
   
+      - name: Check mpifort
+        run: |
+          which mpifort
+          mpifort --version
+          
       - name: Configure Horses3D
         run: |
           cd Solver
@@ -81,13 +87,13 @@ jobs:
           fi
 
       - name: Build NS solver (NVFORTRAN)
-        env: 
+        if: matrix.compiler == 'nvidia-hpc'
+        env:
+          PATH: /opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/bin:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/comm_libs/mpi/bin:$PATH
           MPIFC: /opt/nvidia/hpc_sdk/Linux_x86_64/25.1/comm_libs/mpi/bin/mpifort
+          FC: nvfortran
+          CC: nvc
+          CXX: nvc++
         run: |
           cd Solver
-          if [ "${{ matrix.compiler }}" = "nvidia-hpc" ]; then
-            echo "/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/bin" >> $GITHUB_PATH
-            echo "/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/comm_libs/mpi/bin" >> $GITHUB_PATH
-            echo "MPIFC=/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/comm_libs/mpi/bin/mpifort" >> $GITHUB_ENV
-            make ns COMPILER=nvfortran COMM=PARALLEL WITH_METIS=YES
-          fi          
+          make ns COMPILER=nvfortran COMM=PARALLEL WITH_METIS=YES      
