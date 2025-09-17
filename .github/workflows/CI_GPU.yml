@@ -12,6 +12,8 @@ jobs:
             version: 13
           #- compiler: nvidia-hpc
           #  version: 25.1
+    env:
+      METIS_HOME:  /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64      
 
     steps:
       - uses: actions/checkout@v4
@@ -43,22 +45,14 @@ jobs:
       - name: Install METIS (gnu)
         if: matrix.compiler == 'gfortran'
         run: |
-          wget "https://src.fedoraproject.org/lookaside/pkgs/metis/metis-5.1.0.tar.gz/5465e67079419a69e0116de24fce58fe/metis-5.1.0.tar.gz"
+          wget "https://src.fedoraproject.org/lookaside/pkgs/metis/metis-5.1.0.tar.gz/5465e67079419a69e0116de24fce58fe/metis-5.1.0.tar.gz" 
           tar -xvf metis-5.1.0.tar.gz
           cd metis-5.1.0
-          make config cc=gcc prefix=$HOME/metis
+          make config cc=gcc
           make
-          make install
-          echo "METIS_DIR=$HOME/metis" >> $GITHUB_ENV
-          echo "LD_LIBRARY_PATH=$HOME/metis/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-          echo "$HOME/metis/bin" >> $GITHUB_PATH
-      
-      - name: Check METIS PATH
-        run: |
-          echo "METIS_DIR=$METIS_DIR"
-          ls $METIS_DIR/bin
-          ls $METIS_DIR/lib
-  
+          mv /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/libmetis /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/lib
+          mv /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/programs /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/bin
+
       - name: Export compiler environment
         run: |
           echo "FC=gfortran" >> $GITHUB_ENV
@@ -74,4 +68,4 @@ jobs:
       - name: Build NS solver
         run: |
           cd Solver
-          make ns COMPILER=gfortran COMM=PARALLEL WITH_METIS=YES METIS_DIR=$METIS_DIR
+          make ns COMPILER=gfortran COMM=PARALLEL WITH_METIS=YES 
