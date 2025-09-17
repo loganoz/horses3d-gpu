@@ -68,4 +68,4 @@ jobs:
       - name: Build NS solver
         run: |
           cd Solver
-          make ns COMPILER=gfortran COMM=PARALLEL WITH_METIS=YES 
+          make ns COMPILER=gfortran COMM=PARALLEL WITH_METIS=YES ENABLE_THREADS=NO
