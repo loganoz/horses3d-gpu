@@ -89,11 +89,15 @@ jobs:
       - name: Build NS solver (NVFORTRAN)
         if: matrix.compiler == 'nvidia-hpc'
         env:
-          PATH: /opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/bin:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/comm_libs/mpi/bin:$PATH
+          PATH: /opt/nvidia/hpc_sdk/Linux_x86_64/25.1/compilers/bin:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/comm_libs/mpi/bin:/opt/nvidia/hpc_sdk/Linux_x86_64/25.1/cuda/bin:$PATH
           MPIFC: /opt/nvidia/hpc_sdk/Linux_x86_64/25.1/comm_libs/mpi/bin/mpifort
           FC: nvfortran
           CC: nvc
           CXX: nvc++
         run: |
+          echo "PATH=$PATH"
+          which mpifort
+          mpifort --version
           cd Solver
-          make ns COMPILER=nvfortran COMM=PARALLEL WITH_METIS=YES      
+          make ns COMPILER=nvfortran COMM=PARALLEL WITH_METIS=YES
+     
