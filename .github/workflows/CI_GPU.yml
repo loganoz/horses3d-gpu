@@ -49,15 +49,16 @@ jobs:
           make config cc=gcc prefix=$HOME/metis
           make
           make install
-          echo "METIS_HOME=$HOME/metis" >> $GITHUB_ENV
+          echo "METIS_DIR=$HOME/metis" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$HOME/metis/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
           echo "$HOME/metis/lib" >> $GITHUB_PATH
           echo "$HOME/metis/bin" >> $GITHUB_PATH
       
       - name: Check METIS PATH
         run: |
-          echo "METIS_HOME=$METIS_HOME"
-          ls $METIS_HOME/bin
-          ls $METIS_HOME/lib
+          echo "METIS_DIR=$METIS_DIR"
+          ls $METIS_DIR/bin
+          ls $METIS_DIR/lib
   
       - name: Export compiler environment
         run: |
