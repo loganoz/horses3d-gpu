@@ -19,18 +19,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Patch Makefile for CI (disable GPU)
+        run: |
+          cd Solver
+          sed -i 's|\(NVFORTRAN_RELEASE_FLAGS=.*\)-cuda -acc|NVFORTRAN_RELEASE_FLAGS= \1|g' Makefile.in
+
       # Install compiler first
       - name: Setup Fortran
         uses: fortran-lang/setup-fortran@v1.6.3
         with:
           compiler: ${{ matrix.compiler }}
           version: ${{ matrix.version }}
-
-      - name: Patch Makefile for CI (disable GPU)
-        if: matrix.compiler == 'nvidia-hpc'
-        run: |
-          cd Solver
-          sed -i 's|\(NVFORTRAN_RELEASE_FLAGS=.*\)-cuda -acc|NVFORTRAN_RELEASE_FLAGS= \1|g' makefile.in
 
       # Cache NVIDIA HPC SDK only for nvfortran
       - name: Cache NVIDIA HPC SDK
