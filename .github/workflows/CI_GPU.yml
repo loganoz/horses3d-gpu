@@ -14,7 +14,7 @@ jobs:
           - compiler: nvidia-hpc
             version: 25.1
     env:
-      METIS_HOME:  /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64      
+      METIS_HOME:  /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64
 
     steps:
       - uses: actions/checkout@v4
@@ -73,11 +73,18 @@ jobs:
           cd Solver
           ./configure
   
-      - name: Build NS solver
+      - name: Build NS solver (GCC)
         run: |
           cd Solver
           if [ "${{ matrix.compiler }}" = "gcc" ]; then
             make ns COMPILER=gfortran COMM=PARALLEL WITH_METIS=YES ENABLE_THREADS=NO
-          else
-            make ns COMPILER=nvfortran COMM=PARALLEL WITH_METIS=YES
           fi
+
+      - name: Build NS solver (NVFORTRAN)
+        env: 
+          MPIFC: /opt/nvidia/hpc_sdk/Linux_x86_64/25.1/comm_libs/mpi/bin/mpifort
+        run: |
+          cd Solver
+          if [ "${{ matrix.compiler }}" = "nvidia-hpc" ]; then
+            make ns COMPILER=nvfortran COMM=PARALLEL WITH_METIS=YES
+          fi          
