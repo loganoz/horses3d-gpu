@@ -141,13 +141,13 @@ jobs:
 #
 # 2) UNIFORM FLOW
 # ---------------
-
-      - name: Build UniformFlow
-        working-directory: ./Solver/test/Euler/UniformFlow/SETUP
-        run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
-        if: '!cancelled()'
+# Comented this to check if the code runs without problem file
+      #- name: Build UniformFlow
+      #  working-directory: ./Solver/test/Euler/UniformFlow/SETUP
+      #  run: |
+      #    source /opt/intel/oneapi/setvars.sh || true
+      #    make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
+      #  if: '!cancelled()'
 
       - name: Run UniformFlow
         working-directory: ./Solver/test/Euler/UniformFlow
