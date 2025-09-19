@@ -33,7 +33,6 @@ jobs:
 
     env:
       METIS_HOME:  /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64
-      INTEL_COMPILER_DIR : /opt/intel/oneapi/compiler/2024.1
     # Steps represent a sequence of tasks that will be executed as part of the job
 
     steps:
@@ -46,56 +45,7 @@ jobs:
         run: |
           sudo apt-get install openmpi-bin libopenmpi-dev
 
-      # IF COMPILER = IFORT -> INSTALL IFORT #
-      # UNCOMMENT TO USE CACHED IFORT 
-      #- name: cache-intel-compilers
-      #  if: (matrix.compiler == 'ifort')
-      #  id: cache-intel-compilers
-      #  uses: actions/cache@v3
-      #  with:
-      #    path: /opt/intel
-      #    key: intel-${{ runner.os }}-compilers-b
-
-      - name: Intel Apt repository
-      # UNCOMMENT TO USE CACHED IFORT 
-      #  if: (steps.cache-intel-compilers.outputs.cache-hit != 'true')
-        run: |
-          wget https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
-          sudo apt-key add GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
-          sudo add-apt-repository "deb https://apt.repos.intel.com/oneapi all main"
-          sudo apt-get update
-
-      - name: Install Intel oneAPI
-      # UNCOMMENT TO USE CACHED IFORT
-      #  if: (steps.cache-intel-compilers.outputs.cache-hit != 'true')
-        run: sudo apt-get install intel-oneapi-compiler-fortran intel-oneapi-compiler-dpcpp-cpp intel-oneapi-mpi intel-oneapi-mpi-devel intel-oneapi-mkl-devel ninja-build
-
-      # - name: cache-metis
-      #   id: cache-metis
-      #   uses: actions/cache@v2
-      #   with:
-      #     path: /home/runner/metis-5.1.0
-      #     key: metis-${{ runner.os }}-b
-
-      - name: Install METIS (intel)
-        # if: (steps.cache-metis.outputs.cache-hit != 'true')
-        # wget "http://glaros.dtc.umn.edu/gkhome/fetch/sw/metis/metis-5.1.0.tar.gz" (OLD LINK TO METIS)
-        if: (matrix.compiler == 'ifort') 
-        run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          wget "https://src.fedoraproject.org/lookaside/pkgs/metis/metis-5.1.0.tar.gz/5465e67079419a69e0116de24fce58fe/metis-5.1.0.tar.gz" 
-          tar -xvf metis-5.1.0.tar.gz
-          cd metis-5.1.0
-          make config cc=icx
-          make
-          mv /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/libmetis /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/lib
-          mv /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/programs /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64/bin
-#          export METIS_HOME=~/metis-5.1.0/build/Linux-x86_64
-#          echo $METIS_HOME
-
       - name: Install METIS (gnu)
-      # if: (steps.cache-metis.outputs.cache-hit != 'true')
-      # wget "http://glaros.dtc.umn.edu/gkhome/fetch/sw/metis/metis-5.1.0.tar.gz" (OLD LINK TO METIS)
         if: (matrix.compiler == 'gfortran') 
         run: |
           wget "https://src.fedoraproject.org/lookaside/pkgs/metis/metis-5.1.0.tar.gz/5465e67079419a69e0116de24fce58fe/metis-5.1.0.tar.gz" 
@@ -109,18 +59,8 @@ jobs:
       - name: Check METIS PATH
         run: echo $METIS_HOME
 
-      # Runs a single command using the runners shell
-      ##- name: Install gfortran
-      ##  run: |
-      ##   sudo add-apt-repository ppa:ubuntu-toolchain-r/test
-      ##   sudo apt update
-      ##   sudo apt-get install gfortran-9
-
-      ##- name: Show gfortran version
-      ##  run: gfortran-9 --version
       - name: Show ${{matrix.compiler}} version
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
           ${{matrix.compiler}} --version
 
       - name: Configure
@@ -130,77 +70,12 @@ jobs:
       - name: Compile horses3d
         working-directory: ./Solver
         run: |
-         source /opt/intel/oneapi/setvars.sh || true
          make allclean MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
          make mu MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
 
-
-# ########################################################################
-# #######                       MULTIPHASE                        ########
-# ########################################################################
-# #
-# # 1) Convergence
-# # ----------------------------
-
-#       - name: Build MultiphaseConvergence
-#         working-directory: ./Solver/test/Multiphase/Convergence/SETUP
-#         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           make MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
-
-#       - name: Run MultiphaseConvergence
-#         working-directory: ./Solver/test/Multiphase/Convergence
-#         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           mpiexec -n 64 ./horses3d.mu Convergence.control
-
-# #
-# # 2) RisingBubble
-# # ----------------------------
-
-#       - name: Build MultiphaseRisingBubble
-#         working-directory: ./Solver/test/Multiphase/RisingBubble/SETUP
-#         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           make MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
-
-#       - name: Run MultiphaseRisingBubble
-#         working-directory: ./Solver/test/Multiphase/RisingBubble
-#         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           mpiexec -n 64 ./horses3d.mu RisingBubble.control
-
-# #
-# # 3) Pipe
-# # ----------------------------
-
-#       - name: Build MultiphasePipe
-#         working-directory: ./Solver/test/Multiphase/Pipe/SETUP
-#         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           make MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
-
-#       - name: Run MultiphasePipe
-#         working-directory: ./Solver/test/Multiphase/Pipe
-#         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           mpiexec -n 64 ./horses3d.mu AnnularFlow.control
-
-# #
-# # 4) Entropy conserving test
-# # ----------------------------
-
-#       - name: Build MultiphaseEntropyConservingTest
-#         working-directory: ./Solver/test/Multiphase/EntropyConservingTest/SETUP
-#         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           make MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
-
-#       - name: Run MultiphaseEntropyConservingTest
-#         working-directory: ./Solver/test/Multiphase/EntropyConservingTest
-#         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           mpiexec -n 64 ./horses3d.mu EntropyConservingTest.control
+########################################################################
+#######                         MULTIPHASE                      ########
+########################################################################
 
 #
 # 5) Multiphase monopole with acoustics, sponge and Reinforcement Learning p-adaptation
@@ -208,14 +83,12 @@ jobs:
       - name: Build Multiphase_Monopole_pAdaptationRL
         working-directory: ./Solver/test/Multiphase/Monopole_pAdaptationRL/SETUP
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
           make mu MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
         if: '!cancelled()'
 
       - name: Run Multiphase_Monopole_pAdaptationRL
         working-directory: ./Solver/test/Multiphase/Monopole_pAdaptationRL
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
           mpiexec -n 64 ./horses3d.mu monopole_pAdaptationRL.control
         if: '!cancelled()'
 
@@ -226,14 +99,12 @@ jobs:
       - name: Build Mu-AL
         working-directory: ./Solver/test/Multiphase/ActuatorLineInterpolation/SETUP
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
           make mu MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
         if: '!cancelled()'
 
       - name: Run Mu-AL
         working-directory: ./Solver/test/Multiphase/ActuatorLineInterpolation
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
           mpiexec -n 64 ./horses3d.mu Actuator.control
         if: '!cancelled()'
 
@@ -243,14 +114,12 @@ jobs:
       - name: Build MultiphaseSnell
         working-directory: ./Solver/test/Multiphase/Snell/SETUP
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
           make mu MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
         if: ('!cancelled()')
 
       - name: Run MultiphaseSnell
         working-directory: ./Solver/test/Multiphase/Snell
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
           mpiexec -n 64 ./horses3d.mu snell.control
         if: ('!cancelled()')
 
@@ -260,13 +129,11 @@ jobs:
       - name: Build MultiphaseMixedRK
         working-directory: ./Solver/test/Multiphase/MixedRK/SETUP
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
           make mu MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
         if: ('!cancelled()')
 
       - name: Run MultiphaseMixedRK
         working-directory: ./Solver/test/Multiphase/MixedRK
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
           mpiexec -n 64 ./horses3d.mu mixedRK.control
         if: ('!cancelled()')
