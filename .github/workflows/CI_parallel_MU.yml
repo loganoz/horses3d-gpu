@@ -186,21 +186,21 @@ jobs:
 #           source /opt/intel/oneapi/setvars.sh || true
 #           mpiexec -n 64 ./horses3d.mu AnnularFlow.control
 
-# #
-# # 4) Entropy conserving test
-# # ----------------------------
+#
+# 4) Entropy conserving test
+# ----------------------------
 
-#       - name: Build MultiphaseEntropyConservingTest
-#         working-directory: ./Solver/test/Multiphase/EntropyConservingTest/SETUP
-#         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           make MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
+       - name: Build MultiphaseEntropyConservingTest
+         working-directory: ./Solver/test/Multiphase/EntropyConservingTest/SETUP
+         run: |
+           source /opt/intel/oneapi/setvars.sh || true
+           make MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
 
-#       - name: Run MultiphaseEntropyConservingTest
-#         working-directory: ./Solver/test/Multiphase/EntropyConservingTest
-#         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           mpiexec -n 64 ./horses3d.mu EntropyConservingTest.control
+       - name: Run MultiphaseEntropyConservingTest
+         working-directory: ./Solver/test/Multiphase/EntropyConservingTest
+         run: |
+           source /opt/intel/oneapi/setvars.sh || true
+           mpiexec -n 64 ./horses3d.mu EntropyConservingTest.control
 
 #
 # 5) Multiphase monopole with acoustics, sponge and Reinforcement Learning p-adaptation
