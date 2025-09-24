@@ -542,6 +542,13 @@
       if( sem % mesh % IBM % active ) call sem % mesh % IBM % SemiImplicitCorrection( sem % mesh % elements, dt )
       maxResidual       = ComputeMaxResiduals(sem % mesh)
       sem % maxResidual = maxval(maxResidual)
+!
+!        Update the host data from the GPU
+!        ---------------------------------
+#ifdef _OPENACC
+         call sem % mesh % UpdateHostData()
+         print*, "I update host data just before monitors"
+#endif
       call Monitors % UpdateValues( sem % mesh, t, sem % numberOfTimeSteps, maxResidual, .false., dt )
       call self % Display(sem % mesh, monitors, sem  % numberOfTimeSteps)
 
@@ -704,6 +711,13 @@
          if (ShockCapturingDriver % isActive) then
             call ShockCapturingDriver % Detect(sem, t)
          end if
+#endif
+!
+!        Update the host data from the GPU
+!        ---------------------------------
+#ifdef _OPENACC
+         call sem % mesh % UpdateHostData()
+      !   print*, "I update host data just before monitors"
 #endif
 !
 !        Update monitors
