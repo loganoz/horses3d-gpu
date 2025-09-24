@@ -1,7 +1,6 @@
 !
 !////////////////////////////////////////////////////////////////////////
 !
-!
 !      The Problem File contains user defined procedures
 !      that are used to "personalize" i.e. define a specific
 !      problem to be solved. These procedures include initial conditions,
@@ -80,29 +79,26 @@ module ProblemFileFunctions
          use SMConstants
          use PhysicsStorage
          use FluidData
-         use ElementConnectivityDefinitions
          implicit none
-         real(kind=RP), intent(in)          :: x(NDIM)
-         real(kind=RP), intent(in)          :: t
-         real(kind=RP), intent(in)          :: nHat(NDIM)
-         real(kind=RP), intent(inout)       :: Q(NCONS)
-         type(Thermodynamics_t), intent(in) :: thermodynamics_
-         type(Dimensionless_t),  intent(in) :: dimensionless_
-         type(RefValues_t),      intent(in) :: refValues_
+         real(kind=RP)  :: x(NDIM)
+         real(kind=RP)  :: t
+         real(kind=RP)  :: nHat(NDIM)
+         real(kind=RP)  :: Q(NCONS)
+         type(Thermodynamics_t), intent(in)  :: thermodynamics_
+         type(Dimensionless_t),  intent(in)  :: dimensionless_
+         type(RefValues_t),      intent(in)  :: refValues_
       end subroutine UserDefinedState_f
 
-      subroutine UserDefinedGradVars_f(x, t, nHat, Q, U, GetGradients, thermodynamics_, dimensionless_, refValues_)
+      subroutine UserDefinedGradVars_f(x, t, nHat, Q, U, thermodynamics_, dimensionless_, refValues_)
          use SMConstants
          use PhysicsStorage
          use FluidData
-         use VariableConversion, only: GetGradientValues_f
          implicit none
          real(kind=RP), intent(in)          :: x(NDIM)
          real(kind=RP), intent(in)          :: t
          real(kind=RP), intent(in)          :: nHat(NDIM)
          real(kind=RP), intent(in)          :: Q(NCONS)
          real(kind=RP), intent(inout)       :: U(NGRAD)
-         procedure(GetGradientValues_f)     :: GetGradients
          type(Thermodynamics_t), intent(in) :: thermodynamics_
          type(Dimensionless_t),  intent(in) :: dimensionless_
          type(RefValues_t),      intent(in) :: refValues_
@@ -131,34 +127,15 @@ module ProblemFileFunctions
 !
 !//////////////////////////////////////////////////////////////////////// 
 ! 
-      SUBROUTINE UserDefinedPeriodicOperation_f(mesh, time, dt, Monitors & 
-#ifdef FLOW
-         , thermodynamics_ &
-         , dimensionless_  &
-         , refValues_ & 
-#endif   
-#ifdef CAHNHILLIARD
-         , multiphase_ &
-#endif
-      )
+      SUBROUTINE UserDefinedPeriodicOperation_f(mesh, time, dt, Monitors)
          use SMConstants
          USE HexMeshClass
          use MonitorsClass
-         use fluiddata
-         use physicsstorage
          IMPLICIT NONE
          CLASS(HexMesh)               :: mesh
          REAL(KIND=RP)                :: time
          REAL(KIND=RP)                :: dt
          type(Monitor_t), intent(in) :: monitors
-#ifdef FLOW
-         type(Thermodynamics_t), intent(in)    :: thermodynamics_
-         type(Dimensionless_t),  intent(in)    :: dimensionless_
-         type(RefValues_t),      intent(in)    :: refValues_
-#endif
-#ifdef CAHNHILLIARD
-         type(Multiphase_t),     intent(in)    :: multiphase_
-#endif
       END SUBROUTINE UserDefinedPeriodicOperation_f
 !
 !//////////////////////////////////////////////////////////////////////// 
@@ -315,13 +292,31 @@ end module ProblemFileFunctions
 #if defined(NAVIERSTOKES)
             real(kind=RP)  :: Q(NCONS), phi, theta
 #endif
+!
+!           ---------------
+!           Local variables
+!           ---------------
+!
+            REAL(KIND=RP) :: x(3)        
+            REAL(KIND=RP) :: rho 
+            REAL(KIND=RP) :: L, u_0, rho_0, p_0
+            integer       :: Nx, Ny, Nz
 
 !
 !           ---------------------------------------
 !           Navier-Stokes default initial condition
 !           ---------------------------------------
 !
+
 #if defined(NAVIERSTOKES)
+
+            L     = 1.0_RP
+            u_0   = 1.0_RP
+            rho_0 = 1.0_RP 
+            ! p_0   = 100.0_RP !original test case definition
+            ! p_0   = 1.0_RP / 3.0_RP !miguel paper
+            p_0   = rho_0 * u_0**2 / (dimensionless_ % gammaM2) ! juan paper formula
+            
             associate ( gammaM2 => dimensionless_ % gammaM2, &
                         gamma => thermodynamics_ % gamma )
             theta = refvalues_ % AOAtheta*(pi/180.0_RP)
@@ -332,19 +327,22 @@ end module ProblemFileFunctions
                           ny => mesh % elemeNts(eID) % nxyz(2), &
                           Nz => mesh % elements(eID) % Nxyz(3) )
                do k = 0, Nz;  do j = 0, Ny;  do i = 0, Nx 
-                  qq = 1.0_RP
-                  u  = qq*cos(theta)*cos(phi)
-                  v  = qq*sin(theta)*cos(phi)
-                  w  = qq*sin(phi)
-      
-                  q(1) = 1.0_RP
-                  p    = 1.0_RP/(gammaM2)
-                  q(2) = q(1)*u
-                  q(3) = q(1)*v
-                  q(4) = q(1)*w
-                  q(5) = p/(gamma - 1._RP) + 0.5_RP*q(1)*(u**2 + v**2 + w**2)
+                  x = mesh % elements(eID) % geom % x(:,i,j,k)
+                         rho = rho_0
+                         u   =  u_0 * sin(x(1)/L) * cos(x(2)/L) * cos(x(3)/L) 
+                         v   = -u_0 * cos(x(1)/L) * sin(x(2)/L) * cos(x(3)/L)
+                         w   =  0.0_RP
+                         p   =   p_0 + rho_0 / 16.0_RP * (                          &
+                               cos(2.0_RP*x(1)/L)*cos(2.0_RP*x(3)/L) +                  &
+                               2.0_RP*cos(2.0_RP*x(2)/L) + 2.0_RP*cos(2.0_RP*x(1)/L) +  &
+                               cos(2.0_RP*x(2)/L)*cos(2.0_RP*x(3)/L)                    &
+                               )
 
-                  mesh % elements(eID) % storage % q(:,i,j,k) = q 
+                         mesh % elements(eID) % storage % Q(1,i,j,k) = rho
+                         mesh % elements(eID) % storage % Q(2,i,j,k) = rho*u
+                         mesh % elements(eID) % storage % Q(3,i,j,k) = rho*v
+                         mesh % elements(eID) % storage % Q(4,i,j,k) = rho*w
+                         mesh % elements(eID) % storage % Q(5,i,j,k) = p / (gamma - 1.0_RP) + 0.5_RP * rho * (u*u + v*v + w*w)
                end do;        end do;        end do
                end associate
             end do
@@ -383,44 +381,14 @@ end module ProblemFileFunctions
                associate(e => mesh % elements(eID) % storage)
                call random_number(e % c) 
                e % c = 2.0_RP * (e % c - 0.5_RP)
-#ifdef MULTIPHASE
-               do k = 0, Nz;  do j = 0, Ny;  do i = 0, Nx 
-                  mesh % elements(eID) % storage % q(:,i,j,k) = [1.0_RP, 1.0_RP,0.0_RP,0.0_RP,0.0_RP] 
-               end do;        end do;        end do
-#endif
                end associate
                end associate
             end do
 #endif
-!
-!           -----------------------------------
-!           Acoustic default initial condition
-!           -----------------------------------
-!
-#if defined(ACOUSTIC)
-            do eID = 1, mesh % no_of_elements
-               associate( Nx => mesh % elements(eID) % Nxyz(1), &
-                          ny => mesh % elemeNts(eID) % nxyz(2), &
-                          Nz => mesh % elements(eID) % Nxyz(3) )
-               do k = 0, Nz;  do j = 0, Ny;  do i = 0, Nx 
-                  ! mesh % elements(eID) % storage % q(:,i,j,k) = [0.0_RP, 0.0_RP,0.0_RP,0.0_RP,0.0_RP] 
-                  mesh % elements(eID) % storage % q(:,i,j,k) = 0.0_RP 
-               end do;        end do;        end do
-               end associate
-            end do
-#endif
-         end subroutine UserDefinedInitialCondition
 
-         subroutine UserDefinedState1(x, t, nHat, Q & 
+         end subroutine UserDefinedInitialCondition
 #ifdef FLOW
-            , thermodynamics_ &
-            , dimensionless_  &
-            , refValues_ & 
-#endif
-#ifdef CAHNHILLIARD
-            , multiphase_ &
-#endif
-            )
+         subroutine UserDefinedState1(x, t, nHat, Q, thermodynamics_, dimensionless_, refValues_)
             use SMConstants
             use PhysicsStorage
             use FluidData
@@ -429,30 +397,21 @@ end module ProblemFileFunctions
             real(kind=RP), intent(in)     :: t
             real(kind=RP), intent(in)     :: nHat(NDIM)
             real(kind=RP), intent(inout)  :: Q(NCONS)
-#ifdef FLOW
             type(Thermodynamics_t),    intent(in)  :: thermodynamics_
             type(Dimensionless_t),     intent(in)  :: dimensionless_
             type(RefValues_t),         intent(in)  :: refValues_
-#endif
-#ifdef CAHNHILLIARD
-            type(Multiphase_t),     intent(in)  :: multiphase_
-#endif
          end subroutine UserDefinedState1
 
-#ifdef FLOW
-
-         subroutine UserDefinedGradVars1(x, t, nHat, Q, U, GetGradients, thermodynamics_, dimensionless_, refValues_)
+         subroutine UserDefinedGradVars1(x, t, nHat, Q, U, thermodynamics_, dimensionless_, refValues_)
             use SMConstants
             use PhysicsStorage
             use FluidData
-            use VariableConversion, only: GetGradientValues_f
             implicit none
             real(kind=RP), intent(in)          :: x(NDIM)
             real(kind=RP), intent(in)          :: t
             real(kind=RP), intent(in)          :: nHat(NDIM)
             real(kind=RP), intent(in)          :: Q(NCONS)
             real(kind=RP), intent(inout)       :: U(NGRAD)
-            procedure(GetGradientValues_f)     :: GetGradients
             type(Thermodynamics_t), intent(in) :: thermodynamics_
             type(Dimensionless_t),  intent(in) :: dimensionless_
             type(RefValues_t),      intent(in) :: refValues_
@@ -479,16 +438,7 @@ end module ProblemFileFunctions
 !
 !//////////////////////////////////////////////////////////////////////// 
 ! 
-         SUBROUTINE UserDefinedPeriodicOperation(mesh, time, dt, Monitors &
-#ifdef FLOW
-         , thermodynamics_ &
-         , dimensionless_  &
-         , refValues_ & 
-#endif   
-#ifdef CAHNHILLIARD
-         , multiphase_ &
-#endif
-      )
+         SUBROUTINE UserDefinedPeriodicOperation(mesh, time, dt, Monitors)
 !
 !           ----------------------------------------------------------
 !           Called before every time-step to allow periodic operations
@@ -498,21 +448,12 @@ end module ProblemFileFunctions
             use SMConstants
             USE HexMeshClass
             use MonitorsClass
-            use fluiddata
-            use physicsstorage
             IMPLICIT NONE
             CLASS(HexMesh)               :: mesh
             REAL(KIND=RP)                :: time
             REAL(KIND=RP)                :: dt
             type(Monitor_t), intent(in) :: monitors
-#ifdef FLOW
-            type(Thermodynamics_t), intent(in)    :: thermodynamics_
-            type(Dimensionless_t),  intent(in)    :: dimensionless_
-            type(RefValues_t),      intent(in)    :: refValues_
-#endif
-#ifdef CAHNHILLIARD
-            type(Multiphase_t),     intent(in)    :: multiphase_
-#endif
+            
          END SUBROUTINE UserDefinedPeriodicOperation
 !
 !//////////////////////////////////////////////////////////////////////// 
@@ -553,6 +494,7 @@ end module ProblemFileFunctions
 !           Usage example
 !           -------------
 !           S(:) = x(1) + x(2) + x(3) + time
+            S    = 0.0_RP
    
          end subroutine UserDefinedSourceTermNS
 #endif
@@ -578,6 +520,7 @@ end module ProblemFileFunctions
 !           --------------------------------------------------------
 !
             use SMConstants
+            use FTAssertions
             USE HexMeshClass
             use PhysicsStorage
             use FluidData
@@ -599,6 +542,8 @@ end module ProblemFileFunctions
             real(kind=RP),             intent(in) :: elapsedTime
             real(kind=RP),             intent(in) :: CPUTime
 
+
+
          END SUBROUTINE UserDefinedFinalize
 !
 !//////////////////////////////////////////////////////////////////////// 
@@ -612,3 +557,4 @@ end module ProblemFileFunctions
 !
          IMPLICIT NONE  
       END SUBROUTINE UserDefinedTermination
+      
