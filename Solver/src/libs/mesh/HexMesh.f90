@@ -4749,6 +4749,7 @@ slavecoord:             DO l = 1, 4
       !$acc wait
 
       do eID = 1, SIZE(self % elements)
+         !$acc update self(self % elements(eID) % storage % Qdot)
          !$acc update self(self % elements(eID) % storage % Q)
          !$acc update self(self % elements(eID) % storage % U_x)
          !$acc update self(self % elements(eID) % storage % U_y)
