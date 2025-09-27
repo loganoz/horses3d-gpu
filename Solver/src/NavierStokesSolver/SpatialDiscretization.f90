@@ -1059,7 +1059,7 @@ module SpatialDiscretization
 
          if ( LESModel % Active ) then
 !$omp do schedule(runtime) private(i,j,delta,mu_smag)
-            !$acc parallel loop gang present(mesh, LESModel) async(1)
+            !$acc parallel loop gang present(mesh, LESModel, face_ids) async(1)
             do iFace = 1, no_of_faces
                delta = sqrt(mesh % faces(face_ids(iFace)) % geom % surface / product(mesh % faces(face_ids(iFace)) % Nf + 1))
                !$acc loop vector collapse(3)
