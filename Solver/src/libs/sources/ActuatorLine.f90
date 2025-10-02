@@ -45,11 +45,12 @@ public farm, ConstructFarm, DestructFarm, UpdateFarm, ForcesFarm, WriteFarmForce
     real(KIND=RP), allocatable      :: local_velocity_temp(:)
     real(KIND=RP), allocatable      :: local_angle_temp(:)
     real(KIND=RP), allocatable      :: local_root_bending(:)  ! N.m
-    real(KIND=RP), allocatable      :: gauss_epsil_delta(:)  ! HO element size, for calculate force Gaussian
+    ! real(KIND=RP), allocatable      :: gauss_epsil_delta(:)  ! HO element size, for calculate force Gaussian
     real(KIND=RP)                   :: tip_c1,tip_c2  ! tip force corrections
     real(KIND=RP), allocatable      :: local_gaussian_sum(:) ! necessary for Gaussian weighted average
     real(KIND=RP), allocatable      :: local_Re(:) ! local Re based on local conditions and the chord of the airfoil at the blade section
     real(KIND=RP), allocatable      :: local_Re_temp(:)
+    integer, allocatable            :: eID(:)    ! for different Re
     end type
 
     type turbine_t
@@ -67,6 +68,7 @@ public farm, ConstructFarm, DestructFarm, UpdateFarm, ForcesFarm, WriteFarmForce
     real(KIND=RP)                  :: Cp ! turbine power coef.
     real(KIND=RP)                  :: Ct ! turbine thrust coef.
     real(KIND=RP), allocatable     :: average_conditions(:,:) ! time and blade average local variables at the blade section
+    real(KIND=RP)                  :: gauss_epsil             ! force Gaussian width
     end type
                                    
     type Farm_t
@@ -109,7 +111,7 @@ contains
        use fluiddata
        use MPI_Process_Info
        implicit none
-       type(farm_t) , intent(inout)                :: self
+       type(farm_t) , intent(inout)                 :: self
        TYPE(FTValueDictionary), intent(in)          :: controlVariables
        real(kind=RP), intent(in)                    :: t0
        type(HexMesh), intent(in)                    :: mesh
@@ -127,7 +129,9 @@ contains
          integer        :: nelem, eID, eIndex
          real(kind=RP)  :: tolerance, r_square
          real(kind=RP)  :: delta, delta_temp
+         real(kind=RP), dimension(NDIM)  :: x, xi
          integer        :: delta_count, delta_paritions, ierr
+         logical                    :: found, allfound
 
     if (.not. controlVariables % logicalValueForKey("use actuatorline")) return
 
@@ -213,7 +217,7 @@ contains
          self%turbine_t(k)%blade_t(j)%point_xyz_loc(num_blade_sections,3),self%turbine_t(k)%blade_t(j)%local_torque(num_blade_sections), &
          self%turbine_t(k)%blade_t(j)%local_thrust(num_blade_sections),self%turbine_t(k)%blade_t(j)%local_root_bending(num_blade_sections), &
          self%turbine_t(k)%blade_t(j)%local_rotor_force(num_blade_sections),self%turbine_t(k)%blade_t(j)%local_gaussian_sum(num_blade_sections), &
-         self%turbine_t(k)%blade_t(j)%local_Re(num_blade_sections), self%turbine_t(k)%blade_t(j)%gauss_epsil_delta(num_blade_sections) )
+         self%turbine_t(k)%blade_t(j)%local_Re(num_blade_sections), self%turbine_t(k)%blade_t(j)%eID(num_blade_sections) )
 
          do i=1, num_blade_sections
             self%turbine_t(k)%blade_t(j)%airfoil_files(i,:)=' '
@@ -414,7 +418,7 @@ contains
     element_loop:do eID = 1, mesh%no_of_elements
         do k=1, self%num_turbines
             tolerance = self%tolerance_factor*self%turbine_t(k)%radius
-            r_square = POW2(minval(mesh%elements(eID)%geom%x(2,:,:,:))-self%turbine_t(k)%hub_cood_y) + POW2(minval(mesh%elements(eID)%geom%x(3,:,:,:))-self%turbine_t(k)%hub_cood_z)
+            r_square = minval(POW2(mesh%elements(eID)%geom%x(2,:,:,:)-self%turbine_t(k)%hub_cood_y)) + minval(POW2(mesh%elements(eID)%geom%x(3,:,:,:)-self%turbine_t(k)%hub_cood_z))
             if( r_square <= POW2(self%turbine_t(k)%radius+tolerance) &
                 .and. minval(mesh%elements(eID)%geom%x(1,:,:,:)) < self%turbine_t(k)%hub_cood_x+tolerance &
                 .and. maxval(mesh%elements(eID)%geom%x(1,:,:,:)) >self%turbine_t(k)%hub_cood_x-tolerance) then
@@ -429,7 +433,7 @@ contains
     element_loop2:do eID = 1, mesh%no_of_elements
         do k=1, self%num_turbines
             tolerance = self%tolerance_factor*self%turbine_t(k)%radius
-            r_square = POW2(minval(mesh%elements(eID)%geom%x(2,:,:,:))-self%turbine_t(k)%hub_cood_y) + POW2(minval(mesh%elements(eID)%geom%x(3,:,:,:))-self%turbine_t(k)%hub_cood_z)
+            r_square = minval(POW2(mesh%elements(eID)%geom%x(2,:,:,:)-self%turbine_t(k)%hub_cood_y)) + minval(POW2(mesh%elements(eID)%geom%x(3,:,:,:)-self%turbine_t(k)%hub_cood_z))
             if( r_square <= POW2(self%turbine_t(k)%radius+tolerance) &
                 .and. minval(mesh%elements(eID)%geom%x(1,:,:,:)) < self%turbine_t(k)%hub_cood_x+tolerance &
                 .and. maxval(mesh%elements(eID)%geom%x(1,:,:,:)) >self%turbine_t(k)%hub_cood_x-tolerance) then
@@ -441,34 +445,76 @@ contains
         end do
     end do element_loop2
 
-    ! precalculate epsilon for projection mode
-    if (self % calculate_with_projection) then
-        if (MPI_Process % doMPIAction) then
-            if (nelem .gt. 0) then
-              delta_temp = (mesh % elements(elementsActuated(1)) % geom % Volume / product(mesh % elements(elementsActuated(1)) % Nxyz + 1)) ** (1.0_RP / 3.0_RP)
-              delta_count = 1
-            else
-              delta_temp = 0.0_RP
-              delta_count = 0
-            end if 
+   select case (self % epsilon_type)
+        case (0)
+            ! EPSILON - option 1 (from file)
+            do k = 1, self%num_turbines
+               self % turbine_t(k) % gauss_epsil = self % gauss_epsil
+            enddo
+        case (2)
+            ! EPSILON - option 3 (k is from file)
+            ! eps = k*delta; k is in gauss_epsil of farm
+            ! precalculate delta, for now only using element 1
+            if (MPI_Process % doMPIAction) then
+                if (nelem .gt. 0) then
+                  delta_temp = (mesh % elements(elementsActuated(1)) % geom % Volume / product(mesh % elements(elementsActuated(1)) % Nxyz + 1)) ** (1.0_RP / 3.0_RP)
+                  delta_count = 1
+                else
+                  delta_temp = 0.0_RP
+                  delta_count = 0
+                end if 
 #ifdef _HAS_MPI_
-            call mpi_allreduce(delta_temp, delta, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
-            call mpi_allreduce(delta_count, delta_paritions, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD, ierr)
+                call mpi_allreduce(delta_temp, delta, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
+                call mpi_allreduce(delta_count, delta_paritions, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD, ierr)
 #endif
-            delta = delta / real(delta_paritions,kind=RP)
-        else    
-            delta = (mesh % elements(elementsActuated(1)) % geom % Volume / product(mesh % elements(elementsActuated(1)) % Nxyz + 1)) ** (1.0_RP / 3.0_RP)
-        end if
-!$omp do     schedule(runtime)private(i,j,k)
-        do k = 1, self%num_turbines
-          do j = 1, self%turbine_t(k)%num_blades
-             do i = 1, self%turbine_t(k)%num_blade_sections
-               self % turbine_t(k) % blade_t(j) % gauss_epsil_delta(i) = delta
-             end do
-          enddo
-        enddo
-!$omp end do
-    end if
+                delta = delta / real(delta_paritions,kind=RP)
+            else    
+                delta = (mesh % elements(elementsActuated(1)) % geom % Volume / product(mesh % elements(elementsActuated(1)) % Nxyz + 1)) ** (1.0_RP / 3.0_RP)
+            end if
+            do k = 1, self%num_turbines
+               ! e = k*delta
+               self % turbine_t(k) % gauss_epsil = self % gauss_epsil * delta
+            enddo
+
+        case default
+            ! EPSILON - option 2 using Cd not implementd
+            do k = 1, self%num_turbines
+               self % turbine_t(k) % gauss_epsil = self % gauss_epsil
+            enddo
+
+    end select
+!
+!   Find eID at first iteration
+!   ---------------------------
+    if (.not. self % calculate_with_projection) then
+    do k = 1, self%num_turbines
+      do j = 1, self%turbine_t(k)%num_blades
+         do i = 1, self%turbine_t(k)%num_blade_sections
+           self%turbine_t(k)%blade_t(j)%point_xyz_loc(i,2) = self%turbine_t(k)%hub_cood_y + self%turbine_t(k)%blade_t(j)%r_R(i) * cos(self%turbine_t(k)%blade_t(j)%azimuth_angle)
+           self%turbine_t(k)%blade_t(j)%point_xyz_loc(i,3) = self%turbine_t(k)%hub_cood_z + self%turbine_t(k)%blade_t(j)%r_R(i) * sin(self%turbine_t(k)%blade_t(j)%azimuth_angle)
+           x = [self%turbine_t(k)%blade_t(j)%point_xyz_loc(i,1),self%turbine_t(k)%blade_t(j)%point_xyz_loc(i,2),self%turbine_t(k)%blade_t(j)%point_xyz_loc(i,3)]
+           call FindActuatorPointElement(mesh, x, eID, xi, found)
+           if ( (MPI_Process % doMPIAction) ) then
+#ifdef _HAS_MPI_
+             call mpi_allreduce(found, allfound, 1, MPI_LOGICAL, MPI_LOR, MPI_COMM_WORLD, ierr)
+#endif
+           else
+               allfound = found
+           end if
+
+           if (allfound) then
+               self % turbine_t(k) % blade_t(j) % eID(i) = eID
+           else
+               print*, "Actuator line point not found in mesh, x: ", x
+               print *, "i,j,k: ", i,j,k
+               call exit(99)
+           end if
+         end do
+      enddo
+    enddo
+
+    end if 
+    print *, "first done"
 
     print*, "I allocate the AL device data"
 !$acc update device(elementsActuated)
@@ -477,16 +523,15 @@ contains
 !$acc enter data copyin(self%turbine_t)
     do k=1, self % num_turbines
         !$acc enter data copyin(self%turbine_t(k)%blade_t)
+        !$acc enter data copyin(self%turbine_t(k)%gauss_epsil)
         do j=1, self % turbine_t(k) % num_blades
             !$acc enter data copyin(self%turbine_t(k)%blade_t(j)%chord)
             !$acc enter data copyin(self%turbine_t(k)%blade_t(j)%azimuth_angle)
             !$acc enter data copyin(self%turbine_t(k)%blade_t(j)%point_xyz_loc)
-            !$acc enter data copyin(self%turbine_t(k)%blade_t(j)%gauss_epsil_delta)
             !$acc enter data copyin(self%turbine_t(k)%blade_t(j)%local_thrust)
             !$acc enter data copyin(self%turbine_t(k)%blade_t(j)%local_rotor_force)
         end do
     end do
-
 !
 !   Create output files
 !   -------------------
@@ -574,7 +619,7 @@ contains
    !local variables
    integer                           :: ii, jj, i, j, k, kk
    real(kind=RP)                     :: dt, interp, delta_temp
-   logical                           :: found
+   logical                           :: found, allfound
    integer                           :: eID, ierr
    real(kind=RP), dimension(NDIM)    :: x, xi
    real(kind=RP), dimension(NCONS)   :: Q, Qtemp
@@ -631,7 +676,7 @@ contains
 !    use the local Q based on the position of the actuator line point
 !    ----------------------------------------------------------------
 !
-!$omp do schedule(runtime)private(ii,jj,kk,eID,Q,Qtemp,delta_temp,xi,found)
+!$omp do schedule(runtime)private(ii,jj,kk,eID,Q,Qtemp,delta_temp,xi,found,allfound)
     do kk = 1, self%num_turbines
       do jj = 1, self%turbine_t(kk)%num_blades
 
@@ -652,24 +697,20 @@ contains
 !          -----------------------------------
 !
            x = [self%turbine_t(kk)%blade_t(jj)%point_xyz_loc(ii,1),self%turbine_t(kk)%blade_t(jj)%point_xyz_loc(ii,2),self%turbine_t(kk)%blade_t(jj)%point_xyz_loc(ii,3)]
-           call FindActuatorPointElement(mesh, x, eID, xi, found)
+           ! call FindActuatorPointElement(mesh, x, eID, xi, found)
+           call FindActuatorPointSavedElement(self, mesh, x, ii, jj, kk, eID, xi, found)
            if (found) then
              ! interpolate state values in the element
              Qtemp = interpolateQ(mesh,eID, xi)
-             delta_temp = (mesh % elements(eID) % geom % Volume / product(mesh % elements(eID) % Nxyz + 1)) ** (1.0_RP / 3.0_RP)
            else
              Qtemp = 0.0_RP
-             delta_temp = 0.0_RP
            end if
            if ( (MPI_Process % doMPIAction) ) then
 #ifdef _HAS_MPI_
              call mpi_allreduce(Qtemp, Q, NCONS, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
-             call mpi_allreduce(delta_temp, self%turbine_t(kk)%blade_t(jj)%gauss_epsil_delta(ii), 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
 #endif
            else
                Q = Qtemp
-               self % turbine_t(kk) % blade_t(jj) % gauss_epsil_delta(ii) = delta_temp
-
            end if
            if (all(Q .eq. 0.0_RP)) then
              print*, "Actuator line point not found in mesh, x: ", x
@@ -689,7 +730,6 @@ contains
             !$acc update device(self%turbine_t(kk)%blade_t(jj)%point_xyz_loc)
             !$acc update device(self%turbine_t(kk)%blade_t(jj)%local_thrust)
             !$acc update device(self%turbine_t(kk)%blade_t(jj)%local_rotor_force)
-            !$acc update device(self%turbine_t(kk)%blade_t(jj)%gauss_epsil_delta)
         end do
     end do
 
@@ -747,8 +787,8 @@ contains
 
                 do jj = 1, self % turbine_t(kk) % num_blades
                     do ii = 1, self % turbine_t(kk) % num_blade_sections
-                        interp = GaussianInterpolation(self%epsilon_type, mesh % elements(eID) % geom % x(:,i,j,k), self%turbine_t(kk)%blade_t(jj)%point_xyz_loc(ii,:), &
-                                                       self%turbine_t(kk)%blade_t(jj)%chord(ii), self%gauss_epsil,self%turbine_t(kk)%blade_t(jj)%gauss_epsil_delta(ii))
+                        interp = GaussianInterpolation( mesh % elements(eID) % geom % x(:,i,j,k), self%turbine_t(kk)%blade_t(jj)%point_xyz_loc(ii,:), &
+                                                       self%turbine_t(kk)%blade_t(jj)%chord(ii), self%turbine_t(kk)%gauss_epsil)
                         call FarmGetLocalForces(self, ii, jj, kk, mesh%elements(eID)%storage%Q(:,i,j,k), interp, local_angle, local_velocity, local_Re, local_thrust, local_rotor_force)
 
                         ! minus account action-reaction effect, is the force on the fliud
@@ -808,7 +848,7 @@ contains
                     azimuth_angle = self%turbine_t(kk)%blade_t(jj)%azimuth_angle
                     local_rotor_force = self%turbine_t(kk)%blade_t(jj)%local_rotor_force(ii)
                     local_thrust = self%turbine_t(kk)%blade_t(jj)%local_thrust(ii)
-                    epsil = self % gauss_epsil * self%turbine_t(kk) % blade_t(jj) % gauss_epsil_delta(ii)
+                    epsil = self%turbine_t(kk) % gauss_epsil
 
                     interp = exp( -(POW2(xlocal(1) - self%turbine_t(kk)%blade_t(jj)%point_xyz_loc(ii,1)) &
                                   + POW2(xlocal(2) - self%turbine_t(kk)%blade_t(jj)%point_xyz_loc(ii,2)) &
@@ -1193,41 +1233,16 @@ end subroutine WriteFarmForces
 !
 !///////////////////////////////////////////////////////////////////////////////////////
 !
-    Function GaussianInterpolation(epsilon_type, x, x_point, chord, gauss_epsil, delta, Cd)
+    Function GaussianInterpolation(x, x_point, chord, gauss_epsil)
         implicit none
         !$acc routine seq
-        integer, intent(in)                     :: epsilon_type
         real(kind=RP), intent(in)               :: x(NDIM)
         real(kind=RP), intent(in)               :: x_point(NDIM)
         real(kind=RP), intent(in)               :: chord
         real(kind=RP), intent(in)               :: gauss_epsil
-        real(kind=RP), intent(in)               :: delta
-        real(kind=RP), intent(in), optional     :: Cd
         real(kind=RP)                           :: GaussianInterpolation
 
-        !local variables
-        real(kind=RP)                           :: epsil
-
-        select case (epsilon_type)
-        case (0)
-! EPSILON - option 1 (from file)
-            epsil = gauss_epsil
-        case (1)
-! EPSILON - option 2
-            if (present(Cd)) then
-                epsil = max(chord/4.0_RP,chord*Cd/2.0_RP)
-            else
-                epsil = gauss_epsil
-            end if
-        case (2)
-! EPSILON - option 3 (k is from file)
-! eps = k*delta; k is in gauss_epsil, gauss_epsil_delta is obtained in UpdateFarm
-            epsil = gauss_epsil * delta
-        case default
-            epsil = gauss_epsil
-        end select
-
-        GaussianInterpolation = exp( -(POW2(x(1) - x_point(1)) + POW2(x(2) - x_point(2)) + POW2(x(3) - x_point(3))) / POW2(epsil) ) / ( POW3(epsil) * pi**(3.0_RP/2.0_RP) )
+        GaussianInterpolation = exp( -(POW2(x(1) - x_point(1)) + POW2(x(2) - x_point(2)) + POW2(x(3) - x_point(3))) / POW2(gauss_epsil) ) / ( POW3(gauss_epsil) * pi**(3.0_RP/2.0_RP) )
 
     End Function GaussianInterpolation
 !
@@ -1263,9 +1278,61 @@ end subroutine WriteFarmForces
 !      If found in linear mesh, use FindPointWithCoords in that element
        if (found) then
            success = mesh % elements(eID) % FindPointWithCoords(x, mesh % dir2D_ctrl, xi)
+       else
+          eID = 0
        end if
 !
     End Subroutine FindActuatorPointElement
+!
+!///////////////////////////////////////////////////////////////////////////////////////
+!
+    Subroutine FindActuatorPointSavedElement(self, mesh, x, ii, jj, kk, eID, xi, success)
+       use HexMeshClass
+       use PartitionedMeshClass          , only: mpi_partition
+       use ElementConnectivityDefinitions, only: FACES_PER_ELEMENT
+       Implicit None
+
+       class(Farm_t), intent(inout)                  :: self
+       type(HexMesh), intent(in)                     :: mesh
+       real(kind=RP), dimension(NDIM), intent(in)    :: x       ! physical space
+       integer, intent(in)                           :: ii
+       integer, intent(in)                           :: jj
+       integer, intent(in)                           :: kk
+       integer, intent(out)                          :: eID 
+       real(kind=RP), dimension(NDIM), intent(out)   :: xi      ! computational space
+       logical, intent(out)                          :: success
+       !
+       logical                                       :: found
+       integer                                       :: eIndex, fID, new_eID
+       real(kind=RP), dimension(NDIM)                :: xi0      ! computational space seed
+
+       success = .false.
+       found = .false.
+!
+!      First, search in saved elements
+!      -------------------------------
+       eID = self % turbine_t(kk) %blade_t(jj) % eID(ii)
+       found = mesh % elements(eID) % FindPointInLinElement(x, mesh % nodes)
+       if (.not. found) then
+!      if not found, search in neighbours with depth 2
+           do fID = 1, FACES_PER_ELEMENT
+               new_eID = mpi_partition % global2localeID (mesh % elements(eID) % Connection(fID) % globID)
+               found = mesh % elements(new_eID) % FindPointInLinElement(x, mesh % nodes)
+               if (found) then
+                   eID = new_eID
+                   self % turbine_t(kk) %blade_t(jj) % eID(ii) = new_eID
+                   exit
+               end if
+           end do
+       end if
+!      If found in linear mesh, use FindPointWithCoords in that element
+       if (found) then
+          success = mesh % elements(eID) % FindPointWithCoords(x, mesh % dir2D_ctrl, xi)
+       else
+          eID = 0
+       end if
+!
+    End Subroutine FindActuatorPointSavedElement
 !
 !///////////////////////////////////////////////////////////////////////////////////////
 !
