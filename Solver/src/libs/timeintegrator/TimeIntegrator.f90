@@ -425,6 +425,7 @@
 #if defined(NAVIERSTOKES) || defined(INCNS) || defined(MULTIPHASE)
       use SpongeClass, only: sponge
       use ActuatorLine, only: farm, ConstructFarm, DestructFarm, UpdateFarm, WriteFarmForces
+      use ChannelForcing, only: initializeChannel, updateChannel
 #endif
 
       use IBMClass
@@ -490,6 +491,7 @@
 #if defined(NAVIERSTOKES)
       if( .not. sem % mesh % IBM % active ) call Initialize_WallConnection(controlVariables, sem % mesh)
       if (useTrip) call randomTrip % construct(sem % mesh, controlVariables)
+      call initializeChannel(controlVariables)
 #endif
 #if defined(NAVIERSTOKES) || defined(INCNS) || defined(MULTIPHASE)
       if(ActuatorLineFlag) then
@@ -647,6 +649,7 @@
          CALL UserDefinedPeriodicOperation(sem % mesh, t, dt, monitors, FLUID_DATA_VARS)
 #if defined(NAVIERSTOKES)
          if (useTrip) call randomTrip % gTrip % updateInTime(t)
+         call updateChannel(sem % mesh, dt, monitors)
 #endif
 #if defined(NAVIERSTOKES) || defined(INCNS) || defined(MULTIPHASE)
          if(ActuatorLineFlag) call UpdateFarm(farm, t, sem % mesh)

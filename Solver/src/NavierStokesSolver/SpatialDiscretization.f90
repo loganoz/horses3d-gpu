@@ -374,6 +374,8 @@ module SpatialDiscretization
          use TripForceClass, only: randomTrip
          use ActuatorLine, only: farm, ForcesFarm
          use SpongeClass, only: sponge
+         use ChannelForcing, only: channelSource
+         use IBMClass, only: IBM_SourceTerm
          implicit none
          type(HexMesh)              :: mesh
          type(Particles_t)          :: particles
@@ -594,6 +596,7 @@ module SpatialDiscretization
             ! for the sponge, loops are in the internal subroutine as values are precalculated
 !            call sponge % addSource(mesh)
             call ForcesFarm(farm, mesh, t)
+            call channelSource(mesh)
 !
 !           Add Particles source
 !           ********************
