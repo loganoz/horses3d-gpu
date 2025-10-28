@@ -69,6 +69,10 @@ public farm, ConstructFarm, DestructFarm, UpdateFarm, ForcesFarm, WriteFarmForce
     real(KIND=RP)                  :: Ct ! turbine thrust coef.
     real(KIND=RP), allocatable     :: average_conditions(:,:) ! time and blade average local variables at the blade section
     real(KIND=RP)                  :: gauss_epsil             ! force Gaussian width
+    real(KIND=RP), allocatable     :: Q_AL(:,:,:) ! state vector for each AL point in each WT
+    real(KIND=RP), allocatable     :: Q_AL_all(:,:,:) ! state vector for each AL point in each WT
+    logical, allocatable           :: elementFound(:,:) ! flag for each AL point in each WT to be found in the mesh or mesh partition
+    logical, allocatable           :: elementFoundAll(:,:) ! flag for each AL point in each WT to be found in the mesh or mesh partition
     end type
                                    
     type Farm_t
@@ -94,6 +98,8 @@ public farm, ConstructFarm, DestructFarm, UpdateFarm, ForcesFarm, WriteFarmForce
     ! max 10 airfoils file names per section
     integer, parameter             :: MAX_AIRFOIL_FILES = 10
     integer, dimension(:), allocatable         :: numElementsPerTurbine, elementsActuated, turbineOfElement
+    integer, dimension(:,:), allocatable       :: newPointToFind
+    integer, dimension(:,:), allocatable     :: allNewPointToFind
     !$acc declare create(elementsActuated, turbineOfElement)
 
 !  ========
@@ -236,6 +242,17 @@ contains
                        self%turbine_t(k)%blade_t(j)%local_angle_temp(num_blade_sections) , &
                        self%turbine_t(k)%blade_t(j)%local_Re_temp(num_blade_sections))
           enddo
+          endassociate
+       enddo
+   else
+        do k=1, self%num_turbines
+          associate (num_blade_sections => self%turbine_t(k)%num_blade_sections)
+             allocate( self%turbine_t(k)%Q_AL(num_blade_sections,self%turbine_t(k)%num_blades,NCONS), &
+                       self%turbine_t(k)%elementFound(num_blade_sections,self%turbine_t(k)%num_blades) )
+              if ( (MPI_Process % doMPIAction) ) then
+                 allocate( self%turbine_t(k)%Q_AL_all(num_blade_sections,self%turbine_t(k)%num_blades,NCONS), &
+                           self%turbine_t(k)%elementFoundAll(num_blade_sections,self%turbine_t(k)%num_blades) )
+              end if
           endassociate
        enddo
    end if
@@ -445,6 +462,9 @@ contains
         end do
     end do element_loop2
 
+    print *, "nelem: ", nelem, MPI_Process%rank
+    print *, "elementsActuated: ", elementsActuated, MPI_Process%rank
+
    select case (self % epsilon_type)
         case (0)
             ! EPSILON - option 1 (from file)
@@ -490,11 +510,25 @@ contains
     do k = 1, self%num_turbines
       do j = 1, self%turbine_t(k)%num_blades
          do i = 1, self%turbine_t(k)%num_blade_sections
+               self % turbine_t(k) % blade_t(j) % eID(i) = 0
+         end do
+      enddo
+    enddo
+!
+    do k = 1, self%num_turbines
+      do j = 1, self%turbine_t(k)%num_blades
+         do i = 1, self%turbine_t(k)%num_blade_sections
            self%turbine_t(k)%blade_t(j)%point_xyz_loc(i,2) = self%turbine_t(k)%hub_cood_y + self%turbine_t(k)%blade_t(j)%r_R(i) * cos(self%turbine_t(k)%blade_t(j)%azimuth_angle)
            self%turbine_t(k)%blade_t(j)%point_xyz_loc(i,3) = self%turbine_t(k)%hub_cood_z + self%turbine_t(k)%blade_t(j)%r_R(i) * sin(self%turbine_t(k)%blade_t(j)%azimuth_angle)
            x = [self%turbine_t(k)%blade_t(j)%point_xyz_loc(i,1),self%turbine_t(k)%blade_t(j)%point_xyz_loc(i,2),self%turbine_t(k)%blade_t(j)%point_xyz_loc(i,3)]
            call FindActuatorPointElement(mesh, x, eID, xi, found)
            if ( (MPI_Process % doMPIAction) ) then
+
+               ! if (found) then
+               !     print *, "i,j,: ", i,j,MPI_Process%rank
+               !     print *, "x: ", x, MPI_Process%rank
+               !     print *, "eID: ", eID,MPI_Process%rank
+               ! end if
 #ifdef _HAS_MPI_
              call mpi_allreduce(found, allfound, 1, MPI_LOGICAL, MPI_LOR, MPI_COMM_WORLD, ierr)
 #endif
@@ -512,6 +546,21 @@ contains
          end do
       enddo
     enddo
+
+    if (MPI_Process % doMPIAction) then
+        ! for AL points that have changed partitions
+        allocate(newPointToFind(self%num_turbines*self%turbine_t(1)%num_blades*self%turbine_t(1)%num_blade_sections,3))
+    end if 
+
+    ! if (nelem .gt. 0) then
+    !     k=1
+    !   do j = 1, self%turbine_t(k)%num_blades
+    !      do i = 1, self%turbine_t(k)%num_blade_sections
+    !         if (self % turbine_t(k) % blade_t(j) % eID(i) .ne. 0) print *, "eID,geID,: ", self % turbine_t(k) % blade_t(j) % eID(i),mesh%elements(self % turbine_t(k) % blade_t(j) % eID(i))%globID, MPI_Process%rank
+    !     end do
+    !     end do
+    ! end if 
+
 
     end if 
     print *, "first done"
@@ -621,8 +670,12 @@ contains
    real(kind=RP)                     :: dt, interp, delta_temp
    logical                           :: found, allfound
    integer                           :: eID, ierr
+   integer                           :: aa(2)
    real(kind=RP), dimension(NDIM)    :: x, xi
-   real(kind=RP), dimension(NCONS)   :: Q, Qtemp
+   integer                           :: pointsToFind, allpointsToFind
+   logical                           :: newPartition
+   integer, dimension(MPI_Process % nProcs)  :: pointsToFind_proc, displ
+   ! real(kind=RP), dimension(NCONS)   :: Q, Qtemp
 
    if (.not. self % active) return
 
@@ -676,6 +729,7 @@ contains
 !    use the local Q based on the position of the actuator line point
 !    ----------------------------------------------------------------
 !
+    pointsToFind = 0
 !$omp do schedule(runtime)private(ii,jj,kk,eID,Q,Qtemp,delta_temp,xi,found,allfound)
     do kk = 1, self%num_turbines
       do jj = 1, self%turbine_t(kk)%num_blades
@@ -697,26 +751,94 @@ contains
 !          -----------------------------------
 !
            x = [self%turbine_t(kk)%blade_t(jj)%point_xyz_loc(ii,1),self%turbine_t(kk)%blade_t(jj)%point_xyz_loc(ii,2),self%turbine_t(kk)%blade_t(jj)%point_xyz_loc(ii,3)]
-           ! call FindActuatorPointElement(mesh, x, eID, xi, found)
-           call FindActuatorPointSavedElement(self, mesh, x, ii, jj, kk, eID, xi, found)
+           call FindActuatorPointSavedElement(self, mesh, x, ii, jj, kk, eID, xi, found, newPartition)
+           self % turbine_t(kk) % elementFound(ii,jj) = found
            if (found) then
              ! interpolate state values in the element
-             Qtemp = interpolateQ(mesh,eID, xi)
+             self % turbine_t(kk) % Q_AL(ii,jj,:) = interpolateQ(mesh,eID, xi)
            else
-             Qtemp = 0.0_RP
+             self % turbine_t(kk) % Q_AL(ii,jj,:) = 0.0_RP
+             ! save points info for looking into all other partitions
+             if (newPartition) then
+               pointsToFind = pointsToFind + 1
+               newPointToFind(pointsToFind,1) = kk
+               newPointToFind(pointsToFind,2) = jj
+               newPointToFind(pointsToFind,3) = ii
+             end if    
            end if
-           if ( (MPI_Process % doMPIAction) ) then
+
+         end do
+      enddo
+    enddo
+
+!   update MPI partitions and look for points that have changed
+!   -----------------------------------------------------------
+    if ( (MPI_Process % doMPIAction) ) then
 #ifdef _HAS_MPI_
-             call mpi_allreduce(Qtemp, Q, NCONS, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
+             call mpi_allgather(pointsToFind, 1, MPI_INT, pointsToFind_proc, 1, MPI_INT, MPI_COMM_WORLD, ierr)
 #endif
-           else
-               Q = Qtemp
-           end if
-           if (all(Q .eq. 0.0_RP)) then
-             print*, "Actuator line point not found in mesh, x: ", x
+      displ(1) = 0
+      do i = 1, MPI_Process % nProcs - 1
+         ! 3 indexes to communicate
+         displ(i+1) = displ(i) + pointsToFind_proc(i) * 3
+      end do
+      allpointsToFind = sum(pointsToFind_proc)
+      safedeallocate(allNewPointToFind)
+      if (allpointsToFind .gt. 0) then
+          allocate(allNewPointToFind(allpointsToFind,3))
+#ifdef _HAS_MPI_
+          call mpi_allgatherv( newPointToFind(1:pointsToFind,1:3), 3*pointsToFind, MPI_INT, allNewPointToFind, 3*pointsToFind_proc, displ, MPI_INT, MPI_COMM_WORLD, ierr)
+#endif
+          do i = 1, allpointsToFind
+            kk = allnewPointToFind(i,1)
+            jj = allnewPointToFind(i,2)
+            ii = allnewPointToFind(i,3)
+            if (self % turbine_t(kk) %blade_t(jj) % eID(ii) .ne. 0) then
+                self % turbine_t(kk) %blade_t(jj) % eID(ii) = 0
+                found = .false.
+            else
+                x = [self%turbine_t(kk)%blade_t(jj)%point_xyz_loc(ii,1),self%turbine_t(kk)%blade_t(jj)%point_xyz_loc(ii,2),self%turbine_t(kk)%blade_t(jj)%point_xyz_loc(ii,3)]
+                call FindActuatorPointElement(mesh, x, eID, xi, found)
+                self % turbine_t(kk) % elementFound(ii,jj) = found
+                if (found) then
+                    self % turbine_t(kk) % blade_t(jj) % eID(ii) = eID
+                    self % turbine_t(kk) % Q_AL(ii,jj,:) = interpolateQ(mesh,eID, xi)
+                end if
+             end if
+#ifdef _HAS_MPI_
+             call mpi_allreduce(found, allfound, 1, MPI_LOGICAL, MPI_LOR, MPI_COMM_WORLD, ierr)
+#endif
+             if (.not. allfound) then
+               print*, "Actuator line point not found in new partition, x: ", x
+               print *, "i,j,k: ", ii,jj,kk
+               call exit(99)
+            end if 
+          end do 
+      end if 
+!
+      do kk = 1, self%num_turbines
+#ifdef _HAS_MPI_
+         call mpi_allreduce(self%turbine_t(kk)%Q_AL(:,:,:), self%turbine_t(kk)%Q_AL_all(:,:,:), NCONS*self%turbine_t(kk)%num_blades*self%turbine_t(kk)%num_blade_sections, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, ierr)
+         call mpi_allreduce(self%turbine_t(kk)%elementFound(:,:), self%turbine_t(kk)%elementFoundAll(:,:), self%turbine_t(kk)%num_blades*self%turbine_t(kk)%num_blade_sections, MPI_LOGICAL, MPI_LOR, MPI_COMM_WORLD, ierr)
+             
+#endif
+         self%turbine_t(kk)%elementFound = self%turbine_t(kk)%elementFoundAll
+         self%turbine_t(kk)%Q_AL = self%turbine_t(kk)%Q_AL_all
+      enddo
+    end if
+   do kk = 1, self%num_turbines
+      if (.not. all(self%turbine_t(kk)%elementFound)) then
+             aa = findloc(self%turbine_t(kk)%elementFound,.false.,dim=2)
+             print*, "Actuator line point not found in mesh, x: ", self%turbine_t(kk)%blade_t(aa(2))%point_xyz_loc(aa(1),:)
              call exit(99)
-           end if
-           call FarmGetLocalForces(self, ii, jj, kk, Q, interp, self%turbine_t(kk)%blade_t(jj)%local_angle(ii), self%turbine_t(kk)%blade_t(jj)%local_velocity(ii), & 
+      end if
+    enddo
+!   now calculate the forces at each AL point and save it
+!   -----------------------------------------------------
+    do kk = 1, self%num_turbines
+      do jj = 1, self%turbine_t(kk)%num_blades
+         do ii = 1, self%turbine_t(kk)%num_blade_sections
+           call FarmGetLocalForces(self, ii, jj, kk, self % turbine_t(kk) % Q_AL(ii,jj,:), interp, self%turbine_t(kk)%blade_t(jj)%local_angle(ii), self%turbine_t(kk)%blade_t(jj)%local_velocity(ii), & 
                                    self%turbine_t(kk)%blade_t(jj)%local_Re(ii), self%turbine_t(kk)%blade_t(jj)%local_thrust(ii), self%turbine_t(kk)%blade_t(jj)%local_rotor_force(ii))
          end do
       enddo
@@ -1286,7 +1408,7 @@ end subroutine WriteFarmForces
 !
 !///////////////////////////////////////////////////////////////////////////////////////
 !
-    Subroutine FindActuatorPointSavedElement(self, mesh, x, ii, jj, kk, eID, xi, success)
+    Subroutine FindActuatorPointSavedElement(self, mesh, x, ii, jj, kk, eID, xi, success,changePartition)
        use HexMeshClass
        use PartitionedMeshClass          , only: mpi_partition
        use ElementConnectivityDefinitions, only: FACES_PER_ELEMENT
@@ -1301,22 +1423,29 @@ end subroutine WriteFarmForces
        integer, intent(out)                          :: eID 
        real(kind=RP), dimension(NDIM), intent(out)   :: xi      ! computational space
        logical, intent(out)                          :: success
+       logical, intent(out)                          :: changePartition
        !
-       logical                                       :: found
+       logical                                       :: found, changePartitionPossible
        integer                                       :: eIndex, fID, new_eID
-       real(kind=RP), dimension(NDIM)                :: xi0      ! computational space seed
 
        success = .false.
        found = .false.
+       changePartition = .false.
 !
 !      First, search in saved elements
 !      -------------------------------
        eID = self % turbine_t(kk) %blade_t(jj) % eID(ii)
+       if (eID .eq. 0) return
        found = mesh % elements(eID) % FindPointInLinElement(x, mesh % nodes)
        if (.not. found) then
 !      if not found, search in neighbours with depth 2
            do fID = 1, FACES_PER_ELEMENT
                new_eID = mpi_partition % global2localeID (mesh % elements(eID) % Connection(fID) % globID)
+               ! cannot look into another partition
+               if (new_eID .eq. 0) then
+                   if (MPI_Process % doMPIAction) changePartitionPossible = .true.
+                   cycle
+               end if
                found = mesh % elements(new_eID) % FindPointInLinElement(x, mesh % nodes)
                if (found) then
                    eID = new_eID
@@ -1328,9 +1457,9 @@ end subroutine WriteFarmForces
 !      If found in linear mesh, use FindPointWithCoords in that element
        if (found) then
           success = mesh % elements(eID) % FindPointWithCoords(x, mesh % dir2D_ctrl, xi)
-       else
-          eID = 0
        end if
+       changePartition = changePartitionPossible .and. (.not. found)
+           ! end if
 !
     End Subroutine FindActuatorPointSavedElement
 !
