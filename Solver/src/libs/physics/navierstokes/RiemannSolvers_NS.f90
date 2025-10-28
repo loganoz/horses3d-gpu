@@ -586,8 +586,6 @@ module RiemannSolvers_NS
          real(kind=RP)  :: dQ(5), lambda(5), K(5,5), V2abs, alpha(5), dLambda
          real(kind=RP)  :: rho, u, v, w, V2, H, a
          real(kind=RP)  :: stab(5)     ! Careful with this variable
-
-         associate(gm1 => thermodynamics % gammaMinus1)
 !
 !        ********************
 !        Perform the rotation
@@ -647,7 +645,7 @@ module RiemannSolvers_NS
 
          dQ(5) = dQ(5) - alpha(3) * v - alpha(4) * w
 
-         alpha(2) = gm1 * ( dQ(1)*(H - u*u) + u * dQ(2) - dQ(5) ) / (POW2(a))
+         alpha(2) = thermodynamics % gammaMinus1 * ( dQ(1)*(H - u*u) + u * dQ(2) - dQ(5) ) / (POW2(a))
          alpha(1) = 0.5_RP * (dQ(1)*lambda(5) - dQ(2) - a*alpha(2)) / a
          alpha(5) = dQ(1) - alpha(1) - alpha(2)
 !
@@ -721,8 +719,6 @@ module RiemannSolvers_NS
          enddo
          enddo
         
-         end associate
-
       end subroutine StdRoeRiemannSolver
 
       subroutine MatrixDissipationRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
@@ -751,9 +747,6 @@ module RiemannSolvers_NS
          real(kind=RP)  :: uL, vL, wL, uR, vR, wR, vtotL, vtotR, pL, pR
          real(kind=RP)  :: invRhoL, invRhoR
 
-         associate(gm1 => thermodynamics % gammaMinus1, gamma => thermodynamics % gamma, &
-                   invGamma => thermodynamics % invGamma, cp => thermodynamics % GammaDivGammaMinus1, &
-                   gammaMinus1Div2g => thermodynamics % gammaMinus1Div2g)
 !
 !        ********************
 !        Perform the rotation
@@ -789,8 +782,8 @@ module RiemannSolvers_NS
          wL      = QLRot(IRHOW)*invRhoL ; wR      = QRRot(IRHOW)*invRhoR
          vtotL   = uL*uL + vL*vL + wL*wL; vtotR   = uR*uR + vR*vR + wR*wR
 
-         pL      = gm1*(QLRot(IRHOE)-0.5_RP*QLRot(IRHO)*vtotL)
-         pR      = gm1*(QRRot(IRHOE)-0.5_RP*QRRot(IRHO)*vtotR)
+         pL      = thermodynamics % gammaMinus1 * (QLRot(IRHOE)-0.5_RP*QLRot(IRHO)*vtotL)
+         pR      = thermodynamics % gammaMinus1 * (QRRot(IRHOE)-0.5_RP*QRRot(IRHO)*vtotR)
 
          betaL   = -0.5_RP*EVL(IRHOE) ; betaR = -0.5_RP*EVR(IRHOE)
 
@@ -798,14 +791,14 @@ module RiemannSolvers_NS
          call logarithmicMean(QLRot(IRHO), QRRot(IRHO), rhoLogMean)
 
          pMean = 0.5_RP*(QLRot(IRHO)+QRRot(IRHO))/(betaL + betaR)
-         a_bar = sqrt(gamma * pMean / rhoLogMean)
+         a_bar = sqrt(thermodynamics % gamma * pMean / rhoLogMean)
          uMean = AVERAGE(uL, uR)
          vMean = AVERAGE(vL, vR)
          wMean = AVERAGE(wL, wR)
          v2Abs =   2.0_RP * ( POW2(uMean) + POW2(vMean) + POW2(wMean) )      &
                  - 0.5_RP * ( vtotL + vtotR )
 
-         h_bar = 0.5_RP * ( cp / betaLogMean + v2Abs )
+         h_bar = 0.5_RP * ( thermodynamics % GammaDivGammaMinus1 / betaLogMean + v2Abs )
 !
 !        ***********************
 !        Compute the eigenvalues
@@ -825,8 +818,8 @@ module RiemannSolvers_NS
 !
 !        Intensities
 !        -----------
-         T(1) = 0.5_RP * rhoLogMean * invGamma
-         T(2) = 2.0_RP * gammaMinus1Div2g * rhoLogMean
+         T(1) = 0.5_RP * rhoLogMean * thermodynamics % invGamma
+         T(2) = 2.0_RP * thermodynamics % gammaMinus1Div2g * rhoLogMean
          T(3) = pMean
          T(4) = pMean
          T(5) = T(1)
@@ -873,8 +866,6 @@ module RiemannSolvers_NS
          enddo
          enddo
          
-         end associate
-
       end subroutine MatrixDissipationRiemannSolver
 
       subroutine RoePikeRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
@@ -896,8 +887,6 @@ module RiemannSolvers_NS
          real(kind=RP)  :: rho, u, v, w, V2, H, a
          real(kind=RP)  :: stab(5)
          integer :: i,j,l
-
-         associate(gm1 => thermodynamics % gammaMinus1)
 !
 !        ********************
 !        Perform the rotation
@@ -1025,8 +1014,6 @@ module RiemannSolvers_NS
          
          enddo
          enddo
-         
-         end associate
       end subroutine RoePikeRiemannSolver
 
       subroutine LowDissipationRoeRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
@@ -1070,8 +1057,6 @@ module RiemannSolvers_NS
          real(kind=RP)  :: rho, u, v, w, H, a, dQ(5), lambda(5), K(5,5), V2abs, alpha(5)
          real(kind=RP)  :: stab(5)
          integer :: i,j,l
-
-         associate(gamma => thermodynamics % gamma, gm1 => thermodynamics % gammaMinus1)
 !
 !        Rotate the variables to the face local frame using normal and tangent vectors
 !        -----------------------------------------------------------------------------
@@ -1106,14 +1091,14 @@ module RiemannSolvers_NS
 !
 !        Compute the enthalpy: here defined as rhoH = gogm1 p + 0.5 rho V^2
 !        --------------------
-         rhoHL = gamma*rhoeL - 0.5_RP*gm1*rhoV2L
-         rhoHR = gamma*rhoeR - 0.5_RP*gm1*rhoV2R
+         rhoHL = thermodynamics % gamma*rhoeL - 0.5_RP*thermodynamics % gammaMinus1*rhoV2L
+         rhoHR = thermodynamics % gamma*rhoeR - 0.5_RP*thermodynamics % gammaMinus1*rhoV2R
 
-         pL = gm1 * (rhoeL - 0.5_RP * rhoV2L)
-         pR = gm1 * (rhoeR - 0.5_RP * rhoV2R)
+         pL = thermodynamics % gammaMinus1 * (rhoeL - 0.5_RP * rhoV2L)
+         pR = thermodynamics % gammaMinus1 * (rhoeR - 0.5_RP * rhoV2R)
 
-         aL = sqrt(gamma * pL * invRhoL)
-         aR = sqrt(gamma * pR * invRhoR)
+         aL = sqrt(thermodynamics % gamma * pL * invRhoL)
+         aR = sqrt(thermodynamics % gamma * pR * invRhoR)
 !
 !        Compute Roe - Pike variables
 !        ----------------------------
@@ -1123,7 +1108,7 @@ module RiemannSolvers_NS
          w = (invSqrtRhoL * rhowL + invSqrtRhoR * rhowR) * invSumSqrtRhoLR
          H = (invSqrtRhoL * rhoHL + invSqrtRhoR * rhoHR) * invSumSqrtRhoLR
          V2abs = POW2(u) + POW2(v) + POW2(w)
-         a = sqrt(gm1*(H - 0.5_RP*V2abs))
+         a = sqrt(thermodynamics % gammaMinus1*(H - 0.5_RP*V2abs))
 !
 !        Eigenvalues
 !        -----------
@@ -1232,8 +1217,6 @@ module RiemannSolvers_NS
          enddo
          enddo
 
-         end associate
-
       end subroutine LowDissipationRoeRiemannSolver
 
       subroutine ViscousNSRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
@@ -1267,8 +1250,6 @@ module RiemannSolvers_NS
          real(kind=RP)  :: stab(5), kappa
          real(kind=RP)  :: divV
          integer :: i,j
-
-         associate(gamma => thermodynamics % gamma, gm1 => thermodynamics % gammaMinus1)
 !
 !        Rotate the variables to the face local frame using normal and tangent vectors
 !        -----------------------------------------------------------------------------
@@ -1303,14 +1284,14 @@ module RiemannSolvers_NS
 !
 !        Compute the enthalpy: here defined as rhoH = gogm1 p + 0.5 rho V^2
 !        --------------------
-         rhoHL = gamma*rhoeL - 0.5_RP*gm1*rhoV2L
-         rhoHR = gamma*rhoeR - 0.5_RP*gm1*rhoV2R
+         rhoHL = thermodynamics % gamma*rhoeL - 0.5_RP*thermodynamics % gammaMinus1*rhoV2L
+         rhoHR = thermodynamics % gamma*rhoeR - 0.5_RP*thermodynamics % gammaMinus1*rhoV2R
 
-         pL = gm1 * (rhoeL - 0.5_RP * rhoV2L)
-         pR = gm1 * (rhoeR - 0.5_RP * rhoV2R)
+         pL = thermodynamics % gammaMinus1 * (rhoeL - 0.5_RP * rhoV2L)
+         pR = thermodynamics % gammaMinus1 * (rhoeR - 0.5_RP * rhoV2R)
 
-         aL = sqrt(gamma * pL * invRhoL)
-         aR = sqrt(gamma * pR * invRhoR)
+         aL = sqrt(thermodynamics % gamma * pL * invRhoL)
+         aR = sqrt(thermodynamics % gamma * pR * invRhoR)
 !
 !        Compute Roe - Pike variables
 !        ----------------------------
@@ -1320,7 +1301,7 @@ module RiemannSolvers_NS
          w = (invSqrtRhoL * rhowL + invSqrtRhoR * rhowR) * invSumSqrtRhoLR
          H = (invSqrtRhoL * rhoHL + invSqrtRhoR * rhoHR) * invSumSqrtRhoLR
          V2abs = POW2(u) + POW2(v) + POW2(w)
-         a = sqrt(gm1*(H - 0.5_RP*V2abs))
+         a = sqrt(thermodynamics % gammaMinus1*(H - 0.5_RP*V2abs))
 !
 !        Eigenvalues
 !        -----------
@@ -1431,8 +1412,6 @@ module RiemannSolvers_NS
          enddo
          enddo
          
-         end associate
-
       end subroutine ViscousNSRiemannSolver
 !
 !////////////////////////////////////////////////////////////////////////
@@ -1558,8 +1537,6 @@ module RiemannSolvers_NS
          real(kind=RP)  :: invRhoL, invRhoR
          real(kind=RP)  :: lambda, stab(5)
          integer :: i,j
-
-         associate(gamma => thermodynamics % gamma, gm1 => thermodynamics % gammaMinus1)
 !
 !        Rotate the variables to the face local frame using normal and tangent vectors
 !        -----------------------------------------------------------------------------
@@ -1585,11 +1562,11 @@ module RiemannSolvers_NS
 
          rhoeL = QLeft(5,i,j) ; rhoeR = QRight(5,i,j)
 
-         pL = gm1 * (rhoeL - 0.5_RP * rhoV2L)
-         pR = gm1 * (rhoeR - 0.5_RP * rhoV2R)
+         pL = thermodynamics % gammaMinus1 * (rhoeL - 0.5_RP * rhoV2L)
+         pR = thermodynamics % gammaMinus1 * (rhoeR - 0.5_RP * rhoV2R)
 
-         aL = sqrt(gamma * pL * invRhoL)
-         aR = sqrt(gamma * pR * invRhoR)
+         aL = sqrt(thermodynamics % gamma * pL * invRhoL)
+         aR = sqrt(thermodynamics % gamma * pR * invRhoR)
 !
 !        Eigenvalues: lambda = max(|uL|,|uR|)
 !        -----------
@@ -1622,8 +1599,6 @@ module RiemannSolvers_NS
          enddo
          enddo
 
-         end associate
-
       END SUBROUTINE u_dissRiemannSolver
 
 !
@@ -1655,27 +1630,24 @@ module RiemannSolvers_NS
          integer       :: i                              ! Counter
          !--------------------------------------------
 
-         associate( gammaMinus1 => thermodynamics % gammaMinus1, &
-                    gamma => thermodynamics % gamma )
-
          srhoL = 1._RP / ql(IRHO)
          ul = ql(IRHOU) * srhoL
          vl = ql(IRHOV) * srhoL
          wl = ql(IRHOW) * srhoL
          rhoV2L = srhoL * (ql(IRHOU)**2 + ql(IRHOV)**2 + ql(IRHOW)**2)
-         pL = gammaMinus1 * (ql(IRHOE) - 0.5d0 * rhoV2L)
+         pL = thermodynamics % gammaMinus1 * (ql(IRHOE) - 0.5d0 * rhoV2L)
 
          srhoR = 1._RP / qr(IRHO)
          ur = qr(IRHOU) * srhoR
          vr = qr(IRHOV) * srhoR
          wr = qr(IRHOW) * srhoR
          rhoV2R = srhoR * (qr(IRHOU)**2 + qr(IRHOV)**2 + qr(IRHOW)**2)
-         pR = gammaMinus1 * (qr(IRHOE) - 0.5d0 * rhoV2R)
+         pR = thermodynamics % gammaMinus1 * (qr(IRHOE) - 0.5d0 * rhoV2R)
 
          velL = nHat(1)*ul + nHat(2)*vl + nHat(3)*wl
          velR = nHat(1)*ur + nHat(2)*vr + nHat(3)*wr
-         aL = SQRT( gamma*pL * srhoL )
-         aR = SQRT( gamma*pR * srhoR )
+         aL = SQRT( thermodynamics % gamma*pL * srhoL )
+         aR = SQRT( thermodynamics % gamma*pR * srhoR )
 
          lambdaL = abs(velL) + aL
          lambdaR = abs(velR) + aR
@@ -1693,7 +1665,7 @@ module RiemannSolvers_NS
 
                   dvn_dq = (/ -velL * srhoL, nHat(1) * srhoL, nHat(2) * srhoL, nHat(3) * srhoL, 0._RP /)
                   da_dq  = (/ ( rhoV2L -ql(IRHOE) )*srhoL**2 , -ul * srhoL , -vl * srhoL , -wl * srhoL , srhoL /) * &
-                                                                                                gamma * gammaMinus1 / (2._RP * aL)
+                                                                                                thermodynamics % gamma * thermodynamics % gammaMinus1 / (2._RP * aL)
                   dlambda_dq(1,:) = sign(1._RP,velL) * dvn_dq + da_dq
                   q_jump    (:,1) = ql - qr
 
@@ -1714,7 +1686,7 @@ module RiemannSolvers_NS
 
                   dvn_dq = (/ -velR * srhoR, nHat(1) * srhoR, nHat(2) * srhoR, nHat(3) * srhoR, 0._RP /)
                   da_dq  = (/ ( rhoV2R - qr(IRHOE) )*srhoR**2 , -ur * srhoR , -vr * srhoR , -wr * srhoR , srhoR /) * &
-                                                                                                gamma * gammaMinus1 / (2._RP * aR)
+                                                                                                thermodynamics % gamma * thermodynamics % gammaMinus1 / (2._RP * aR)
                   dlambda_dq(1,:) = sign(1._RP,velR) * dvn_dq + da_dq
                   q_jump    (:,1) = ql - qr
 
@@ -1742,7 +1714,6 @@ module RiemannSolvers_NS
 !        ---------
          dfdq_num = 0.5_RP * (dfdq * nHat(1) + dgdq * nHat(2) + dhdq * nHat(3) + lambdaTerm)
 
-         end associate
       end subroutine LxFRiemannSolver_dFdQ
 !
 !     ////////////////////////////////////////////////////////////////////////////////////////
@@ -1903,8 +1874,6 @@ module RiemannSolvers_NS
          REAL(KIND=RP) :: smax, smaxL, smaxR
          REAL(KIND=RP) :: Leigen(2), Reigen(2)
 
-         associate ( gamma => thermodynamics % gamma )
-
          !$acc loop vector collapse(2) private(Leigen, Reigen )
          do j = 0, Ny
          do i = 0, Nx   
@@ -1924,21 +1893,21 @@ module RiemannSolvers_NS
          ul = rhou/rho
          vl = rhov/rho
          wl = rhow/rho
-         pleft = (gamma-1._RP)*(rhoe - 0.5_RP/rho*                        &
+         pleft = (thermodynamics % gamma-1._RP)*(rhoe - 0.5_RP/rho*                        &
         &                           (rhou**2 + rhov**2 + rhow**2 ))
 !
          ur = rhoun/rhon
          vr = rhovn/rhon
          wr = rhown/rhon
-         pright = (gamma-1._RP)*(rhoen - 0.5_RP/rhon*                    &
+         pright = (thermodynamics % gamma-1._RP)*(rhoen - 0.5_RP/rhon*                    &
         &                           (rhoun**2 + rhovn**2+ rhown**2))
 !
          ql = nHat(1,i,j)*ul + nHat(2,i,j)*vl + nHat(3,i,j)*wl
          qr = nHat(1,i,j)*ur + nHat(2,i,j)*vr + nHat(3,i,j)*wr
          hl = 0.5_RP*(ul*ul + vl*vl + wl*wl) +                               &
-        &                 gamma/(gamma-1._RP)*pleft/rho
+        &                 thermodynamics % gamma/(thermodynamics % gamma-1._RP)*pleft/rho
          hr = 0.5_RP*(ur*ur + vr*vr + wr*wr) +                               &
-        &                  gamma/(gamma-1._RP)*pright/rhon
+        &                  thermodynamics % gamma/(thermodynamics % gamma-1._RP)*pright/rhon
 !
 !        ---------------------
 !        Square root averaging
@@ -1951,12 +1920,12 @@ module RiemannSolvers_NS
          vtd = betal*vl + betar*vr
          wtd = betal*wl + betar*wr
          htd = betal*hl + betar*hr
-         atd2 = (gamma-1._RP)*(htd - 0.5_RP*(utd*utd + vtd*vtd + wtd*wtd))
+         atd2 = (thermodynamics % gamma-1._RP)*(htd - 0.5_RP*(utd*utd + vtd*vtd + wtd*wtd))
          atd = sqrt(atd2)
          qtd = utd*nHat(1,i,j) + vtd*nHat(2,i,j)  + wtd*nHat(3,i,j)
          !Rusanov
-         ar2 = (gamma-1.d0)*(hr - 0.5d0*(ur*ur + vr*vr + wr*wr))
-         al2 = (gamma-1.d0)*(hl - 0.5d0*(ul*ul + vl*vl + wl*wl))
+         ar2 = (thermodynamics % gamma-1.d0)*(hr - 0.5d0*(ur*ur + vr*vr + wr*wr))
+         al2 = (thermodynamics % gamma-1.d0)*(hl - 0.5d0*(ul*ul + vl*vl + wl*wl))
          ar = sqrt(ar2)
          al = sqrt(al2)
 !
@@ -1976,8 +1945,6 @@ module RiemannSolvers_NS
          enddo
 
          RETURN
-
-         end associate
 
       END SUBROUTINE RusanovRiemannSolver
 !
@@ -2210,11 +2177,6 @@ module RiemannSolvers_NS
          real(kind=RP)     :: zL(NCONS), zR(NCONS), zSum(NCONS), invZ1Sum
          real(kind=RP)     :: z5Log, z1Log
 
-         associate ( gammaPlus1Div2      => thermodynamics % gammaPlus1Div2, &
-                     gammaMinus1Div2     => thermodynamics % gammaMinus1Div2, &
-                     gammaDivGammaMinus1 => thermodynamics % gammaDivGammaMinus1, &
-                     invGamma            => thermodynamics % invGamma )
-
          rhoL = QLeft(IRHO)               ; rhoR = QRight(IRHO)
          uL = invRhoL * QLeft(IRHOU)      ; uR = invRhoR * QRight(IRHOU)
          vL = invRhoL * QLeft(IRHOV)      ; vR = invRhoR * QRight(IRHOV)
@@ -2239,8 +2201,8 @@ module RiemannSolvers_NS
          v   = zSum(3) * invZ1Sum
          w   = zSum(4) * invZ1Sum
          p   = zSum(5) * invZ1Sum
-         p2  = (gammaPlus1Div2 * z5Log / z1Log + gammaMinus1Div2 * p) * invGamma
-         h   = gammaDivGammaMinus1 * p2 / rho + 0.5_RP*(POW2(u) + POW2(v) + POW2(w))
+         p2  = (thermodynamics % gammaPlus1Div2 * z5Log / z1Log + thermodynamics % gammaMinus1Div2 * p) * thermodynamics % invGamma
+         h   = thermodynamics % gammaDivGammaMinus1 * p2 / rho + 0.5_RP*(POW2(u) + POW2(v) + POW2(w))
 !
 !        Compute the flux
 !        ----------------
@@ -2249,8 +2211,6 @@ module RiemannSolvers_NS
          flux(IRHOV) = rho * u * v
          flux(IRHOW) = rho * u * w
          flux(IRHOE) = rho * u * h
-
-         end associate
 
       end subroutine EntropyConservingAverage
 
@@ -2273,8 +2233,6 @@ module RiemannSolvers_NS
          real(kind=RP)     :: rhoR, uR, vR, wR, betaR
          real(kind=RP)     :: rho, u, v, w, h, p, betaLog
 
-         associate ( gammaMinus1 => thermodynamics % gammaMinus1 )
-
          rhoL = QLeft(IRHO)               ; rhoR = QRight(IRHO)
          uL = invRhoL * QLeft(IRHOU)      ; uR = invRhoR * QRight(IRHOU)
          vL = invRhoL * QLeft(IRHOV)      ; vR = invRhoR * QRight(IRHOV)
@@ -2290,7 +2248,7 @@ module RiemannSolvers_NS
          v   = AVERAGE(vL, vR)
          w   = AVERAGE(wL, wR)
          p   = 0.5_RP * (rhoL + rhoR) / (betaL + betaR)
-         h   =   0.5_RP/(betaLog*(gammaMinus1)) &
+         h   =   0.5_RP/(betaLog*(thermodynamics % gammaMinus1)) &
                - 0.5_RP*AVERAGE(POW2(uL)+POW2(vL)+POW2(wL), POW2(uR)+POW2(vR)+POW2(wR)) &
                + p/rho + POW2(u) + POW2(v) + POW2(w)
 !
@@ -2301,8 +2259,6 @@ module RiemannSolvers_NS
          flux(IRHOV) = rho * u * v
          flux(IRHOW) = rho * u * w
          flux(IRHOE) = rho * u * h
-
-         end associate
 
       end subroutine ChandrasekarAverage
 !

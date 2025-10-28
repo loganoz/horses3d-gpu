@@ -1,7 +1,9 @@
 name: Fortran CI
 
-on: [push, pull_request]
-
+#on: [push, pull_request]
+on:
+  workflow_dispatch:   # only runs if you press "Run workflow" in GitHub Actions
+  
 jobs:
   build:
     runs-on: ubuntu-latest
