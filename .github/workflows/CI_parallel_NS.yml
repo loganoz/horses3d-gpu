@@ -703,37 +703,22 @@ jobs:
 # 20) Forward facing step with SSPRK33 and limiter
 # ------------------------------------------------
 
-      - name: Build ForwardFacingStep_SSPRK33
-        working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK33/SETUP
-        run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
-        if: '!cancelled()'
+  # GPU
+      # - name: Build ForwardFacingStep_SSPRK33
+      #   working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK33/SETUP
+      #   run: |
+      #     source /opt/intel/oneapi/setvars.sh || true
+      #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
+      #   if: '!cancelled()'
 
-      - name: Run ForwardFacingStep_SSPRK33
-        working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK33
-        run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 8 ./horses3d.ns FFS_SSPRK33.control
-        if: '!cancelled()'
+      # - name: Run ForwardFacingStep_SSPRK33
+      #   working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK33
+      #   run: |
+      #     source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec -n 8 ./horses3d.ns FFS_SSPRK33.control
+      #   if: '!cancelled()'
 
-#
-# 21) Forward facing step with SSPRK43
-# ------------------------------------
 
-      - name: Build ForwardFacingStep_SSPRK43
-        working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK43/SETUP
-        run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
-        if: '!cancelled()'
-
-      - name: Run ForwardFacingStep_SSPRK43
-        working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK43
-        run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 8 ./horses3d.ns FFS_SSPRK43.control
-        if: '!cancelled()'
 
 #
 # 22) Taylor-Green vortex with SVV-LES
@@ -990,4 +975,22 @@ jobs:
         run: |
           source /opt/intel/oneapi/setvars.sh || true
           mpiexec -n 64 ./horses3d.ns ActuatorLineController.control
+        if: '!cancelled()'
+
+#
+# 21) Forward facing step with SSPRK43
+# ------------------------------------
+
+      - name: Build ForwardFacingStep_SSPRK43
+        working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK43/SETUP
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
+        if: '!cancelled()'
+
+      - name: Run ForwardFacingStep_SSPRK43
+        working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK43
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 8 ./horses3d.ns FFS_SSPRK43.control
         if: '!cancelled()'
