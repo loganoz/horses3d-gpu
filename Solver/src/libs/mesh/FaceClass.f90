@@ -294,7 +294,7 @@
 !     Local variables
 !     ---------------
 !
-      integer       :: i, j, k, l, m, ii, jj
+      integer       :: i, j, k, l, m, ii, jj, eq
       real(kind=RP) :: Qe_rot(1:nEqn, 0:self % NfRight(1), 0:self % NfRight(2))
       ! real(kind=RP) :: QdotE_rot(1:nEqn, 0:self % NfRight(1), 0:self % NfRight(2))
       logical :: prolongQdot
@@ -312,15 +312,21 @@
          case (0)
             !$acc loop vector collapse(2)
             do j = 0, self % NfRight(2)   ; do i = 0, self % NfRight(1)
-               self % storage(1) % Q(:,i,j) = Qe(:,i,j)
+				!$acc loop seq
+               do eq = 1, nEqn
+				self % storage(1) % Q(eq,i,j) = Qe(eq,i,j)
 !               if (prolongQdot) self % storage(1) % Qdot(:,i,j) = QdotE(:,i,j)
+               end do
             enddo ; enddo
          end select
       case(2)
          !$acc loop vector collapse(2)
          do j = 0, self % NfRight(2)   ; do i = 0, self % NfRight(1)
             call leftIndexes2Right(i,j,self % NfRight(1), self % NfRight(2), self % rotation, ii, jj)
-            self % storage(2) % Q(:,i,j) = Qe(:,ii,jj) 
+			!$acc loop seq
+            do eq = 1, nEqn
+                self % storage(2) % Q(eq,i,j) = Qe(eq,ii,jj) 
+			end do 
          end do                        ; end do
 
       end select
@@ -521,10 +527,10 @@
       select case ( side )
       case (1)    ! Prolong to left element
          
-            !   !$acc loop vector collapse(2)
-            !   do j = 0, self % Nf(2)  ; do i = 0, self % Nf(1)   
-            !      self % storage(1) % fStar(:,i,j) = flux(:,i,j)     
-            !   enddo ; enddo 
+              !$acc loop vector collapse(3)
+              do j = 0, self % Nf(2)  ; do i = 0, self % Nf(1)    ; do eq = 1, nEqn
+                 self % storage(1) % Fstar(eq,i,j) = flux(eq,i,j)     
+              enddo ; enddo ; enddo 
 
       case (2)    ! Prolong to right element
 !      

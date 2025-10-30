@@ -12,7 +12,8 @@ LIBOBJS_NS = ./build_ns/ActuatorLine.o \
 			 ./build_ns/mkl_dfti.o \
 			 ./build_ns/TripForceClass.o \
 			 ./build_ns/SpongeClass.o \
-			 ./build_ns/RandomNumberGenerator.o
+			 ./build_ns/RandomNumberGenerator.o \
+			 ./build_ns/AcousticSourceClass.o
 		
 LIBOBJS_NSSA =  ./build_nssa/ActuatorLine.o \
 				./build_nssa/mkl_dfti.o \
@@ -25,7 +26,8 @@ LIBOBJS_iNS = ./build_ins/ActuatorLine.o \
 LIBOBJS_CH = ./build_ch/ActuatorLine.o 
 
 LIBOBJS_MU = ./build_mu/ActuatorLine.o \
-			 ./build_mu/SpongeClass.o 
+			 ./build_mu/SpongeClass.o \
+			 ./build_mu/AcousticSourceClass.o 
 
 LIBOBJS_CAA = ./build_caa/ActuatorLine.o \
 			 ./build_caa/SpongeClass.o 

@@ -15,6 +15,7 @@ LIBOBJS_NS =  ./build_ns/GenericBoundaryConditionClass.o \
 		./build_ns/FreeSlipWallBC.o \
 		./build_ns/PeriodicBC.o \
 		./build_ns/UserDefinedBC.o \
+		./build_ns/NoBoundaryBC.o \
 		./build_ns/BoundaryConditions.o
 
 LIBOBJS_NSSA = 	./build_nssa/GenericBoundaryConditionClass.o \
@@ -24,6 +25,7 @@ LIBOBJS_NSSA = 	./build_nssa/GenericBoundaryConditionClass.o \
 		./build_nssa/FreeSlipWallBC.o \
 		./build_nssa/PeriodicBC.o \
 		./build_nssa/UserDefinedBC.o  \
+		./build_nssa/NoBoundaryBC.o \
 		./build_nssa/BoundaryConditions.o
 		
 LIBOBJS_iNS = 	./build_ins/GenericBoundaryConditionClass.o \
@@ -33,6 +35,7 @@ LIBOBJS_iNS = 	./build_ins/GenericBoundaryConditionClass.o \
 		./build_ins/FreeSlipWallBC.o \
 		./build_ins/PeriodicBC.o \
 		./build_ins/UserDefinedBC.o  \
+		./build_ins/NoBoundaryBC.o \
 		./build_ins/BoundaryConditions.o
 
 LIBOBJS_CH = 	./build_ch/GenericBoundaryConditionClass.o \
@@ -42,6 +45,7 @@ LIBOBJS_CH = 	./build_ch/GenericBoundaryConditionClass.o \
 		./build_ch/FreeSlipWallBC.o \
 		./build_ch/PeriodicBC.o \
 		./build_ch/UserDefinedBC.o \
+		./build_ch/NoBoundaryBC.o \
 		./build_ch/BoundaryConditions.o
 
 LIBOBJS_MU = 	./build_mu/GenericBoundaryConditionClass.o \
@@ -51,6 +55,7 @@ LIBOBJS_MU = 	./build_mu/GenericBoundaryConditionClass.o \
 		./build_mu/FreeSlipWallBC.o \
 		./build_mu/PeriodicBC.o \
 		./build_mu/UserDefinedBC.o \
+		./build_mu/NoBoundaryBC.o \
 		./build_mu/BoundaryConditions.o
 
 

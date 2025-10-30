@@ -253,6 +253,8 @@
          else
             dimensionless_ % gravity_dir = 0.0_RP
          end if
+	  else 
+         dimensionless_ % gravity_dir = 0.0_RP
       end if
 
       if ( almostEqual(abs(refValues_ % g0), 0.0_RP) ) then
@@ -393,7 +395,7 @@
          write(STD_OUT,'(30X,A,A22,F10.3,A)') "->" , "Fluid 2 density: " , thermodynamics % rho(2), " kg/m^3"
          write(STD_OUT,'(30X,A,A22,1pG10.3,A)') "->" , "Fluid 1 viscosity: " , thermodynamics % mu(1), " Pa.s"
          write(STD_OUT,'(30X,A,A22,1pG10.3,A)') "->" , "Fluid 2 viscosity: " , thermodynamics % mu(2), " Pa.s"
-         write(STD_OUT,'(30X,A,A22,F10.3,A)') "->" , "Artificial compressibility c02: " , thermodynamics % c02, "(m/s)^2"
+         !write(STD_OUT,'(30X,A,A22,F10.3,A)') "->" , "Artificial compressibility c02: " , thermodynamics % c02, "(m/s)^2"
          write(STD_OUT,'(30X,A,A22,F15.3,A)') "->" , "Fluid 1 c02: " , thermodynamics % c02(1), "(m/s)^2"
          write(STD_OUT,'(30X,A,A22,F15.3,A)') "->" , "Fluid 2 c02: " , thermodynamics % c02(2), "(m/s)^2"
 

@@ -195,7 +195,7 @@ module EllipticIP
 
       end subroutine IP_CreateDeviceData
 
-      subroutine IP_ComputeGradient(self, nEqn, nGradEqn, mesh, time, GetGradients, HO_Elements)
+      subroutine IP_ComputeGradient(self, nEqn, nGradEqn, mesh, time, GetGradients, HO_Elements, Level)
          use HexMeshClass
          use PhysicsStorage
          use Physics
@@ -207,6 +207,7 @@ module EllipticIP
          real(kind=RP),        intent(in)     :: time
          procedure(GetGradientValues_f)       :: GetGradients 
          logical, intent(in), optional        :: HO_Elements
+		 integer, intent(in), optional    :: Level
 !
 !        ---------------
 !        Local variables

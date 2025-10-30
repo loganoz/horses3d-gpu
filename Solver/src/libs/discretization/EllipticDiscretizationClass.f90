@@ -129,7 +129,7 @@ module EllipticDiscretizationClass
 
       end subroutine BaseClass_CreateDeviceData
       
-      subroutine BaseClass_ComputeGradient(self, nEqn, nGradEqn, mesh, time, GetGradients, HO_Elements)
+      subroutine BaseClass_ComputeGradient(self, nEqn, nGradEqn, mesh, time, GetGradients, HO_Elements, Level)
 !
 !        *****************************************************
 !           BaseClass computes Local Gradients by default
@@ -146,12 +146,13 @@ module EllipticDiscretizationClass
          real(kind=RP),        intent(in) :: time
          procedure(GetGradientValues_f)   :: GetGradients
          logical, intent(in), optional    :: HO_Elements
+		 integer, intent(in), optional    :: Level
 !
 !        ---------------
 !        Local variables
 !        ---------------
 !
-         integer  :: eID
+         integer  :: eID, lID, locLevel
          logical  :: set_mu
 
 #ifdef MULTIPHASE
@@ -173,7 +174,7 @@ module EllipticDiscretizationClass
 
       end subroutine BaseClass_ComputeGradient
 
-      subroutine BaseClass_LiftGradients(self, nEqn, nGradEqn, mesh, time, GetGradients)
+      subroutine BaseClass_LiftGradients(self, nEqn, nGradEqn, mesh, time, GetGradients, Level)
 !
 !        *****************************************************
 !        Lift gradients: do nothing here
@@ -188,6 +189,7 @@ module EllipticDiscretizationClass
          type(HexMesh),        intent(inout) :: mesh
          real(kind=RP),        intent(in) :: time
          procedure(GetGradientValues_f)   :: GetGradients
+		 integer, intent(in), optional    :: Level
 
       end subroutine BaseClass_LiftGradients
 

@@ -291,7 +291,7 @@ contains
         case (2)
             write(STD_OUT,'(30X,A)') 'Epsilon calculated based on element size and polynomial order'
             write(STD_OUT,'(30X,A,A28,F10.3)') "->", 'Constant for Epsilon: ',self%gauss_epsil
-            if (self%calculate_with_projection) write(STD_OUT,'(30X,A)') 'Warining, epsilon calculated using properties of element 1'
+            if (self%calculate_with_projection) write(STD_OUT,'(30X,A)') 'Warning, epsilon calculated using properties of element 1'
         case default
             write(STD_OUT,'(30X,A,A28,ES10.3)') "->", 'Fixed Epsilon value: ',self%gauss_epsil
         end select
@@ -700,7 +700,7 @@ contains
 !
 !///////////////////////////////////////////////////////////////////////////////////////
 !
-   subroutine ForcesFarm(self, mesh, time)
+   subroutine ForcesFarm(self, mesh, time, Level)
    use PhysicsStorage
    use HexMeshClass
    use fluiddata
@@ -709,12 +709,13 @@ contains
    type(Farm_t) , intent(inout)      :: self
    type(HexMesh), intent(in)         :: mesh
    real(kind=RP),intent(in)          :: time
+   integer, intent(in), optional     :: Level	
 
 ! local vars
    real(kind=RP)                     :: Non_dimensional, t, interp
    integer                           :: ii,jj, kk
    integer                           :: i,j, k
-   integer                           :: eID, eIndex
+   integer                           :: eID, eIndex, locLevel
    real(kind=RP), dimension(NDIM)    :: actuator_source
    real(kind=RP)                     :: actuator_source_x_iijj
    real(kind=RP)                     :: actuator_source_y_iijj
@@ -732,7 +733,13 @@ contains
 #endif
 
     if (.not. self % active) return
-
+	
+	if (present(Level)) then
+		locLevel = Level
+	else
+		locLevel = 1
+	end if  
+	
     Non_dimensional = POW2(refValues % V) * refValues % rho / Lref
     t = time * Lref / refValues % V
 
@@ -740,6 +747,7 @@ contains
 
         do eIndex = 1, size(elementsActuated)
             eID = elementsActuated(eIndex)
+			if (mesh % elements(eID) % MLevel .eq. locLevel) then
             kk = turbineOfElement(eIndex)
 
             do k = 0, mesh % elements(eID) % Nxyz(3)   ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
@@ -785,15 +793,17 @@ contains
                 mesh % elements(eID) % storage % S_NS(IMSQRHOW,i,j,k) = actuator_source(3)*invSqrtRho
 #endif
             end do                  ; end do                ; end do
+		  end if 
         end do
     
     else ! no projection
 
-        !$acc parallel loop gang collapse(4) present(self,mesh) private(xlocal)
+        !$acc parallel loop gang collapse(4) present(self,mesh) copyin(locLevel) private(xlocal)
         !!$omp do schedule(runtime) private(i,j,k,ii,jj,kk,actuator_source,eID,interp)
         do eIndex = 1, size(elementsActuated) ;  do k = 0, mesh % Nx(1) ;  do j = 0, mesh % Nx(1) ; do i = 0, mesh % Nx(1)
       
             eID = elementsActuated(eIndex)
+			if (mesh % elements(eID) % MLevel .eq. locLevel) then
             ! only one turbine is associated for one element
             kk = turbineOfElement(eIndex)
 
@@ -839,6 +849,7 @@ contains
                 mesh % elements(eID) % storage % S_NS(IMSQRHOV,i,j,k) = actuator_source_y_iijj*invSqrtRho
                 mesh % elements(eID) % storage % S_NS(IMSQRHOW,i,j,k) = actuator_source_z_iijj*invSqrtRho
 #endif
+			end if 
             end do                  ; end do                ; end do
         end do
 !!$omp end do

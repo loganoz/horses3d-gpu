@@ -1,14 +1,20 @@
 #include "Includes.h"
 module LESModels
    use SMConstants
-   use PhysicsStorage_NS
    use FTValueDictionaryClass
-   use Physics_NSKeywordsModule
+!   use Physics_NSKeywordsModule
    use MPI_Process_Info
    use Headers
    use Utilities                 , only: toLower
-   use FluidData_NS
-   use VariableConversion_NS     , only: getVelocityGradients, getTemperatureGradient, getVelocityGradients_State
+   use PhysicsStorage
+   use FluidData
+#if defined (NAVIERSTOKES) 
+   use VariableConversion_NS     , only: getVelocityGradients_State
+#elif defined (INCNS) 
+   use VariableConversion_iNS     , only: getVelocityGradients 
+#elif defined (MULTIPHASE) 
+   use VariableConversion_MU     , only: getVelocityGradients 
+#endif
    implicit none
 
    private
@@ -22,7 +28,7 @@ module LESModels
 !  Model parameters
 !  ----------------
    real(kind=RP)   , parameter   :: K_VONKARMAN     = 0.4_RP
-   !$acc declare copyin(K_VONKARMAN)
+   !$acc declare copyin(K_VONKARMAN) 
    
 !  Wall models
 !  -----------
@@ -84,8 +90,8 @@ module LESModels
 !
 !        Select LES model
 !        ----------------
-         if ( controlVariables % containsKey(LESMODEL_KEY) ) then
-            modelName = controlVariables % stringValueForKey(LESMODEL_KEY, LINE_LENGTH)
+         if ( controlVariables % containsKey("les model") ) then
+            modelName = controlVariables % stringValueForKey("les model", LINE_LENGTH)
             call toLower(modelName)
 
             select case (trim(modelName))
@@ -162,7 +168,6 @@ module LESModels
             !model % WallModel = LINEAR_WALLMODEL
             model % WallModel = NO_WALLMODEL
          end if
-         
 !        Describe
 !        --------
          call model % Describe
@@ -310,11 +315,15 @@ module LESModels
          real(kind=RP)  :: U_x(NDIM)
          real(kind=RP)  :: U_y(NDIM)
          real(kind=RP)  :: U_z(NDIM)
+         real(kind=RP)  :: rho
          !-------------------------------------------------------
-         
-         !call getVelocityGradients(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
-         call getVelocityGradients_State(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
-
+#if defined (NAVIERSTOKES) 
+		 call getVelocityGradients_State(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#elif defined (INCNS) 
+		 call getVelocityGradients(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#elif defined (MULTIPHASE) 
+		 call getVelocityGradients(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#endif
 !
 !        Compute symmetric part of the deformation tensor
 !        ------------------------------------------------
@@ -336,7 +345,9 @@ module LESModels
 !        ------------------------------------------
          LS = C * delta
          LS = LESModel_ComputeWallEffect(LS,dWall, WallModel)
-         mu = Q(IRHO) * POW2(LS) * normS
+         rho = get_rho(Q, dimensionless) 
+
+         mu = rho * POW2(LS) * normS
          
       end subroutine Smagorinsky_ComputeViscosity
 !
@@ -420,9 +431,13 @@ module LESModels
          integer        :: i,j
          integer        :: k   ! The third index
          !-------------------------------------------------------
-         
-         !call getVelocityGradients  (Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
-         call getVelocityGradients_State(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#if defined (NAVIERSTOKES) 
+		 call getVelocityGradients_State(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#elif defined (INCNS) 
+		 call getVelocityGradients(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#elif defined (MULTIPHASE) 
+		 call getVelocityGradients(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#endif
 
          gradV(1,:) = U_x(1:3)
          gradV(2,:) = U_y(1:3)
@@ -547,15 +562,19 @@ module LESModels
          !-local-variables---------------------------------------
          real(kind=RP)  :: G__ij(NDIM, NDIM)
          real(kind=RP)  :: gradV(NDIM, NDIM)
-         real(kind=RP)  :: delta2, alpha, Bbeta, LS
+         real(kind=RP)  :: delta2, alpha, Bbeta, LS, rho
          real(kind=RP)  :: U_x(NDIM)
          real(kind=RP)  :: U_y(NDIM)
          real(kind=RP)  :: U_z(NDIM)
          integer        :: i,j,k
          !-------------------------------------------------------
-         
-         !call getVelocityGradients  (Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
-         call getVelocityGradients_State(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#if defined (NAVIERSTOKES) 
+		 call getVelocityGradients_State(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#elif defined (INCNS) 
+		 call getVelocityGradients(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#elif defined (MULTIPHASE) 
+		 call getVelocityGradients(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#endif
 
          delta2 = delta*delta 
          gradV(1,:) = U_x(1:3)
@@ -580,8 +599,10 @@ module LESModels
             &  - G__ij(2,3) * G__ij(2,3) &
             &  - G__ij(1,3) * G__ij(1,3)
 
+         rho = get_rho(Q, dimensionless)   
+
          if(alpha>1.0e-10_RP) then
-            mu = Q(IRHO) * C * sqrt (abs(Bbeta)/alpha)
+            mu = rho * C * sqrt (abs(Bbeta)/alpha)
          else 
             mu = 0.0_RP
          end if
@@ -621,7 +642,7 @@ module LESModels
 #elif defined (INCNS)
          rho = Q(INSRHO)
 #elif defined (MULTIPHASE)
-         rho = dimensionless_%rho(1) * Q(IMC) + dimensionless_%rho(2) * (1.0 - Q(IMC))
+         rho = dimensionless_%rho(1) * max(min(Q(IMC),1.0_RP),0.0_RP) + dimensionless_%rho(2) * (1.0 - max(min(Q(IMC),1.0_RP),0.0_RP))
 ! #else
 !          print *, "Error: rho computation not valid for physics "
 !          stop

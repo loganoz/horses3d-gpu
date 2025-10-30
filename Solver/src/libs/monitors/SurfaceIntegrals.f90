@@ -65,13 +65,14 @@ module SurfaceIntegrals
 !        Initialization
 !        --------------
          val = 0.0_RP
-
+!$omp parallel
          call ProlongToFaces(mesh, zoneID)
 !
 !        Loop the zone to get faces and elements
 !        ---------------------------------------
-!$acc parallel loop gang reduction(+:val) present(mesh)
+
 !$omp do private(fID) reduction(+:val) schedule(runtime)
+!$acc parallel loop gang reduction(+:val) present(mesh)
          do zonefID = 1, mesh % zones(zoneID) % no_of_faces
 !
 !           Face global ID
@@ -83,9 +84,9 @@ module SurfaceIntegrals
             val = val + ScalarSurfaceIntegral_Face(mesh % faces(fID), integralType)
 
          end do
+!$acc end parallel loop
 !$omp end do
 !$omp end parallel
-!$acc end parallel loop
 
 #ifdef _HAS_MPI_
          localval = val
@@ -269,14 +270,14 @@ module SurfaceIntegrals
          valx = 0.0_RP
          valy = 0.0_RP
          valz = 0.0_RP
-
+!$omp parallel
          call ProlongToFaces(mesh, zoneID)
 
          select case ( integralType )
          case ( SURFACE )
 
+!$omp do private(fID,localVal, localx, localy, localz) reduction(+:valx, valy, valz) schedule(runtime)
 !$acc parallel loop gang present(mesh) num_gangs(mesh % zones(zoneID) % no_of_faces) reduction(+:valx, valy, valz)
-!$omp do private(fID,localVal, valx, valy, valz) reduction(+:valx, valy, valz) schedule(runtime)
          do zonefID = 1, mesh % zones(zoneID) % no_of_faces
             !
             !           Face global ID
@@ -308,14 +309,16 @@ module SurfaceIntegrals
                         valz = valz + localz
             
                      end do
-!$omp end do
-!$omp end parallel
 !$acc end parallel loop
+!$omp end do
+
+
                      
          case ( TOTAL_FORCE )
 
+!$omp do private(fID,localVal, localx, localy, localz) reduction(+:valx, valy, valz) schedule(runtime)
 !$acc parallel loop gang present(mesh) num_gangs(mesh % zones(zoneID) % no_of_faces) reduction(+:valx, valy, valz)
-!$omp do private(fID,localVal, valx, valy, valz) reduction(+:valx, valy, valz) schedule(runtime)
+
          do zonefID = 1, mesh % zones(zoneID) % no_of_faces
             !
             !           Face global ID
@@ -354,14 +357,14 @@ module SurfaceIntegrals
                         valz = valz + localz
             
          end do
-!$omp end do
-!$omp end parallel
 !$acc end parallel loop
+!$omp end do
+
          
          case ( PRESSURE_FORCE )
 
+!$omp do private(fID,localVal, localx, localy, localz) reduction(+:valx, valy, valz) schedule(runtime)
 !$acc parallel loop gang present(mesh) num_gangs(mesh % zones(zoneID) % no_of_faces) reduction(+:valx, valy, valz) 
-!$omp do private(fID,localVal, valx, valy, valz) reduction(+:valx, valy, valz) schedule(runtime)
          do zonefID = 1, mesh % zones(zoneID) % no_of_faces
             !
             !           Face global ID
@@ -398,14 +401,13 @@ module SurfaceIntegrals
                         valz = valz + localz
             
          end do
-!$omp end do
-!$omp end parallel
 !$acc end parallel loop
+!$omp end do
 
          case ( VISCOUS_FORCE )
 
+!$omp do private(fID,localVal, localx, localy, localz) reduction(+:valx, valy, valz) schedule(runtime)
 !$acc parallel loop gang present(mesh) num_gangs(mesh % zones(zoneID) % no_of_faces) reduction(+:valx, valy, valz)
-!$omp do private(fID,localVal, valx, valy, valz) reduction(+:valx, valy, valz) schedule(runtime)
          do zonefID = 1, mesh % zones(zoneID) % no_of_faces
             !
             !           Face global ID
@@ -443,11 +445,12 @@ module SurfaceIntegrals
                         valz = valz + localz
             
          end do
-!$omp end do
-!$omp end parallel
 !$acc end parallel loop
-           
+!$omp end do
+
          end select
+		 
+!$omp end parallel
             
          val(1:3) = [valx, valy, valz]
          

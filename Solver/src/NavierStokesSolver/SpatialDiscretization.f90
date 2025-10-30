@@ -226,7 +226,7 @@ module SpatialDiscretization
 !
 !////////////////////////////////////////////////////////////////////////
 !
-      SUBROUTINE ComputeTimeDerivative( mesh, particles, time, mode, HO_Elements)
+      SUBROUTINE ComputeTimeDerivative( mesh, particles, time, mode, HO_Elements, Level)
          IMPLICIT NONE
 !
 !        ---------
@@ -238,6 +238,7 @@ module SpatialDiscretization
          REAL(KIND=RP)                   :: time
          integer, intent(in)             :: mode
          logical, intent(in), optional   :: HO_Elements
+		 integer, intent(in), optional   :: Level
 !
 !        ---------------
 !        Local variables
@@ -288,7 +289,7 @@ module SpatialDiscretization
 !        -----------------
 !
          set_mu = .false.
-         call HexMesh_ComputeLocalGradientNS(mesh, set_mu)
+         call HexMesh_ComputeLocalGradientNS(mesh, set_mu)   ! In CPU version this inside ViscousDiscretization
 
          if ( computeGradients ) then
             call ViscousDiscretization % ComputeGradient( NCONS, NGRAD, mesh, time, GetGradients, HO_Elements)
@@ -319,7 +320,7 @@ module SpatialDiscretization
 !     This routine computes the time derivative element by element, without considering the Riemann Solvers
 !     This is useful for estimating the isolated truncation error
 !
-      SUBROUTINE ComputeTimeDerivativeIsolated( mesh, particles, time, mode, HO_Elements)
+      SUBROUTINE ComputeTimeDerivativeIsolated( mesh, particles, time, mode, HO_Elements, Level)
          use EllipticDiscretizationClass
          IMPLICIT NONE
 !
@@ -332,6 +333,7 @@ module SpatialDiscretization
          REAL(KIND=RP)                    :: time
          integer,             intent(in)  :: mode
          logical,   intent(in), optional  :: HO_Elements
+		 integer, intent(in), optional    :: Level
 !
 !        ---------------
 !        Local variables
@@ -643,7 +645,7 @@ module SpatialDiscretization
 !        ***********************
 !        Now add the source term
 !        ***********************
-!$omp do schedule(runtime) private(i,j,k)
+!$omp do schedule(runtime) private(i,j,k,eq)
 !$acc parallel loop gang vector_length(128) present(mesh) async(1)
          do eID = 1, mesh % no_of_elements
             !$acc loop vector collapse(4)

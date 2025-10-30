@@ -124,7 +124,7 @@
       call cudaProfilerStart() !Set up the profiling here to avoid memory transfers
 #endif
 !
-      CALL timeIntegrator % integrate(sem, controlVariables, sem % monitors, ComputeTimeDerivative, ComputeTimeDerivativeIsolated)
+      CALL timeIntegrator % integrate(sem, controlVariables, sem % monitors, sem % samplings, ComputeTimeDerivative, ComputeTimeDerivativeIsolated)
 !
 #ifdef _OPENACC
       call cudaProfilerStop() ! Stop the collection of statistics for OpenACC
@@ -176,6 +176,14 @@
 !     Finish up
 !     ---------
 !
+!
+!     ----------------------------
+!     Delete the data from the GPU
+!     ----------------------------
+!
+#ifdef _OPENACC
+      call sem % mesh % ExitDeviceData()
+#endif
       call Stopwatch % destruct
       CALL timeIntegrator % destruct()
       CALL sem % destruct()

@@ -9,6 +9,7 @@
 #include "Includes.h"
 Module DGSEMClass
    use SMConstants
+   use Utilities                 , only: sortDescendInt, sortAscendInt, sortAscend
    USE NodalStorageClass         , only: CurrentNodes, NodalStorage, NodalStorage_t
    use MeshTypes                 , only: HOPRMESH
    use ElementClass
@@ -24,6 +25,7 @@ Module DGSEMClass
    use SpallartAlmarasTurbulence , only: Spalart_Almaras_t
 #endif
    use MonitorsClass
+   use Samplings
    use ParticlesClass
    use Physics
    use FluidData
@@ -38,7 +40,7 @@ Module DGSEMClass
 
    private
    public   ComputeTimeDerivative_f, DGSem, ConstructDGSem
-   public   DestructDGSEM, MaxTimeStep, ComputeMaxResiduals
+   public   DestructDGSEM, MaxTimeStep, ComputeMaxResiduals, DetermineCFL
    public   hnRange
 
    TYPE DGSem
@@ -50,6 +52,7 @@ Module DGSEMClass
       TYPE(HexMesh)                                           :: mesh
       LOGICAL                                                 :: ManufacturedSol = .FALSE.   ! Use manufactured solutions? default .FALSE.
       type(Monitor_t)                                         :: monitors
+	  type(Sampling_t)										  :: samplings		
 #if defined(NAVIERSTOKES) && (!(SPALARTALMARAS))
       type(FWHClass)                                          :: fwh
 #endif
@@ -71,7 +74,7 @@ Module DGSEMClass
    END TYPE DGSem
 
    abstract interface
-      SUBROUTINE ComputeTimeDerivative_f( mesh, particles, time, mode, HO_Elements)
+      SUBROUTINE ComputeTimeDerivative_f( mesh, particles, time, mode, HO_Elements, Level)
          use SMConstants
          use HexMeshClass
          use ParticlesClass
@@ -85,6 +88,7 @@ Module DGSEMClass
          REAL(KIND=RP)                   :: time
          integer,             intent(in) :: mode
          logical, intent(in), optional   :: HO_Elements
+		 integer, intent(in), optional   :: Level
       end subroutine ComputeTimeDerivative_f
    END INTERFACE
 
@@ -128,6 +132,7 @@ Module DGSEMClass
       INTEGER                     :: fUnit
       integer                     :: dir2D
       integer                     :: ierr
+	  integer                     :: ML_nLevel
       logical                     :: MeshInnerCurves                    ! The inner survaces of the mesh have curves?
       logical                     :: useRelaxPeriodic                   ! The periodic construction in direction z use a relative tolerance
       logical                     :: useWeightsPartition                ! Partitioning mesh using DOF of elements as weights
@@ -428,11 +433,12 @@ Module DGSEMClass
       END IF
 #endif
 !
-!     ------------------
-!     Build the monitors
-!     ------------------
+!     --------------------------------
+!     Build the monitors and samplings
+!     --------------------------------
 !
       call self % monitors % construct (self % mesh, controlVariables)
+	  call self % samplings % construct (self % mesh, controlVariables)
 !
 !     ------------------
 !     Build the FWH general class
@@ -440,6 +446,17 @@ Module DGSEMClass
 #if defined(NAVIERSTOKES) && (!(SPALARTALMARAS))
       IF (flowIsNavierStokes) call self % fwh % construct(self % mesh, controlVariables)
 #endif
+!
+!     ------------------------------------------------------------------
+!     Construct MLRK Library with Level n or 1 (Include all elements and faces) 
+!     ------------------------------------------------------------------
+      ML_nLevel = 1
+      if ( controlVariables % ContainsKey("explicit method") ) then
+		if ( controlVariables % ContainsKey("number of level") ) then
+			ML_nLevel = controlVariables % integerValueForKey ("number of level")
+		end if 
+	  end if
+      call self % mesh % MLRK % construct(self % mesh, ML_nLevel) ! default 1 level
 
 ! #if defined(NAVIERSTOKES)
 ! !
@@ -471,9 +488,10 @@ Module DGSEMClass
       CLASS(DGSem) :: self
       INTEGER      :: k      !Counter
 
-      CALL self % mesh % destruct
+      call self % mesh % destruct
 
       call self % monitors % destruct
+	  call self % samplings % destruct
 
 #if defined(NAVIERSTOKES) && (!(SPALARTALMARAS))
       IF (flowIsNavierStokes) call self % fwh % destruct
@@ -599,8 +617,9 @@ Module DGSEMClass
          to % mesh               = from % mesh
          to % ManufacturedSol    = from % ManufacturedSol
 
-         to % monitors  = from % monitors
-         to % particles = from % particles
+         to % monitors   = from % monitors
+		 to % samplings  = from % samplings
+         to % particles  = from % particles
 
       end subroutine DGSEM_Assign
 !
@@ -752,14 +771,8 @@ Module DGSEMClass
       real(kind=RP)                 :: TimeStep_Conv, TimeStep_Visc     ! Time-step for convective and diffusive terms
       real(kind=RP)                 :: localMax_dt_v, localMax_dt_a     ! Time step to perform MPI reduction
       type(NodalStorage_t), pointer :: spAxi_p, spAeta_p, spAzeta_p     ! Pointers to the nodal storage in every direction
-!      external                      :: ComputeEigenvaluesForState       ! Advective eigenvalues
 #if defined(INCNS) || defined(MULTIPHASE)
       logical :: flowIsNavierStokes = .true.
-#endif
-#if defined(SPALARTALMARAS)
-      external                            :: ComputeEigenvaluesForStateSA
-#elif defined(ACOUSTIC)
-      external                            :: ComputeEigenvaluesForStateCAA
 #endif
       !--------------------------------------------------------
 !     Initializations
@@ -891,6 +904,176 @@ Module DGSEMClass
       end if
 #endif
    end subroutine MaxTimeStep
+!
+!////////////////////////////////////////////////////////////////////////
+!
+!  -------------------------------------------------------------------
+!  Determine the max advective CFL at each element 
+!  -------------------------------------------------------------------
+   subroutine DetermineCFL(self, deltat, globalMax, globalMin, globalMaxCFLInterf, onlyRoot)
+      use VariableConversion
+      use MPI_Process_Info
+      implicit none
+      !------------------------------------------------
+      type(DGSem)                :: self
+	  real(kind=RP),intent(in)   :: deltat
+	  real(kind=RP),intent(out)  :: globalMax
+	  real(kind=RP),intent(out)  :: globalMin
+	  real(kind=RP),intent(out)  :: globalMaxCFLInterf
+	  logical, optional          :: onlyRoot
+#ifdef FLOW
+      !------------------------------------------------
+      integer                       :: i, j, k, eID                     ! Coordinate and element counters
+      integer                       :: N(3)                             ! Polynomial order in the three reference directions
+      integer                       :: ierr, nProcs                     ! Error and number of MPI for MPI calls
+	  integer                       :: counter(1:3), GlobalCounter(1:3) ! Local Counter
+      real(kind=RP)                 :: eValues(3)                       ! Advective eigenvalues
+      real(kind=RP)                 :: dcsi, deta, dzet                 ! Smallest mesh spacing
+      real(kind=RP)                 :: dcsi2, deta2, dzet2              ! Smallest mesh spacing squared
+      real(kind=RP)                 :: lamcsi_a, lamzet_a, lameta_a     ! Advective eigenvalues in the three reference directions
+      real(kind=RP)                 :: jac                              ! Mapping Jacobian
+      real(kind=RP)                 :: Q(NCONS)                         ! The conservative variable
+      real(kind=RP)                 :: cfl                              ! cfl - Advective
+	  real(kind=RP)                 :: maxCFL, minCFL, maxCFLInterface
+	  real(kind=RP), allocatable    :: elementCFL(:), maxCFLInterfaceID(:)              
+      logical                       :: isRootOnly	  
+      type(NodalStorage_t), pointer :: spAxi_p, spAeta_p, spAzeta_p     ! Pointers to the nodal storage in every direction
+#if defined(INCNS) || defined(MULTIPHASE)
+      logical :: flowIsNavierStokes = .true.
+#endif
+!--------------------------------------------------------
+!     Initializations
+!     ---------------
+
+	  if (present(onlyRoot)) then
+	     isRootOnly = onlyRoot
+      else
+		 isRootOnly = .false.
+	  end if 
+		 
+	  allocate(elementCFL(1:SIZE(self % mesh % elements)), maxCFLInterfaceID(1:SIZE(self % mesh % elements)))
+	  maxCFLInterfaceID(:) = 0.0_RP
+	  
+	  !$acc enter data copyin(maxCFLInterfaceID)	  
+!$acc parallel loop gang present(self,maxCFLInterfaceID) copyin(deltat,NodalStorage,flowIsNavierStokes) 
+      do eID = 1, SIZE(self % mesh % elements)
+	     cfl = 0.0_RP
+         N = self % mesh % elements(eID) % Nxyz
+         if ( N(1) .ne. 0 ) then
+            dcsi = 1.0_RP / abs(  NodalStorage(N(1)) % x(1) -  NodalStorage(N(1)) % x (0) )
+			
+         else
+            dcsi = 0.0_RP
+
+         end if
+
+         if ( N(2) .ne. 0 ) then
+            deta = 1.0_RP / abs( NodalStorage(N(2)) % x(1) - NodalStorage(N(2)) % x (0) )
+
+         else
+            deta = 0.0_RP
+
+         end if
+
+         if ( N(3) .ne. 0 ) then
+            dzet = 1.0_RP / abs(  NodalStorage(N(3)) % x(1) -  NodalStorage(N(3)) % x (0) )
+
+         else
+            dzet = 0.0_RP
+
+         end if
+
+         if (flowIsNavierStokes) then
+            dcsi2 = dcsi*dcsi
+            deta2 = deta*deta
+            dzet2 = dzet*dzet
+         end if
+         !$acc loop vector collapse(3) private(eValues, Q)
+         do k = 0, N(3) ; do j = 0, N(2) ; do i = 0, N(1)
+!
+!           ------------------------------------------------------------
+!           The maximum eigenvalues for a particular state is determined
+!           by the physics.
+!           ------------------------------------------------------------
+!
+            Q(1:NCONS) = self % mesh % elements(eID) % storage % Q(1:NCONS,i,j,k)
+			
+#if defined(SPALARTALMARAS)
+            CALL ComputeEigenvaluesForStateSA( Q , eValues )
+#elif defined(ACOUSTIC)
+            CALL ComputeEigenvaluesForStateCAA( Q , self % mesh % elements(eID) % storage % Qbase(:,i,j,k), eValues )
+#else
+            CALL ComputeEigenvaluesForState( Q , eValues )
+#endif
+            jac      = self % mesh % elements(eID) % geom % jacobian(i,j,k)
+!
+!           ----------------------------
+!           Compute contravariant values
+!           ----------------------------
+!
+            lamcsi_a =abs( self % mesh % elements(eID) % geom % jGradXi(IX,i,j,k)   * eValues(IX) + &
+                           self % mesh % elements(eID) % geom % jGradXi(IY,i,j,k)   * eValues(IY) + &
+                           self % mesh % elements(eID) % geom % jGradXi(IZ,i,j,k)   * eValues(IZ) ) * dcsi
+
+            lameta_a =abs( self % mesh % elements(eID) % geom % jGradEta(IX,i,j,k)  * eValues(IX) + &
+                           self % mesh % elements(eID) % geom % jGradEta(IY,i,j,k)  * eValues(IY) + &
+                           self % mesh % elements(eID) % geom % jGradEta(IZ,i,j,k)  * eValues(IZ) ) * deta
+
+            lamzet_a =abs( self % mesh % elements(eID) % geom % jGradZeta(IX,i,j,k) * eValues(IX) + &
+                           self % mesh % elements(eID) % geom % jGradZeta(IY,i,j,k) * eValues(IY) + &
+                           self % mesh % elements(eID) % geom % jGradZeta(IZ,i,j,k) * eValues(IZ) ) * dzet
+			
+			cfl = max( cfl, deltat * abs(lamcsi_a+lameta_a+lamzet_a)/abs(jac) ) 
+
+#ifdef MULTIPHASE
+			if ((Q(1).ge.0.0001_RP).or.(Q(1).ge.0.9999_RP)) then 
+				maxCFLInterfaceID (eID) = cfl
+			end if 
+#endif
+			
+         end do ; end do ; end do
+		 
+		 self % mesh % elements(eID) % ML_CFL = cfl
+      end do
+!$acc end parallel loop
+
+      !$acc wait
+	  !$acc update host(maxCFLInterfaceID)
+	  !$acc exit data delete(maxCFLInterfaceID)
+	  do eID=1, SIZE(self % mesh % elements)
+#ifdef _OPENACC	
+		!$acc update self(self % mesh % elements(eID) % ML_CFL)
+#endif
+		elementCFL(eID)=self % mesh % elements(eID) % ML_CFL	
+	  end do
+
+	  call sortAscend(elementCFL)
+	  maxCFL             = maxval(elementCFL)
+	  minCFL             = minval(elementCFL)
+	  maxCFLInterface    = maxval(maxCFLInterfaceID)
+	  globalMax          = maxCFL
+	  globalMin          = minCFL
+	  globalMaxCFLInterf = maxCFLInterface
+
+      deallocate(elementCFL)
+	  deallocate(maxCFLInterfaceID)
+
+#ifdef _HAS_MPI_
+
+      if ( ( MPI_Process % doMPIAction ).and.(.not.isRootOnly)) then
+	     call mpi_allreduce(maxCFL, globalMax, 1, MPI_DOUBLE, MPI_MAX, &
+                            MPI_COMM_WORLD, ierr)
+		 call mpi_allreduce(maxCFLInterface, globalMaxCFLInterf, 1, MPI_DOUBLE, MPI_MAX, &
+                            MPI_COMM_WORLD, ierr)
+		 call mpi_allreduce(minCFL, globalMin, 1, MPI_DOUBLE, MPI_MIN, &
+                            MPI_COMM_WORLD, ierr)
+		 call MPI_Comm_size(MPI_COMM_WORLD, nProcs, ierr)
+      end if
+#endif
+
+#endif	  
+
+   end subroutine DetermineCFL
 !
 !////////////////////////////////////////////////////////////////////////
 !

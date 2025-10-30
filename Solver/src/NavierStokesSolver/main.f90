@@ -141,7 +141,7 @@
       call cudaProfilerStart() !Set up the profiling here to avoid memory transfers
 #endif
 
-      CALL timeIntegrator % integrate(sem, controlVariables, sem % monitors, ComputeTimeDerivative, ComputeTimeDerivativeIsolated)
+      CALL timeIntegrator % integrate(sem, controlVariables, sem % monitors, sem % samplings, ComputeTimeDerivative, ComputeTimeDerivativeIsolated)
 !
 !     ------------------------------------------
 !     Finish measuring the total simulation time
