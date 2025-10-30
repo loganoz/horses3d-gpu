@@ -30,7 +30,9 @@ jobs:
         mode: ['RELEASE']
         comm: ['PARALLEL']
         enable_threads: ['NO']
-
+        
+    name: NS - ${{ matrix.compiler }} - ${{ matrix.mode }} - ${{ matrix.comm }} - ${{ matrix.enable_threads }}
+    
     env:
       METIS_HOME:  /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64
       INTEL_COMPILER_DIR : /opt/intel/oneapi/compiler/2024.1
