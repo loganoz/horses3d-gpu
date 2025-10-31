@@ -342,64 +342,73 @@ jobs:
 # 1) CYLINDER
 # -----------
 
- 
+      - name: Build NSCylinder
+        working-directory: ./Solver/test/NavierStokes/Cylinder/SETUP
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+        if: '!cancelled()'
+
+      - name: Run NSCylinder
+        working-directory: ./Solver/test/NavierStokes/Cylinder
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 8 ./horses3d.ns Cylinder.control
+        if: '!cancelled()' 
 
 #
 # 2) CYLINDER IP
 # --------------
 
-  # GPU
-      # - name: Build NSCylinderIP
-      #   working-directory: ./Solver/test/NavierStokes/CylinderIP/SETUP
-      #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
-      #   if: '!cancelled()'
+      - name: Build NSCylinderIP
+        working-directory: ./Solver/test/NavierStokes/CylinderIP/SETUP
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
+        if: '!cancelled()'
 
-      # - name: Run NSCylinderIP
-      #   working-directory: ./Solver/test/NavierStokes/CylinderIP
-      #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns CylinderIP.control
-      #   if: '!cancelled()'
+      - name: Run NSCylinderIP
+        working-directory: ./Solver/test/NavierStokes/CylinderIP
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 8 ./horses3d.ns CylinderIP.control
+        if: '!cancelled()'
 
 #
 # 3) CYLINDER BR2
-# # ---------------
+# ---------------
 
-  # GPU
-      # - name: Build NSCylinderBR2
-      #   working-directory: ./Solver/test/NavierStokes/CylinderBR2/SETUP
-      #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
-      #   if: '!cancelled()'
+      - name: Build NSCylinderBR2
+        working-directory: ./Solver/test/NavierStokes/CylinderBR2/SETUP
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
+        if: '!cancelled()'
 
-      # - name: Run NSCylinderBR2
-      #   working-directory: ./Solver/test/NavierStokes/CylinderBR2
-      #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns CylinderBR2.control
-      #   if: '!cancelled()'
+      - name: Run NSCylinderBR2
+        working-directory: ./Solver/test/NavierStokes/CylinderBR2
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 8 ./horses3d.ns CylinderBR2.control
+        if: '!cancelled()'
 
 #
 # 4) CYLINDER DUCROS
 # ------------------
 
-  # GPU
-      # - name: Build NSCylinderDucros
-      #   working-directory: ./Solver/test/NavierStokes/CylinderDucros/SETUP
-      #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
-      #   if: '!cancelled()'
+      - name: Build NSCylinderDucros
+        working-directory: ./Solver/test/NavierStokes/CylinderDucros/SETUP
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
+        if: '!cancelled()'
 
-      # - name: Run NSCylinderDucros
-      #   working-directory: ./Solver/test/NavierStokes/CylinderDucros
-      #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns CylinderDucros.control
-      #   if: '!cancelled()'
+      - name: Run NSCylinderDucros
+        working-directory: ./Solver/test/NavierStokes/CylinderDucros
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 8 ./horses3d.ns CylinderDucros.control
+        if: '!cancelled()'
 
 #
 # 5) CYLINDER Smagorinsky
