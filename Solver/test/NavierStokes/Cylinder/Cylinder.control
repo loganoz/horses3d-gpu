@@ -5,16 +5,19 @@ Number of time steps  = 100
 Output Interval       = 10
 Number of plot points = 5
 Convergence tolerance = 1.d-10
-dt                    = 0.00001d0
+cfl                   = 0.3
+dcfl                  = 0.3
 mach number           = 0.3
 Reynolds number       = 200.0
+interface width (dimensionless) = 2.0
+peclet number = 0.005
 AOA theta             = 0.0
-AOA phi               = 0.0
+AOA phi               = 90.0
 solution file name    = "RESULTS/Cylinder.hsol"
 save gradients with solution = .true.
 restart               = .false.
 restart file name     = "RESULTS/Cylinder.hsol"
-riemann solver        = Lax-Friedrichs
+riemann solver        = roe
 
 #define boundary InnerCylinder
   type = NoSlipWall
@@ -53,3 +56,11 @@ riemann solver        = Lax-Friedrichs
    Position = [0.0,2.0,4.0]
    Variable = u
 #end
+
+!#define statistics
+!   Sampling interval = 10
+!   Starting iteration = 15
+!   Starting time = 0.0
+!   @start*
+!   @stop
+!#end
