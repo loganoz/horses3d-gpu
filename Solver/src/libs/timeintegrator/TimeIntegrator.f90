@@ -23,7 +23,6 @@
       use MPI_Process_Info
       use TimeIntegratorDefinitions
       use MonitorsClass
-      use Samplings
       use ParticlesClass
       use Utilities                       , only: ToLower, AlmostEqual
       use FileReadingUtilities            , only: getFileName
@@ -350,7 +349,7 @@
 !
 !     ////////////////////////////////////////////////////////////////////////////////////////
 !
-      SUBROUTINE Integrate( self, sem, controlVariables, monitors, samplings, ComputeTimeDerivative, ComputeTimeDerivativeIsolated)
+      SUBROUTINE Integrate( self, sem, controlVariables, monitors, ComputeTimeDerivative, ComputeTimeDerivativeIsolated)
       USE FASMultigridClass
       IMPLICIT NONE
 !
@@ -362,7 +361,6 @@
       TYPE(DGSem)                                  :: sem
       TYPE(FTValueDictionary)                      :: controlVariables
       class(Monitor_t)                             :: monitors
-      class(Sampling_t)                            :: samplings	
       procedure(ComputeTimeDerivative_f)           :: ComputeTimeDerivative
       procedure(ComputeTimeDerivative_f)           :: ComputeTimeDerivativeIsolated
 
@@ -380,7 +378,6 @@
 
       sem  % numberOfTimeSteps = self % initial_iter
       if (.not. self % Compute_dt) monitors % dt_restriction = DT_FIXED
-	  if ((.not. self % Compute_dt)) samplings % dt_restriction = DT_FIXED
 
 !     Measure solver time
 !     -------------------
@@ -420,7 +417,7 @@
 !              Lower the residual to 0.1 * truncation error threshold
 !              -> See Kompenhans et al. "Adaptation strategies for high order discontinuous Galerkin methods based on Tau-estimation." Journal of Computational Physics 306 (2016): 216-236.
 !              ------------------------------------------------------
-               call IntegrateInTime( self, sem, controlVariables, monitors, samplings, ComputeTimeDerivative, ComputeTimeDerivativeIsolated, self % pAdaptator % reqTE*0.1_RP)
+               call IntegrateInTime( self, sem, controlVariables, monitors, ComputeTimeDerivative, ComputeTimeDerivativeIsolated, self % pAdaptator % reqTE*0.1_RP)
             end if
 
             call self % pAdaptator % pAdapt(sem,sem  % numberOfTimeSteps, self % time, ComputeTimeDerivative, ComputeTimeDerivativeIsolated, controlVariables)
@@ -431,7 +428,7 @@
 
 !     Finish time integration
 !     -----------------------
-      call IntegrateInTime( self, sem, controlVariables, monitors, samplings, ComputeTimeDerivative, ComputeTimeDerivativeIsolated )
+      call IntegrateInTime( self, sem, controlVariables, monitors, ComputeTimeDerivative, ComputeTimeDerivativeIsolated )
 
 !     Measure solver time
 !     -------------------
@@ -446,7 +443,7 @@
 !  -> If "tolerance" is provided, the value in controlVariables is ignored.
 !     This is only relevant for STEADY_STATE computations.
 !  ------------------------------------------------------------------------
-   subroutine IntegrateInTime( self, sem, controlVariables, monitors, samplings, ComputeTimeDerivative, ComputeTimeDerivativeIsolated, tolerance, CTD_linear, CTD_nonlinear)
+   subroutine IntegrateInTime( self, sem, controlVariables, monitors, ComputeTimeDerivative, ComputeTimeDerivativeIsolated, tolerance, CTD_linear, CTD_nonlinear)
 
       use BDFTimeIntegrator
       use FASMultigridClass
@@ -485,7 +482,6 @@
       TYPE(DGSem)                                  :: sem
       TYPE(FTValueDictionary), intent(in)          :: controlVariables
       class(Monitor_t)                             :: monitors
-      class(Sampling_t)                            :: samplings
       procedure(ComputeTimeDerivative_f)           :: ComputeTimeDerivative
       procedure(ComputeTimeDerivative_f)           :: ComputeTimeDerivativeIsolated
       real(kind=RP), optional, intent(in)          :: tolerance   !< ? tolerance to integrate down to
@@ -598,14 +594,12 @@
       maxResidual       = ComputeMaxResiduals(sem % mesh)
       sem % maxResidual = maxval(maxResidual)
       call Monitors % UpdateValues( sem % mesh, t, sem % numberOfTimeSteps, maxResidual, .false., dt )
-	  call Samplings % UpdateValues( sem % mesh, t)
       call self % Display(sem % mesh, monitors, sem  % numberOfTimeSteps)
 
       if (self % pAdaptator % adaptation_mode    == ADAPT_DYNAMIC_TIME .and. &
           self % pAdaptator % nextAdaptationTime == self % time) then
          call self % pAdaptator % pAdapt(sem,sem  % numberOfTimeSteps,t, ComputeTimeDerivative, ComputeTimeDerivativeIsolated, controlVariables)
          self % pAdaptator % nextAdaptationTime = self % pAdaptator % nextAdaptationTime + self % pAdaptator % time_interval
-		 call samplings % UpdateInterp(sem % mesh)
       end if
 
       call Stopwatch % Pause("Solver") ! We dont want to measure the time of the statistics dump
@@ -787,10 +781,6 @@
 !        ---------------
          call Monitors % UpdateValues( sem % mesh, t, k+1, maxResidual, self% autosave% Autosave(k+1), dt )
 !
-!        Update samplings
-!        ----------------
-         call Samplings % UpdateValues( sem % mesh, t )
-!
 !        Exit if the target is reached
 !        -----------------------------
          IF (self % integratorType == STEADY_STATE) THEN
@@ -840,7 +830,6 @@
 !        --------------
          IF( self % pAdaptator % hasToAdapt(k+1) ) then
             call self % pAdaptator % pAdapt(sem,k,t, ComputeTimeDerivative, ComputeTimeDerivativeIsolated, controlVariables)
-			call samplings % UpdateInterp(sem % mesh)
          end if
          call self % TauEstimator % estimate(sem, k+1, t, ComputeTimeDerivative, ComputeTimeDerivativeIsolated)
 !
@@ -875,18 +864,16 @@
 !        --------------
          call Stopwatch % Pause("Solver") ! We dont want to measure the time of the statistics dump
          call monitors % WriteToFile(sem % mesh)
-		 call samplings % WriteToFile(sem % mesh)
          call Stopwatch % Start("Solver") ! We dont want to measure the time of the statistics dump
 
          sem % numberOfTimeSteps = k + 1
       END DO
 !
-!     Flush the remaining information in the monitors and samplings
-!     -------------------------------------------------------------
+!     Flush the remaining information in the monitors
+!     -----------------------------------------------
       if ( k .ne. 0 ) then
          call Stopwatch % Pause("Solver") ! We dont want to measure the time of the statistics dump
          call Monitors % writeToFile(sem % mesh, force = .true. )
-		 call Samplings % writeToFile(sem % mesh, force = .true. )
          call Stopwatch % Start("Solver") ! We dont want to measure the time of the statistics dump
          
 #if defined(NAVIERSTOKES) && (!(SPALARTALMARAS))
