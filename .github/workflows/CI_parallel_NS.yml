@@ -342,7 +342,19 @@ jobs:
 # 1) CYLINDER
 # -----------
 
- 
+      - name: Build NSCylinder
+        working-directory: ./Solver/test/NavierStokes/Cylinder/SETUP
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+        if: '!cancelled()'
+
+      - name: Run NSCylinder
+        working-directory: ./Solver/test/NavierStokes/Cylinder
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 8 ./horses3d.ns Cylinder.control
+        if: '!cancelled()'  
 
 #
 # 2) CYLINDER IP
