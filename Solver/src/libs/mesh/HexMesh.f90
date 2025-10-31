@@ -1197,7 +1197,7 @@ slavecoord:             DO l = 1, 4
                !$acc loop vector collapse(2)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)
                   linear_idx = ((mpifID - 1) * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + 1
-                  self % MPIfaces % faces(domain) % Qsend(linear_idx:linear_idx+nEqn-1) = self % faces(fID) % storage(thisSide) % Q(:,i,j)
+                  self % MPIfaces % faces(domain) % Qsend(linear_idx:linear_idx+nEqn-1) = self % faces(fID) % storage(thisSide) % Q(1:nEqn,i,j)
                end do               ; end do
             end do
             !$acc end parallel loop
@@ -1253,19 +1253,19 @@ slavecoord:             DO l = 1, 4
                !$acc loop vector collapse(2)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)      
                   linear_idx_x = ((mpifID - 1) * 3 * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + 1
-                  self % MPIfaces % faces(domain) % U_xyzsend(linear_idx_x:linear_idx_x+nEqn-1) = self % faces(fID) % storage(thisSide) % U_x(:,i,j)
+                  self % MPIfaces % faces(domain) % U_xyzsend(linear_idx_x:linear_idx_x+nEqn-1) = self % faces(fID) % storage(thisSide) % U_x(1:nEqn,i,j)
                end do               ; end do
 
                !$acc loop vector collapse(2)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)
                   linear_idx_y = ((mpifID - 1) * 3 * faceSize) + faceSize + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + 1
-                  self % MPIfaces % faces(domain) % U_xyzsend(linear_idx_y:linear_idx_y+nEqn-1) = self % faces(fID) % storage(thisSide) % U_y(:,i,j)
+                  self % MPIfaces % faces(domain) % U_xyzsend(linear_idx_y:linear_idx_y+nEqn-1) = self % faces(fID) % storage(thisSide) % U_y(1:nEqn,i,j)
                end do               ; end do
 
                !$acc loop vector collapse(2)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)
                   linear_idx_z = ((mpifID - 1) * 3 * faceSize) + 2 * faceSize + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + 1
-                  self % MPIfaces % faces(domain) % U_xyzsend(linear_idx_z:linear_idx_z+nEqn-1) = self % faces(fID) % storage(thisSide) % U_z(:,i,j)
+                  self % MPIfaces % faces(domain) % U_xyzsend(linear_idx_z:linear_idx_z+nEqn-1) = self % faces(fID) % storage(thisSide) % U_z(1:nEqn,i,j)
                end do               ; end do
             end do
             !$acc end parallel loop
@@ -1440,7 +1440,7 @@ slavecoord:             DO l = 1, 4
                !$acc loop vector collapse(2)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)
                   linear_idx = ((mpifID - 1) * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + 1
-                  self % faces(fID) % storage(otherSide(thisSide)) % Q(:,i,j) = self % MPIfaces % faces(domain) % Qrecv(linear_idx:linear_idx+nEqn-1)
+                  self % faces(fID) % storage(otherSide(thisSide)) % Q(1:nEqn,i,j) = self % MPIfaces % faces(domain) % Qrecv(linear_idx:linear_idx+nEqn-1)
                end do               ; end do
             end do
             !$acc end parallel loop
@@ -1500,17 +1500,17 @@ slavecoord:             DO l = 1, 4
                !$acc loop vector collapse(2)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)
                   linear_idx_x = ((mpifID - 1) * 3 * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + 1
-                  self % faces(fID) % storage(otherSide(thisSide)) % U_x(:,i,j) = self % MPIfaces % faces(domain) % U_xyzrecv(linear_idx_x:linear_idx_x+nEqn-1)
+                  self % faces(fID) % storage(otherSide(thisSide)) % U_x(1:nEqn,i,j) = self % MPIfaces % faces(domain) % U_xyzrecv(linear_idx_x:linear_idx_x+nEqn-1)
                end do               ; end do
                !$acc loop vector collapse(2)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)
                   linear_idx_y = ((mpifID - 1) * 3 * faceSize) + faceSize + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + 1
-                  self % faces(fID) % storage(otherSide(thisSide)) % U_y(:,i,j) = self % MPIfaces % faces(domain) % U_xyzrecv(linear_idx_y:linear_idx_y+nEqn-1)
+                  self % faces(fID) % storage(otherSide(thisSide)) % U_y(1:nEqn,i,j) = self % MPIfaces % faces(domain) % U_xyzrecv(linear_idx_y:linear_idx_y+nEqn-1)
                end do               ; end do
                !$acc loop vector collapse(2)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)
                   linear_idx_z = ((mpifID - 1) * 3 * faceSize) + 2 * faceSize + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + 1
-                  self % faces(fID) % storage(otherSide(thisSide)) % U_z(:,i,j) = self % MPIfaces % faces(domain) % U_xyzrecv(linear_idx_z:linear_idx_z+nEqn-1)
+                  self % faces(fID) % storage(otherSide(thisSide)) % U_z(1:nEqn,i,j) = self % MPIfaces % faces(domain) % U_xyzrecv(linear_idx_z:linear_idx_z+nEqn-1)
                end do               ; end do
             end do
             !$acc end parallel loop
