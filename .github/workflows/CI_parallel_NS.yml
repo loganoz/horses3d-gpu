@@ -572,38 +572,38 @@ jobs:
 # 14) ENTROPY CONSERVING TEST
 # ----------------------------
 # GPU
-      # - name: Build EntropyConservingTest
-      #   working-directory: ./Solver/test/NavierStokes/EntropyConservingTest/SETUP
-      #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
-      #   if: '!cancelled()'
+      - name: Build EntropyConservingTest
+        working-directory: ./Solver/test/NavierStokes/EntropyConservingTest/SETUP
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
+        if: '!cancelled()'
 
-      # - name: Run EntropyConservingTest
-      #   working-directory: ./Solver/test/NavierStokes/EntropyConservingTest
-      #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns EntropyConservingTest.control
-      #   if: '!cancelled()'
+      - name: Run EntropyConservingTest
+        working-directory: ./Solver/test/NavierStokes/EntropyConservingTest
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 8 ./horses3d.ns EntropyConservingTest.control
+        if: '!cancelled()'
 
 #
 # 15) ENERGY CONSERVING TEST
 # ----------------------------
 
   # GPU
-      # - name: Build EnergyConservingTest
-      #   working-directory: ./Solver/test/NavierStokes/EnergyConservingTest/SETUP
-      #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
-      #   if: '!cancelled()'
+      - name: Build EnergyConservingTest
+        working-directory: ./Solver/test/NavierStokes/EnergyConservingTest/SETUP
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
+        if: '!cancelled()'
 
-      # - name: Run EnergyConservingTest
-      #   working-directory: ./Solver/test/NavierStokes/EnergyConservingTest
-      #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns EnergyConservingTest.control
-      #   if: '!cancelled()'
+      - name: Run EnergyConservingTest
+        working-directory: ./Solver/test/NavierStokes/EnergyConservingTest
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 8 ./horses3d.ns EnergyConservingTest.control
+        if: '!cancelled()'
 
 #
 # 16) NACA0012 Steady
