@@ -1012,13 +1012,13 @@ module SpatialDiscretization
 
 
 !           User-defined source term for CPU 
-#ifdef _OPENACC
+#ifndef _OPENACC
 !$omp do schedule(runtime) private(i,j,k, invSqrtRho, eID)
          do lID = 1, mesh % MLRK % MLIter(locLevel,1)
             eID = mesh % MLRK % MLIter_eID(lID)
 			
             do k = 0, mesh % elements(eID) % Nxyz(3)   ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1) 
-				invSqrtRho = 1.0_RP / sqrt(e % storage % rho(i,j,k))
+				invSqrtRho = 1.0_RP / sqrt(mesh % elements(eID) % storage % rho(i,j,k))
                 call UserDefinedSourceTermNS(mesh % elements(eID) % geom % x(:,i,j,k), mesh % elements(eID) % storage % Q(:,i,j,k), t, mesh % elements(eID) % storage % S_NS(:,i,j,k), thermodynamics, dimensionless, refValues, multiphase)
             end do   ;  end do   ;  end do   
          end do
