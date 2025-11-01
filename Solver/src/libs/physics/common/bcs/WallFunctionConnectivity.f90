@@ -31,7 +31,7 @@ Module WallFunctionConnectivity  !
 !  Public definitions
 !  ******************
 !
-    public Initialize_WallConnection, WallFunctionGatherFlowVariables, WallUpdateMeanV, WallStartMeanV
+    public Initialize_WallConnection, WallUpdateMeanV, WallStartMeanV, WallGetFaceConnectedQ
 !
 
     logical                                                          :: useWallFunc
@@ -39,6 +39,7 @@ Module WallFunctionConnectivity  !
     integer, dimension(:), allocatable                               :: wallElemIds, wallNormalDirection, wallNormalIndex, wallFaceID
     real(kind=RP), dimension(:,:,:,:), allocatable                   :: meanVelocity
     real(kind=RP)                                                    :: timeCont
+    !$acc declare create(meanVelocity, timeCont, wallNormalIndex, wallFaceID, wallNormalDirection, wallElemIds)
 
     contains 
 !   
@@ -81,7 +82,6 @@ Module WallFunctionConnectivity  !
         if (.not. useWallFunc) then
             return
         end if
-
         ! get BC where the Wall Function will be applied
         wallBC_str = controlVariables % stringValueForKey("wall function boundaries", LINE_LENGTH)
         call toLower(wallBC_str)
@@ -96,6 +96,7 @@ Module WallFunctionConnectivity  !
             do nz = 1, size(mesh % zones)
                 if (trim(mesh % zones(nz) % Name) .eq. trim(wallFunBCs(i))) then
                     zonesWall(i) = nz
+                    mesh % zones(nz) % useWallFunction = .true.
                     numberFacesWall = numberFacesWall + mesh % zones(nz) % no_of_faces
                     exit
                 end if
@@ -133,24 +134,30 @@ Module WallFunctionConnectivity  !
                             exit elem_loop
                         end if
                     end do elem_loop
+                    
                     oppositeIndex = -1 * normalIndex
                     ! use the maxloc line if the compiler doesn't support findloc
                     ! oppositeIndex = findloc(normalAxis,oppositeIndex,dim=1)
                     oppositeIndex = maxloc(merge(1.0, 0.0, normalAxis == oppositeIndex),dim=1)
                     linkedElementID = e % Connection(oppositeIndex) % globID
                 end associate
+
                 linkedElementID = getElementID(mesh, linkedElementID)
                 wallFaceID(k) = fID
                 wallElemIds(k) = linkedElementID
                 !get the normalIndex of the linked element instead of actual element, needed for rotated meshes
+
                 do ff = 1, FACES_PER_ELEMENT
                     if (mesh % elements(linkedElementID) % Connection(ff) % globID .eq. mesh % elements(actualElementID) % globID) then
                         oppositeNormalIndex = normalAxis(ff)
                         exit
                     end if 
                 end do
+
                 wallNormalDirection(k) = abs(oppositeNormalIndex)
-                wallNormalIndex(k) = getNormalIndex(mesh % faces(fID), mesh % elements(linkedElementID), wallNormalDirection(k))
+
+                call getNormalIndex(mesh % faces(fID), mesh % elements(linkedElementID), wallNormalDirection(k),  wallNormalIndex(k))
+
             end do
         end do
 
@@ -173,8 +180,11 @@ Module WallFunctionConnectivity  !
             ! meanVelocity = 0.0_RP
             call WallStartMeanV(mesh)
             timeCont = 0.0_RP
+            !$acc update device(meanVelocity, timeCont)
         end if
 
+        !$acc update device(wallNormalIndex, wallFaceID, wallNormalDirection, wallElemIds)
+       
 !       Describe the Wall function
 !       --------------------------
         if ( .not. MPI_Process % isRoot ) return
@@ -192,14 +202,14 @@ Module WallFunctionConnectivity  !
 
     End Subroutine Initialize_WallConnection
 
-    integer Function getNormalIndex(f, e, normalDirection)
+    subroutine getNormalIndex(f, e, normalDirection, normIndex) 
         use FaceClass
         use ElementClass
         implicit none
-
         class(Element), intent(in)                                       :: e
         class(Face), intent(in)                                          :: f
         integer, intent(in)                                              :: normalDirection
+        integer, intent(inout)                                           :: normIndex   
 
 !       ---------------
 !       Local variables
@@ -230,66 +240,19 @@ Module WallFunctionConnectivity  !
         indexArray = [0,N]
         dx(1) = norm2(xf-x0)
         dx(2) = norm2(xf-xN)
-        minIndex = minloc(dx,dim=1)
 
-        getNormalIndex = indexArray(minIndex)
-
-    End Function getNormalIndex
-
-    Subroutine WallFunctionGatherFlowVariables(mesh, f, V, rho, mu, dWall, Vavg)
-
-!     *******************************************************************
-!        This subroutine get the flow variables of the neighbour element
-!        of the face.
-!     *******************************************************************
-!
-        use PhysicsStorage
-        use FaceClass
-        use VariableConversion, only: get_laminar_mu_kappa
-        use WallFunctionDefinitions, only: useAverageV
-        implicit none
-
-        class(HexMesh), intent(in)                                       :: mesh
-        class(Face), intent(in)                                          :: f
-        real(kind=RP), dimension(NDIM,0:f%Nf(1),0:f%Nf(2)), intent(out)  :: V
-        real(kind=RP), dimension(0:f%Nf(1),0:f%Nf(2)), intent(out)       :: rho
-        real(kind=RP), dimension(0:f%Nf(1),0:f%Nf(2)), intent(out)       :: mu
-        real(kind=RP), dimension(0:f%Nf(1),0:f%Nf(2)), intent(out)       :: dWall
-        real(kind=RP), dimension(NDIM,0:f%Nf(1),0:f%Nf(2)), intent(out)  :: Vavg
-
-!       ---------------
-!       Local variables
-!       ---------------
-!
-        ! real(kind=RP), dimension(NCONS,0:f%Nf(1),0:f%Nf(2))             :: Q
-        real(kind=RP), dimension(:,:,:), allocatable                     :: Q, x
-        ! real(kind=RP), dimension(NDIM,0:f%Nf(1),0:f%Nf(2))              :: x
-        real(kind=RP), dimension(NDIM)                                  :: dWallVector
-        real(kind=RP)                                                   :: kappa, invRho
-        integer                                                         :: i, j, fInd
-
-        call WallGetFaceConnectedQ(mesh, f, Q, x, fInd)
-        do j = 0, f % Nf(2)
-            do i = 0, f % Nf(1)
-                rho(i,j) = Q(IRHO,i,j)
-                invRho = 1.0_RP / rho(i,j)
-                V(:,i,j) = Q(IRHOU:IRHOW,i,j) * invRho
-                call get_laminar_mu_kappa(Q(:,i,j),mu(i,j),kappa)
-                dWallVector(:) = x(:,i,j) - f % geom % x(:,i,j)
-                dWall(i,j) = norm2(dWallVector)
-            end do
-        end do
-        
-        if (useAverageV) then
-            Vavg(:,:,:) = meanVelocity(:,fInd,:,:)
-            ! Vavg = reshape( meanVelocity(:,fInd,0:f%Nf(1),0:f%Nf(2)), /NDIM,0:f%Nf(1),0:f%Nf(2)/ )
+        !minIndex = minloc(dx,dim=1) - Does not work with nvcc
+        if (dx(1) .lt. dx(2)) then
+            minIndex = 1
         else
-            Vavg = 0.0_RP
-        end if 
+            minIndex = 2
+        end if
+        normIndex = indexArray(minIndex)
 
-    End Subroutine WallFunctionGatherFlowVariables
+    End subroutine getNormalIndex
 
-    Subroutine WallGetFaceConnectedQ(mesh,f,Q,x,faceIndex)
+    Subroutine WallGetFaceConnectedQ(mesh,f,Q,x,faceIndex, i, j)
+        !$acc routine seq
 !     *******************************************************************
 !        This subroutine get the flow solution of the neighbour element
 !        of the face.
@@ -298,39 +261,36 @@ Module WallFunctionConnectivity  !
         use FaceClass
         type(HexMesh), intent(in)                                        :: mesh
         class(Face), intent(in)                                          :: f
-        real(kind=RP), dimension(:,:,:), allocatable, intent(out)        :: Q
-        real(kind=RP), dimension(:,:,:), allocatable, intent(out)        :: x
-        integer, intent(out)                                             :: faceIndex
+        real(kind=RP), dimension(NCONS), intent(out)                     :: Q
+        real(kind=RP), dimension(NDIM), intent(out)                      :: x
+        integer, intent(in)                                              :: i, j
+        integer, intent(in)                                              :: faceIndex
 !       Local variables
-        integer                                                         :: eID, solIndex
+        integer                                                          :: eID, solIndex, idf
         ! integer                                                         :: faceIndex, eID, solIndex
 
-        allocate( Q(NCONS,0:f % Nf(1),0:f % Nf(2)), x(NDIM,0:f % Nf(1),0:f % Nf(2)) )
-
-        ! use the maxloc line if the compiler doesn't support findloc
-        ! faceIndex = findloc(wallFaceID, f % ID, dim=1)
-        faceIndex = maxloc(merge(1.0, 0.0, wallFaceID == f % ID),dim=1)
         eID = wallElemIds(faceIndex)
         solIndex = wallNormalIndex(faceIndex)
 
         ! select the local coordinate directions of the face base on the definition of axisMap in HexElementConnectivityDefinitions
-        associate ( e => mesh % elements(eID) )
             select case (wallNormalDirection(faceIndex))
             case (1)
-                Q(:,:,:) = e % storage % Q(:,solIndex,:,:)
-                x(:,:,:) = e % geom % x(:,solIndex,:,:)
+                Q = mesh % elements(eID) % storage % Q(:,solIndex,i,j)
+                x = mesh % elements(eID) % geom % x(:,solIndex,i,j)
             case (2)
-                Q(:,:,:) = e % storage % Q(:,:,solIndex,:)
-                x(:,:,:) = e % geom % x(:,:,solIndex,:)
+                Q = mesh % elements(eID) % storage % Q(:,i,solIndex,j)
+                x = mesh % elements(eID) % geom % x(:,i,solIndex,j)
             case (3)
-                Q(:,:,:) = e % storage % Q(:,:,:,solIndex)
-                x(:,:,:) = e % geom % x(:,:,:,solIndex)
-            case default
-               write(STD_OUT,'(A)') "Error: wallNormalDirection not found in axisMap"
-               errorMessage(STD_OUT)
-               error stop 
+                Q = mesh % elements(eID) % storage % Q(:,i,j,solIndex)
+                x = mesh % elements(eID) % geom % x(:,i,j,solIndex)
+            
+            !TODO: this error should be moved and checked in initialisation
+            !case default
+            !   write(STD_OUT,'(A)') "Error: wallNormalDirection not found in axisMap"
+            !   errorMessage(STD_OUT)
+            !   error stop 
+            
             end select
-        end associate
 
     End Subroutine WallGetFaceConnectedQ
 
@@ -346,7 +306,8 @@ Module WallFunctionConnectivity  !
 !       ---------------
 !
         integer                                         :: fIndex, fID, i, j, fInd
-        real(kind=RP), dimension(:,:,:), allocatable    :: Q, x
+        real(kind=RP), dimension(NCONS)                 :: Q
+        real(kind=RP), dimension(NDIM)                  :: x
         real(kind=RP)                                   :: invRho
         real(kind=RP), dimension(NDIM)                  :: localV
         logical                                         :: saveLocal
@@ -354,19 +315,20 @@ Module WallFunctionConnectivity  !
         ! create separate to set initial conditions
         if (.not. useAverageV) return
 
+        !$acc parallel loop gang async(1) present(mesh) firstprivate(dt) copyin(timeCont) copyout(timeCont)
         do fIndex = 1, size(wallFaceID)
             fID = wallFaceID(fIndex)
-            associate( f => mesh%faces(fID) )
-                call WallGetFaceConnectedQ(mesh, f, Q, x, fInd)
-                do j = 0, f % Nf(2)
-                    do i = 0, f % Nf(1)
-                        invRho = 1.0_RP / Q(IRHO,i,j)
-                        localV(:) = Q(IRHOU:IRHOW,i,j) * invRho
-                        meanVelocity(:,fIndex,i,j) = ( (meanVelocity(:,fIndex,i,j) * timeCont) + localV(:) * dt ) / (timeCont+dt)
-                    end do
+            !$acc loop vector collapse(2) private(Q, x, localV)
+            do j = 0, mesh % faces(fID) % Nf(2)
+                do i = 0, mesh % faces(fID) % Nf(1)
+                    call WallGetFaceConnectedQ(mesh, mesh%faces(fID), Q, x, fInd, i, j)
+                    invRho = 1.0_RP / Q(IRHO)
+                    localV(:) = Q(IRHOU:IRHOW) * invRho
+                    meanVelocity(:,fIndex,i,j) = ( (meanVelocity(:,fIndex,i,j) * timeCont) + localV(:) * dt ) / (timeCont+dt)
                 end do
-            end associate
+            end do
         end do 
+        !$acc end parallel loop 
 
         timeCont = timeCont + dt
 
@@ -383,7 +345,8 @@ Module WallFunctionConnectivity  !
 !       ---------------
 !
         integer                                         :: fIndex, fID, i, j, fInd
-        real(kind=RP), dimension(:,:,:), allocatable    :: Q, x
+        real(kind=RP), dimension(NCONS)                 :: Q
+        real(kind=RP), dimension(NDIM)                  :: x        
         real(kind=RP)                                   :: invRho
         real(kind=RP), dimension(NDIM)                  :: localV
         logical                                         :: saveLocal
@@ -394,11 +357,11 @@ Module WallFunctionConnectivity  !
         do fIndex = 1, size(wallFaceID)
             fID = wallFaceID(fIndex)
             associate( f => mesh%faces(fID) )
-                call WallGetFaceConnectedQ(mesh, f, Q, x, fInd)
                 do j = 0, f % Nf(2)
                     do i = 0, f % Nf(1)
-                        invRho = 1.0_RP / Q(IRHO,i,j)
-                        localV(:) = Q(IRHOU:IRHOW,i,j) * invRho
+                        call WallGetFaceConnectedQ(mesh, f, Q, x, fInd, i, j)
+                        invRho = 1.0_RP / Q(IRHO)
+                        localV(:) = Q(IRHOU:IRHOW) * invRho
                         meanVelocity(:,fIndex,i,j) = localV(:)
                     end do
                 end do

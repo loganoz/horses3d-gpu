@@ -4491,11 +4491,9 @@ slavecoord:             DO l = 1, 4
          !$acc enter data copyin(self % faces(iFace) % storage(1) % U_z)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % U_z)
 
-
          !$acc enter data copyin(self % faces(iFace) % storage(1) % Q_aux)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % Q_aux)
         
-
          !$acc enter data copyin(self % faces(iFace) % storage(1) % mu_NS)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % mu_NS)
          !$acc enter data copyin(self % faces(iFace) % storage(1) % u_tau_NS)
