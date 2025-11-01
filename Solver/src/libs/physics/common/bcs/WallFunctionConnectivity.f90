@@ -31,7 +31,7 @@ Module WallFunctionConnectivity  !
 !  Public definitions
 !  ******************
 !
-    public Initialize_WallConnection, WallUpdateMeanV, WallStartMeanV, WallGetFaceConnectedQ
+    public Initialize_WallConnection, WallUpdateMeanV, WallStartMeanV, WallGetFaceConnectedQ, meanVelocity
 !
 
     logical                                                          :: useWallFunc
@@ -251,7 +251,7 @@ Module WallFunctionConnectivity  !
 
     End subroutine getNormalIndex
 
-    Subroutine WallGetFaceConnectedQ(mesh,f,Q,x,faceIndex, i, j)
+    Subroutine WallGetFaceConnectedQ(mesh,f,Q,x,faceIndex,i,j)
         !$acc routine seq
 !     *******************************************************************
 !        This subroutine get the flow solution of the neighbour element
@@ -321,7 +321,7 @@ Module WallFunctionConnectivity  !
             !$acc loop vector collapse(2) private(Q, x, localV)
             do j = 0, mesh % faces(fID) % Nf(2)
                 do i = 0, mesh % faces(fID) % Nf(1)
-                    call WallGetFaceConnectedQ(mesh, mesh%faces(fID), Q, x, fInd, i, j)
+                    call WallGetFaceConnectedQ(mesh, mesh%faces(fID), Q, x, fIndex, i, j)
                     invRho = 1.0_RP / Q(IRHO)
                     localV(:) = Q(IRHOU:IRHOW) * invRho
                     meanVelocity(:,fIndex,i,j) = ( (meanVelocity(:,fIndex,i,j) * timeCont) + localV(:) * dt ) / (timeCont+dt)
@@ -359,7 +359,7 @@ Module WallFunctionConnectivity  !
             associate( f => mesh%faces(fID) )
                 do j = 0, f % Nf(2)
                     do i = 0, f % Nf(1)
-                        call WallGetFaceConnectedQ(mesh, f, Q, x, fInd, i, j)
+                        call WallGetFaceConnectedQ(mesh, f, Q, x, fIndex, i, j)
                         invRho = 1.0_RP / Q(IRHO)
                         localV(:) = Q(IRHOU:IRHOW) * invRho
                         meanVelocity(:,fIndex,i,j) = localV(:)

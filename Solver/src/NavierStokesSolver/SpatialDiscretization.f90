@@ -1625,6 +1625,7 @@ module SpatialDiscretization
       USE RiemannSolvers_NS
       use WallFunctionBC
       use WallFunctionConnectivity
+      use WallFunctionDefinitions, only: useAverageV
       IMPLICIT NONE
 !
 !     ---------
@@ -1639,7 +1640,7 @@ module SpatialDiscretization
 !     ---------------
 !
       INTEGER                         :: i, j, eq
-      INTEGER                         :: nZones, zoneID, zonefID, fID, faceID_wm
+      INTEGER                         :: nZones, zoneID, zonefID, fID
       INTEGER                         :: fID_zoneStart , faceID_wm
       INTEGER                         :: Sidearray(2)
       REAL(KIND=RP)                   :: dWall, V(3), Vavg(3), mu, Q(NCONS), kappa, x(3), utau
@@ -1669,12 +1670,11 @@ module SpatialDiscretization
                   call get_laminar_mu_kappa(Q,mu,kappa)
                   dWall = norm2(x - mesh % faces(fID) % geom % x(:,i,j))
 
-                  !if (useAverageV) then
-                  !   Vavg(:,:,:) = meanVelocity(:,fInd,:,:)
-                     ! Vavg = reshape( meanVelocity(:,fInd,0:f%Nf(1),0:f%Nf(2)), /NDIM,0:f%Nf(1),0:f%Nf(2)/ )
-                  !else
+                  if (useAverageV) then
+                     Vavg = meanVelocity(:,faceID_wm,i,j)
+                  else
                      Vavg = 0.0_RP
-                  !end if 
+                  end if 
                   utau = mesh % faces(fID) % storage(1) % u_tau_NS(i,j)
                   call WallViscousFlux(V, dWall, mesh % faces(fID) % geom % normal(:,i,j), Q(IRHO), &
                                        mu, Vavg, mesh % faces(fID) % storage(2) % FStar(:,i,j), &

@@ -732,7 +732,9 @@
 !
 !        Update wall avg
 !        ---------------
+         !$acc wait
          if (useAverageV) call WallUpdateMeanV(sem % mesh, dt)
+         !$acc wait
 !
 !        Integration of particles
 !        ------------------------
