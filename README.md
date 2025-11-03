@@ -101,6 +101,19 @@ The following external routines/libraries can be used with **HORSES3D**, but are
     export HDF5_DIR=path_to_hdf5
     ```
 
+## IMPORTANT NOTE ON THE GPU VERSION
 
+The GPU version of horses3d is in beta version and not all the functionalities from the main branch are available here. 
+Only Navier Stokes *.ns and Multiphase *.mu solvers are available here. Additionally, the next control file keywords do not work here: 
+
+Flow equations         = "Euler"
+Gradient Variables     = Energy
+viscous discretization = BR2
+viscous discretization = IP
+
+The next Riemman solvers are 4-5 times slower than Roe Riemman solver:
+
+Low dissipation Roe
+Matrix dissipation
 
 
