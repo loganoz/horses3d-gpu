@@ -943,11 +943,13 @@ contains
         do jj = 1, self%turbine_t(kk)%num_blades
              do ii = 1, self%turbine_t(kk)%num_blade_sections
      
-                 self%turbine_t(kk)%blade_t(jj)%local_thrust(ii)=self%turbine_t(kk)%blade_t(jj)%local_thrust(ii)+self%turbine_t(kk)%blade_t(jj)%local_thrust_temp(ii)/self%turbine_t(kk)%blade_t(jj)%local_gaussian_sum(ii)
-                 self%turbine_t(kk)%blade_t(jj)%local_rotor_force(ii)=self%turbine_t(kk)%blade_t(jj)%local_rotor_force(ii)+self%turbine_t(kk)%blade_t(jj)%local_rotor_force_temp(ii)/self%turbine_t(kk)%blade_t(jj)%local_gaussian_sum(ii)
-                 self%turbine_t(kk)%blade_t(jj)%local_angle(ii)=self%turbine_t(kk)%blade_t(jj)%local_angle(ii)+self%turbine_t(kk)%blade_t(jj)%local_angle_temp(ii)/self%turbine_t(kk)%blade_t(jj)%local_gaussian_sum(ii)
-                 self%turbine_t(kk)%blade_t(jj)%local_velocity(ii)=self%turbine_t(kk)%blade_t(jj)%local_velocity(ii)+self%turbine_t(kk)%blade_t(jj)%local_velocity_temp(ii)/self%turbine_t(kk)%blade_t(jj)%local_gaussian_sum(ii)
-                 self%turbine_t(kk)%blade_t(jj)%local_Re(ii)=self%turbine_t(kk)%blade_t(jj)%local_Re(ii)+self%turbine_t(kk)%blade_t(jj)%local_Re_temp(ii)/self%turbine_t(kk)%blade_t(jj)%local_gaussian_sum(ii)
+                 if (abs(self%turbine_t(kk)%blade_t(jj)%local_gaussian_sum(ii)) > epsilon(1.0_RP)) then
+                    self%turbine_t(kk)%blade_t(jj)%local_thrust(ii)=self%turbine_t(kk)%blade_t(jj)%local_thrust(ii)+self%turbine_t(kk)%blade_t(jj)%local_thrust_temp(ii)/self%turbine_t(kk)%blade_t(jj)%local_gaussian_sum(ii)
+                    self%turbine_t(kk)%blade_t(jj)%local_rotor_force(ii)=self%turbine_t(kk)%blade_t(jj)%local_rotor_force(ii)+self%turbine_t(kk)%blade_t(jj)%local_rotor_force_temp(ii)/self%turbine_t(kk)%blade_t(jj)%local_gaussian_sum(ii)
+                    self%turbine_t(kk)%blade_t(jj)%local_angle(ii)=self%turbine_t(kk)%blade_t(jj)%local_angle(ii)+self%turbine_t(kk)%blade_t(jj)%local_angle_temp(ii)/self%turbine_t(kk)%blade_t(jj)%local_gaussian_sum(ii)
+                    self%turbine_t(kk)%blade_t(jj)%local_velocity(ii)=self%turbine_t(kk)%blade_t(jj)%local_velocity(ii)+self%turbine_t(kk)%blade_t(jj)%local_velocity_temp(ii)/self%turbine_t(kk)%blade_t(jj)%local_gaussian_sum(ii)
+                    self%turbine_t(kk)%blade_t(jj)%local_Re(ii)=self%turbine_t(kk)%blade_t(jj)%local_Re(ii)+self%turbine_t(kk)%blade_t(jj)%local_Re_temp(ii)/self%turbine_t(kk)%blade_t(jj)%local_gaussian_sum(ii)
+                 end if
      
              enddo
          enddo
