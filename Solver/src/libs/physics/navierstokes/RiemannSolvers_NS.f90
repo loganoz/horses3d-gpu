@@ -702,9 +702,11 @@ module RiemannSolvers_NS
          end select
 
          stab = 0.0_RP
-         do l = 1, 5
-            stab = stab + 0.5_RP * alpha(l) * abs(lambda(i)) * K(:,l)
-         end do
+         stab = stab + 0.5_RP * alpha(1) * abs(lambda(1)) * K(:,1)
+         stab = stab + 0.5_RP * alpha(2) * abs(lambda(2)) * K(:,2)
+         stab = stab + 0.5_RP * alpha(3) * abs(lambda(3)) * K(:,3)
+         stab = stab + 0.5_RP * alpha(4) * abs(lambda(4)) * K(:,4)
+         stab = stab + 0.5_RP * alpha(5) * abs(lambda(5)) * K(:,5)
 !
 !        Compute the flux: apply the lambda stabilization here.
 !        ----------------
@@ -742,7 +744,7 @@ module RiemannSolvers_NS
          real(kind=RP)  :: dQ(5)
          real(kind=RP)  :: a_bar, h_bar
          real(kind=RP)  :: R1(5,5), T(5), Lambda(5)
-         real(kind=RP)  :: stab(5)
+         real(kind=RP)  :: stab(5), temp
          real(kind=RP)  :: rhoLogMean, betaLogMean, pMean, uMean, vMean, wMean, V2abs
          real(kind=RP)  :: uL, vL, wL, uR, vR, wR, vtotL, vtotR, pL, pR
          real(kind=RP)  :: invRhoL, invRhoR
@@ -752,7 +754,7 @@ module RiemannSolvers_NS
 !        Perform the rotation
 !        ********************
 !
-         !$acc loop vector collapse(2) private(QLRot, QRRot, EVL, EVR, dQ, R1, T, Lambda, stab)
+         !$acc loop vector collapse(2) private(QLRot, QRRot, EVL, EVR, dQ, R1, T, Lambda, stab, temp)
          do j = 0, Ny
          do i = 0, Nx  
          
@@ -847,10 +849,18 @@ module RiemannSolvers_NS
          end select
 
          stab = 0.0_RP
-         do l = 1, 5
-            do m = 1, 5 ; do n = 1, 5
-               stab(l) = stab(l) + 0.5_RP * R1(l,m) * lambda(m) * T(m) * R1(n,m) * (EVR(n) - EVL(n))
-            end do      ; end do
+!
+!        Optimize triple nested loop by factoring out inner computation
+!        This reduces O(n³) to O(n²) and improves GPU performance
+!        ---------------------------------------------------------------
+         do m = 1, 5
+            temp = 0.0_RP
+            do n = 1, 5
+               temp = temp + R1(n,m) * (EVR(n) - EVL(n))
+            end do
+            do l = 1, 5
+               stab(l) = stab(l) + 0.5_RP * R1(l,m) * lambda(m) * T(m) * temp
+            end do
          end do
 !
 !        Compute the flux: apply the lambda stabilization here.
@@ -998,9 +1008,11 @@ module RiemannSolvers_NS
          end select
 
          stab = 0.0_RP
-         do l = 1, 5
-            stab = stab + 0.5_RP * alpha(l) * abs(lambda(l)) * K(:,l)
-         end do
+         stab = stab + 0.5_RP * alpha(1) * abs(lambda(1)) * K(:,1)
+         stab = stab + 0.5_RP * alpha(2) * abs(lambda(2)) * K(:,2)
+         stab = stab + 0.5_RP * alpha(3) * abs(lambda(3)) * K(:,3)
+         stab = stab + 0.5_RP * alpha(4) * abs(lambda(4)) * K(:,4)
+         stab = stab + 0.5_RP * alpha(5) * abs(lambda(5)) * K(:,5)
 !
 !        Compute the flux: apply the lambda stabilization here.
 !        ----------------
@@ -1200,9 +1212,11 @@ module RiemannSolvers_NS
          end select
 
          stab = 0.0_RP
-         do l = 1, 5
-            stab = stab + 0.5_RP * alpha(l) * abs(lambda(l)) * K(:,l)
-         end do
+         stab = stab + 0.5_RP * alpha(1) * abs(lambda(1)) * K(:,1)
+         stab = stab + 0.5_RP * alpha(2) * abs(lambda(2)) * K(:,2)
+         stab = stab + 0.5_RP * alpha(3) * abs(lambda(3)) * K(:,3)
+         stab = stab + 0.5_RP * alpha(4) * abs(lambda(4)) * K(:,4)
+         stab = stab + 0.5_RP * alpha(5) * abs(lambda(5)) * K(:,5)
 !
 !        Compute the flux: apply the lambda stabilization here.
 !        ----------------
