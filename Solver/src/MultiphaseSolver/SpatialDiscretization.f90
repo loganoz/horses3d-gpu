@@ -1671,8 +1671,8 @@ module SpatialDiscretization
                eID = mesh % MLRK % MLIter_eID_MPI(iEl)
                call Laplacian_FacesContribution(mesh, eID)  
 
-               do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
-                  e % storage % QDot(:,i,j,k) = e % storage % QDot(:,i,j,k) / e % geom % jacobian(i,j,k)
+               do k = 0, eID % Nxyz(3) ; do j = 0, eID % Nxyz(2) ; do i = 0, eID % Nxyz(1)
+                  eID % storage % QDot(:,i,j,k) = eID % storage % QDot(:,i,j,k) / eID % geom % jacobian(i,j,k)
                end do         ; end do          ; end do
                end associate
             end do
