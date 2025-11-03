@@ -342,7 +342,19 @@ jobs:
 # 1) CYLINDER
 # -----------
 
- 
+      - name: Build NSCylinder
+        working-directory: ./Solver/test/NavierStokes/Cylinder/SETUP
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+        if: '!cancelled()'
+
+      - name: Run NSCylinder
+        working-directory: ./Solver/test/NavierStokes/Cylinder
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 8 ./horses3d.ns Cylinder.control
+        if: '!cancelled()'  
 
 #
 # 2) CYLINDER IP
@@ -455,9 +467,26 @@ jobs:
           mpiexec -n 8 ./horses3d.ns CylinderVreman.control
         if: '!cancelled()'
 
+#
+# 8) CYLINDER ChandrasekarRoe
+# ------------------
+
+      - name: Build NSCylinderChandrasekarRoe
+        working-directory: ./Solver/test/NavierStokes/CylinderChandrasekarRoe/SETUP
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+        if: '!cancelled()'
+
+      - name: Run NSCylinderChandrasekarRoe
+        working-directory: ./Solver/test/NavierStokes/CylinderChandrasekarRoe
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 8 ./horses3d.ns CylinderChandrasekarRoe.control
+        if: '!cancelled()'
 
 #
-# 8) TAYLOR GREEN VORTEX
+# 9) TAYLOR GREEN VORTEX
 # ----------------------
 
       - name: Build TaylorGreen
@@ -475,7 +504,7 @@ jobs:
         if: '!cancelled()'
 
 #
-# 9) TAYLOR GREEN VORTEX KEP BR2
+# 10) TAYLOR GREEN VORTEX KEP BR2
 # -----------------------------
 # GPU
       # - name: Build TaylorGreenKEP_BR2
@@ -493,7 +522,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 10) TAYLOR GREEN VORTEX KEPEC IP
+# 11) TAYLOR GREEN VORTEX KEPEC IP
 # -------------------------------
 
   #GPU
@@ -512,7 +541,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 11) CYLINDER FAS
+# 12) CYLINDER FAS
 # ---------------
 
   #GPU
@@ -529,7 +558,7 @@ jobs:
       #     mpiexec -n 8 ./horses3d.ns CylinderFAS.control
 
 #
-# 12) CYLINDER IP+BDF2
+# 13) CYLINDER IP+BDF2
 # -------------------
 
       #Deactivated because a mismatch in the accuracy
@@ -542,7 +571,7 @@ jobs:
       #  run: mpiexec -n 8 ./horses3d.ns CylinderIP_BDF2.control
 
 #
-# 13) CYLINDER DIFFERENT ORDERS
+# 14) CYLINDER DIFFERENT ORDERS
 # ----------------------------
 #GPU
       # - name: Build NSCylinderDifferentOrders
@@ -560,7 +589,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 14) ENTROPY CONSERVING TEST
+# 15) ENTROPY CONSERVING TEST
 # ----------------------------
 # GPU
       # - name: Build EntropyConservingTest
@@ -578,7 +607,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 15) ENERGY CONSERVING TEST
+# 16) ENERGY CONSERVING TEST
 # ----------------------------
 
   # GPU
@@ -597,7 +626,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 16) NACA0012 Steady
+# 17) NACA0012 Steady
 # ----------------------------
 
   # GPU
@@ -616,7 +645,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 17) NACA0012 Unsteady Dual Time Stepping
+# 18) NACA0012 Unsteady Dual Time Stepping
 # ----------------------------
 
       - name: Build DualTimeStepping
@@ -634,7 +663,7 @@ jobs:
         if: '!cancelled()'
 
 #
-# 18) Manufactured Solution for Spalart-Almaras
+# 19) Manufactured Solution for Spalart-Almaras
 # ----------------------------
 
 #      - name: Build ManufacturedSolutionsSA
@@ -650,7 +679,7 @@ jobs:
 #          mpiexec -n 8 ./horses3d.nssa MSSA.control
 
 #
-# 19) Flat-Plate test case for Spalart-Almaras
+# 20) Flat-Plate test case for Spalart-Almaras
 # ----------------------------
 
 #      - name: Build FlatPlateSA
@@ -666,7 +695,7 @@ jobs:
 #          mpiexec -n 8 ./horses3d.nssa FlatPlate.control
 
 #
-# 20) Numerical Jacobian for BIRK5
+# 21) Numerical Jacobian for BIRK5
 # --------------------------------
 
 # Does not work with this setup 02/01/2023
@@ -681,7 +710,7 @@ jobs:
 #          source /opt/intel/oneapi/setvars.sh || true
 #          mpiexec -n 8 ./horses3d.ns Cylinder.control
 #
-# 21) Forward facing step with SVV
+# 22) Forward facing step with SVV
 # --------------------------------
 
   # GPU
@@ -700,7 +729,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 20) Forward facing step with SSPRK33 and limiter
+# 23) Forward facing step with SSPRK33 and limiter
 # ------------------------------------------------
 
   # GPU
@@ -719,7 +748,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 21) Forward facing step with SSPRK43
+# 24) Forward facing step with SSPRK43
 # ------------------------------------
   # GPU
       # - name: Build ForwardFacingStep_SSPRK43
@@ -737,7 +766,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 22) Taylor-Green vortex with SVV-LES
+# 25) Taylor-Green vortex with SVV-LES
 # ------------------------------------
 
 # GPU  
@@ -756,7 +785,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 23) IBM CYLINDER 
+# 26) IBM CYLINDER 
 # -------------------
 
       - name: Build IBM_Cylinder
@@ -774,7 +803,7 @@ jobs:
         if: '!cancelled()'
           
 #
-# 24) Mach 2 cylinder with GMM shock capturing
+# 27) Mach 2 cylinder with GMM shock capturing
 # --------------------------------------------
 # GPU
       # - name: Build CylinderGMM
@@ -792,7 +821,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 25) Cylinder with Reinforcement Learning p-adaptation
+# 28) Cylinder with Reinforcement Learning p-adaptation
 # --------------------------------------------
 # GPU
       # - name: Build Cylinder_pAdaptationRL
@@ -810,7 +839,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 26) IBM Cylinder with Reinforcement Learning p-adaptation
+# 29) IBM Cylinder with Reinforcement Learning p-adaptation
 # --------------------------------------------
 # GPU
       # - name: Build IBM_Cylinder_pAdaptationRL
@@ -828,7 +857,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 27) Cylinder with Overenriching and Reinforcement Learning p-adaptation
+# 30) Cylinder with Overenriching and Reinforcement Learning p-adaptation
 # --------------------------------------------
 # GPU
       # - name: Build Cylinder_Overenriching_pAdaptationRL
@@ -846,7 +875,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 28) Cylinder with Euler-RK3 hybrid temporal scheme and Reinforcement Learning p-adaptation
+# 31) Cylinder with Euler-RK3 hybrid temporal scheme and Reinforcement Learning p-adaptation
 # --------------------------------------------
 # GPU
       # - name: Build EulerRK3_pAdaptationRL
@@ -864,7 +893,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 29) Cylinder with acoustics and Reinforcement Learning p-adaptation
+# 32) Cylinder with acoustics and Reinforcement Learning p-adaptation
 # --------------------------------------------
 # GPU
       # - name: Build Cylinder_acoustics_pAdaptationRL
@@ -882,7 +911,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 30) Virtual surfaces with acoustics and Reinforcement Learning p-adaptation
+# 33) Virtual surfaces with acoustics and Reinforcement Learning p-adaptation
 # --------------------------------------------
 # This test case only runs with gfortran as we do not support hdf5 with ifort in the github actions
 # HDF5 is not activated in Github when parallel mode is used
@@ -900,7 +929,7 @@ jobs:
       #     mpiexec -n 64 ./horses3d.ns virtualSurfaces_acoustics_pAdaptationRL.control
       #   if: ('!cancelled()' && matrix.compiler == 'gfortran')
       #
-# 31) Actuator Line (AL) Interpolation formulation
+# 34) Actuator Line (AL) Interpolation formulation
 # --------------------------------------------
 # GPU
       # - name: Build AL_interpolation
@@ -919,7 +948,7 @@ jobs:
 
 
 #
-# 32) Actuator Line (AL) projection formulation
+# 35) Actuator Line (AL) projection formulation
 # --------------------------------------------
 # GPU
       # - name: Build AL_projection
@@ -937,7 +966,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 33) Cylinder with Adaptive Time Step and Reinforcement Learning p-adaptation
+# 36) Cylinder with Adaptive Time Step and Reinforcement Learning p-adaptation
 # --------------------------------------------
 # GPU
       # - name: Build Cylinder_AdaptiveTimeStep_pAdaptationRL
@@ -955,7 +984,7 @@ jobs:
       #   if: '!cancelled()'
 
 #
-# 34) Atmospheric Boundary Layer (ABL) mapping to boundary
+# 37) Atmospheric Boundary Layer (ABL) mapping to boundary
 # --------------------------------------------
 # GPU
       # - name: Build ABL_BoundaryMapping
@@ -981,7 +1010,7 @@ jobs:
       #   if: '!cancelled()'
       
 #
-# 35) Actuator Line (AL) external controller module
+# 38) Actuator Line (AL) external controller module
 # --------------------------------------------
 # GPU
       # - name: Build ActuatorLineController

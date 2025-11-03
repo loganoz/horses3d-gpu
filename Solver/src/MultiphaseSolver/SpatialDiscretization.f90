@@ -150,6 +150,16 @@ module SpatialDiscretization
 
                end select
 
+               use_non_constant_speed_of_sound = controlVariables % ContainsKey(FLUID1_COMPRESSIBILITY_KEY)
+               if ( MPI_Process % isRoot ) then
+                  if(use_non_constant_speed_of_sound) then
+                     write(STD_OUT,'(A)') "  Implementing artificial compressibility with a non-constant speed of sound in each phase"
+                  else
+                     write(STD_OUT,'(A)') "  Implementing artificial compressibility with a constant ACM factor in each phase"
+                  endif
+               end if
+
+               
                call ViscousDiscretization % Construct(controlVariables, ELLIPTIC_MU)
                call ViscousDiscretization % Describe
                call ViscousDiscretization % CreateDeviceData
@@ -376,6 +386,7 @@ module SpatialDiscretization
 #ifdef _HAS_MPI_
 !$omp single
          call HexMesh_UpdateMPIFacesGradients(mesh, NCOMP)
+         call HexMesh_GatherMPIFacesGradients(mesh, NCOMP)
 !$omp end single
 #endif
 !
@@ -1653,11 +1664,17 @@ module SpatialDiscretization
 !           ***********************************************************
 !           Surface integrals and scaling of elements with shared faces
 !           ***********************************************************
+
 !$omp do schedule(runtime) private(eID)  
 !$acc parallel loop gang vector_length(128) present(mesh, mesh % MLRK) copyin(locLevel) async(1) 
             do iEl = 1, mesh % MLRK % MLIter(locLevel,6)
                eID = mesh % MLRK % MLIter_eID_MPI(iEl)
                call Laplacian_FacesContribution(mesh, eID)  
+
+               do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
+                  e % storage % QDot(:,i,j,k) = e % storage % QDot(:,i,j,k) / e % geom % jacobian(i,j,k)
+               end do         ; end do          ; end do
+               end associate
             end do
 !$acc end parallel loop     
 !$omp end do

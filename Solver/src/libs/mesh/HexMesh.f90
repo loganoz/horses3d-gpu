@@ -1352,6 +1352,7 @@ slavecoord:             DO l = 1, 4
                fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
                faceSize = (self % faces(fID) % Nf(2) + 1) * (self % faces(fID) % Nf(1) + 1) * nEqn  ! Total size of the face data block
+
                !!$acc loop vector collapse(3)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1) ; do m = 1, nEqn 
                   linear_idx = ((mpifID - 1) * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
@@ -1456,6 +1457,7 @@ slavecoord:             DO l = 1, 4
                fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
                faceSize = (self % faces(fID) % Nf(2) + 1) * (self % faces(fID) % Nf(1) + 1) * nEqn  ! Total size of the face data block
+
 
                !!$acc loop vector collapse(3)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1) ; do m = 1, nEqn     
@@ -1723,6 +1725,7 @@ slavecoord:             DO l = 1, 4
                fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
                faceSize = (self % faces(fID) % Nf(2) + 1) * (self % faces(fID) % Nf(1) + 1) * nEqn  ! Total size of the face data block
+
                !!$acc loop vector collapse(3)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)  ; do m = 1, nEqn
                   linear_idx = ((mpifID - 1) * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
