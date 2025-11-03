@@ -744,7 +744,7 @@ module RiemannSolvers_NS
          real(kind=RP)  :: dQ(5)
          real(kind=RP)  :: a_bar, h_bar
          real(kind=RP)  :: R1(5,5), T(5), Lambda(5)
-         real(kind=RP)  :: stab(5), temp
+         real(kind=RP)  :: stab(5), temp  ! temp: factored computation for GPU optimization
          real(kind=RP)  :: rhoLogMean, betaLogMean, pMean, uMean, vMean, wMean, V2abs
          real(kind=RP)  :: uL, vL, wL, uR, vR, wR, vtotL, vtotR, pL, pR
          real(kind=RP)  :: invRhoL, invRhoR
@@ -853,6 +853,11 @@ module RiemannSolvers_NS
 !        Optimize triple nested loop by factoring out inner computation
 !        This reduces O(n³) to O(n²) and improves GPU performance
 !        ---------------------------------------------------------------
+!        Original: stab(l) = Σ_m Σ_n [0.5 * R1(l,m) * lambda(m) * T(m) * R1(n,m) * (EVR(n)-EVL(n))]
+!        Factored: temp(m) = Σ_n [R1(n,m) * (EVR(n)-EVL(n))]
+!                  stab(l) = Σ_m [0.5 * R1(l,m) * lambda(m) * T(m) * temp(m)]
+!        This reduces operations from 125 to 50 per grid point (60% reduction)
+!
          do m = 1, 5
             temp = 0.0_RP
             do n = 1, 5
