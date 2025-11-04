@@ -24,7 +24,7 @@ public initializeChannel, updateChannel, channelSource
 
       logical                    :: channelIsActive
 
-!     Paramaters
+!     Parameters
 !     ----------
       real(kind=RP), parameter :: alpha    =  0.9_RP
 
