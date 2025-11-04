@@ -183,7 +183,7 @@ contains
 !$acc parallel loop gang vector_length(128) present(mesh) async(1) private(dp_vals)
          do eID = 1, mesh % no_of_elements
             !$acc loop vector collapse(3) reduction(max:dpdx,dpdy,dpdz)
-            do k = 0, mesh % elements(eID) % Nxyz(1) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
+            do k = 0, mesh % elements(eID) % Nxyz(3) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
 
                 rho = mesh % elements(eID) % storage % Q(IRHO,i,j,k)
                 Su = f_x(1) * rho + f_x(2)
