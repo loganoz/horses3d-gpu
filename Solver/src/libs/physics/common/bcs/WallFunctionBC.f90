@@ -36,9 +36,8 @@ MODULE WallFunctionBC
       ! minimum value, flux is set to zero to avoid numerical issues. 
 
    SUBROUTINE WallViscousFlux (U_inst, dWall, nHat, rho, mu, U_avg, visc_flux, u_tau)
-
-      use WallFunctionDefinitions, only: useAverageV
-
+      !$acc routine seq
+      USE WallFunctionDefinitions, ONLY: useAverageV, wallFuncIndex, STD_WALL, ABL_WALL
       IMPLICIT NONE
 
       REAL(kind=RP) , INTENT(IN)     :: U_inst(NDIM)       ! Instantaneous velocity from LES solver
@@ -58,7 +57,7 @@ MODULE WallFunctionBC
       REAL(kind=RP)                  :: u_II               ! Velocity magnitude parallel to wall, used in Wall Function
       REAL(kind=RP)                  :: tau_w              ! Wall shear stress
       REAL(kind=RP)                  :: beta               ! damping factor from Thomas et. al
-
+   
       if (useAverageV) then
           U_ref = U_avg
       else
@@ -71,6 +70,7 @@ MODULE WallFunctionBC
 
       ! Wall model only modifies momentum viscous fluxes. 
       call wall_shear(u_II, dWall, rho, mu, tau_w, u_tau)
+
       ! visc_flux(IRHOU:IRHOW) = - tau_w_f (u_II,dWall,rho,mu) * x_II 
       if (useAverageV) then
           u_parallel_aux = U_inst - (dot_product(U_inst, nHat) * nHat)
@@ -78,16 +78,16 @@ MODULE WallFunctionBC
           ! beta = 0.3_RP ! thomas arbitrary value. If set to 0.0_RP, the schuman eq is recovered
           ! x_II = (beta * u_parallel_aux + (1-beta) * u_parallel) / u_II ! thomas, the direction scales with both the instantaneous and the mean
       end if 
+
       visc_flux(IRHOU:IRHOW) = - tau_w * x_II 
       ! print *, "visc_flux: ", visc_flux
 
    END SUBROUTINE 
-!   
+!     
 !------------------------------------------------------------------------------------------------------------------------
 !
-   ! FUNCTION tau_w_f (u_II, y, rho, mu)
    SUBROUTINE wall_shear(u_II, y, rho, mu, tau_w, u_tau)
-      
+      !$acc routine seq
       USE WallFunctionDefinitions, ONLY: wallFuncIndex, STD_WALL, ABL_WALL
       IMPLICIT NONE
 
@@ -121,12 +121,11 @@ MODULE WallFunctionBC
       tau_w = rho * u_tau * u_tau
 
    END SUBROUTINE
-   ! END FUNCTION  
-!   
-!------------------------------------------------------------------------------------------------------------------------
+! 
+!   ------------------------------------------------------------------------------------------------------------------------
 !
    FUNCTION u_tau_f (u_II,y,nu, u_tau0)
-
+      !$acc routine seq
       USE WallFunctionDefinitions, ONLY: newtonTol, newtonAlpha, newtonMaxIter
       ! USE WallFunctionDefinitions, ONLY: newtonTol, newtonAlpha, newtonMaxIter, u_tau0
       IMPLICIT NONE
@@ -147,6 +146,7 @@ MODULE WallFunctionBC
       REAL(kind=RP)                    :: JAC              ! Derivate of objective function evaluated at x0
       REAL(kind=RP)                    :: eps              ! Size of the perturbation to compute numerical der.
       REAL(kind=RP)                    :: alpha            ! Parameter for the damped Newton method
+      REAL(kind=RP)                    :: utau_eps, u_tau_prev            
 
       ! The value of u_tau is found by solving a non linear equation.
       ! The damped Newton method is used. 
@@ -159,17 +159,19 @@ MODULE WallFunctionBC
       DO i = 1, newtonMaxIter
 
          ! Evaluate auxiliary function at u_tau
-         Aux_x0  =   Aux_f ( u_tau      , u_II, y, nu )
+         Aux_x0  =   Aux_f ( u_tau , u_II, y, nu )
 
          ! Compute numerical derivative of auxiliary function at u_tau
          eps     = ABS(u_tau) * 1.0E-8_RP
-         JAC     = ( Aux_f ( u_tau + eps, u_II, y, nu ) - Aux_x0 ) / eps
-
+         utau_eps = u_tau + eps
+         JAC     = ( Aux_f ( utau_eps, u_II, y, nu ) - Aux_x0 ) / eps
          ! Default value for alpha (Newton method)
          alpha = newtonAlpha
+         u_tau_prev = u_tau - Aux_x0 / JAC * alpha
          ! Damped alpha parameter for the Damped Newton method 
-         DO WHILE ( ABS( Aux_x0 ) < ABS( Aux_f(u_tau - Aux_x0 / JAC * alpha, u_II, y, nu ) ) )
+         DO WHILE ( ABS( Aux_x0 ) < ABS( Aux_f(u_tau_prev, u_II, y, nu ) ) )
             alpha = alpha / 2
+            u_tau_prev = u_tau - Aux_x0 / JAC * alpha
          END DO  
 
          ! Damped Newton step
@@ -191,14 +193,15 @@ MODULE WallFunctionBC
 
       END DO
 
-      error stop "DAMPED NEWTON METHOD IN WALL FUNCTION DOES NOT CONVERGE."
+      !error stop "DAMPED NEWTON METHOD IN WALL FUNCTION DOES NOT CONVERGE."
 
    END FUNCTION 
 !   
 !------------------------------------------------------------------------------------------------------------------------
 !
    FUNCTION Aux_f (u_tau, u_II, y, nu)
-
+      !$acc routine seq
+      USE WallFunctionDefinitions, ONLY: kappa, WallC
       IMPLICIT NONE
 
       REAL(kind=RP), INTENT(IN)  :: u_tau
@@ -207,23 +210,27 @@ MODULE WallFunctionBC
       REAL(kind=RP), INTENT(IN)  :: nu
 
       REAL(kind=RP)              :: Aux_f ! (OUT)
-        
+      REAL(kind=RP)              :: yplusf 
+      REAL(kind=RP)              :: u_plusf 
+
       ! Auxiliary function is evaluated at x0
       ! When Aux_f = 0 The definition of the 
       ! dimensionless mean streamwise velocity 
       ! parallel to the wall is recovered and 
       ! a valid value for u_tau is found. 
       ! Aux_f = 0 -> u_II / u_tau = u_plus
+      
+      yplusf = y_plus_f(y, u_tau, nu)
 
-      Aux_f = u_II - u_plus_f ( y_plus_f ( y, u_tau, nu ) ) * u_tau 
+      Aux_f = u_II - u_plus_f(yplusf) * u_tau 
 
    END FUNCTION
 !   
 !------------------------------------------------------------------------------------------------------------------------
 !
-   PURE FUNCTION u_plus_f (y_plus)
-   !$acc routine seq
-      USE WallFunctionDefinitions, ONLY: kappa, WallC
+   FUNCTION u_plus_f (y_plus)
+      !$acc routine seq
+       USE WallFunctionDefinitions, ONLY: kappa, WallC
       IMPLICIT NONE
       ! Definition of u_plus
       ! Reichardt law-of-the-wall (taken from Frere et al 2017 Eq. (3))
@@ -239,7 +246,8 @@ MODULE WallFunctionBC
 !   
 !------------------------------------------------------------------------------------------------------------------------
 !
-   PURE FUNCTION y_plus_f (y, u_tau, nu)
+   FUNCTION y_plus_f (y, u_tau, nu)
+      !$acc routine seq
       ! Definition of y_plus (taken from Frere et al 2017)
 
       REAL(kind=RP), INTENT(IN)  :: y
@@ -255,6 +263,7 @@ MODULE WallFunctionBC
 !------------------------------------------------------------------------------------------------------------------------
 !
    FUNCTION u_tau_f_ABL (u_II,y,nu)
+      !$acc routine seq
       USE WallFunctionDefinitions, ONLY: y0, d, kappa
       IMPLICIT NONE
 

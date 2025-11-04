@@ -48,6 +48,11 @@ Module WallFunctionDefinitions  !
     real(kind=RP)                                             :: kappa, WallC                     ! for either
 
     logical                                                   :: useAverageV = .false.
+    
+    !$acc declare create(useAverageV,y0,d,u_tau0,newtonAlpha,newtonTol,newtonMaxIter,kappa,WallC,wallFuncIndex)
+    !$acc declare copyin(STD_WALL, ABL_WALL, DEFAULT_PLANE_DISPLACEMENT, DEFAULT_VON_KARMAN, DEFAULT_WALL_C, &
+    !$acc & DEFAULT_NEWTON_DAMP, DEFAULT_NEWTON_SEED, DEFAULT_NEWTON_TOL, DEFAULT_NEWTON_INTER)
+!
 
     contains 
 !   
@@ -112,6 +117,8 @@ Module WallFunctionDefinitions  !
 
         !todo: see if there are negative values and return if that's the case
             ! write(STD_OUT,'(A)') "Wall function will not be activated"
+
+        !$acc update device(useAverageV,y0,d,u_tau0,newtonAlpha,newtonTol,newtonMaxIter,kappa,WallC,wallFuncIndex)
 
         ! if it arrives here everything has gone well
         correct = .true.

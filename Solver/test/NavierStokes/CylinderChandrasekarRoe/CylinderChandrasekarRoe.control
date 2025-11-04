@@ -9,31 +9,34 @@ cfl                   = 0.3
 dcfl                  = 0.3
 mach number           = 0.3
 Reynolds number       = 200.0
-interface width (dimensionless) = 2.0
-peclet number = 0.005
 AOA theta             = 0.0
 AOA phi               = 90.0
 solution file name    = "RESULTS/Cylinder.hsol"
 save gradients with solution = .true.
 restart               = .false.
 restart file name     = "RESULTS/Cylinder.hsol"
-riemann solver        = roe
+riemann solver          = Roe
+Discretization nodes    = Gauss-Lobatto
+inviscid discretization = Split-Form
+averaging               = Chandrasekar
+Viscous discretization  = BR1
 
 #define boundary InnerCylinder
-  type = NoSlipWall
+      type = NoSlipWall
 #end
 
-#define boundary bottom__top
-  type = FreeSlipWall
+#define boundary Front__Back__Left
+      type = Inflow
 #end
 
-#define boundary back__left__front
-  type = Inflow
+#define boundary Bottom__Top
+      type = FreeSlipWall
 #end
 
-#define boundary right
-  type = Outflow
+#define boundary Right
+      type = Outflow
 #end
+
 
 #define surface monitor 1
    Name = cyl-drag

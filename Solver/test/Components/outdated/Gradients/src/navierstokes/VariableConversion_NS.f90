@@ -194,6 +194,7 @@ module VariableConversion_NS
       end subroutine getEntropyVariables
 
       pure subroutine getRoeVariables(QL, QR, VL, VR, rho, u, v, w, V2, H, a)
+      !$acc routine seq
 !
 !        ***************************************************
 !           Roe variables are: [rho, u, v, w, H, a]
@@ -214,9 +215,6 @@ module VariableConversion_NS
          real(kind=RP)  :: sqrtRhoL, sqrtRhoR
          real(kind=RP)  :: invSumSqrtRhoLR
 
-         associate(gamma => thermodynamics % gamma, &
-                   gm1   => thermodynamics % gammaMinus1)
-
          sqrtRhoL = sqrt(QL(IRHO))  ; sqrtRhoR = sqrt(QR(IRHO))
          invSumSqrtRhoLR = 1.0_RP / (sqrtRhoL + sqrtRhoR)
 !
@@ -231,9 +229,7 @@ module VariableConversion_NS
          w   = (sqrtRhoL * VL(IPW) + sqrtRhoR * VR(IPW))*invSumSqrtRhoLR
          H   = (sqrtRhoL * HL      + sqrtRhoR * HR     )*invSumSqrtRhoLR
          V2  = POW2(u) + POW2(v) + POW2(w)
-         a   = sqrt(gm1*(H - 0.5_RP * V2))
-
-         end associate
+         a   = sqrt(thermodynamics % gammaMinus1*(H - 0.5_RP * V2))
 
       end subroutine getRoeVariables
 

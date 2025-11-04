@@ -1628,6 +1628,7 @@ module SpatialDiscretization
       USE RiemannSolvers_NS
       use WallFunctionBC
       use WallFunctionConnectivity
+      use WallFunctionDefinitions, only: useAverageV
       IMPLICIT NONE
 !
 !     ---------
@@ -1643,20 +1644,58 @@ module SpatialDiscretization
 !
       INTEGER                         :: i, j, eq
       INTEGER                         :: nZones, zoneID, zonefID, fID
-      integer                         :: Sidearray(2)
+      INTEGER                         :: fID_zoneStart , faceID_wm
+      INTEGER                         :: Sidearray(2)
+      REAL(KIND=RP)                   :: dWall, V(3), Vavg(3), mu, Q(NCONS), kappa, x(3), utau
 !
 !     -------------------
 !     Get external states
 !     -------------------
-!
+!     
+      fID_zoneStart = 0 
+
       nZones = size(mesh % zones)
       do zoneID=1, nZones
          
-         !$acc parallel loop gang present(mesh) async(1)
-         do zonefID = 1, mesh % zones(zoneID) % no_of_faces
-            fID =  mesh % zones(zoneID) % faces(zonefID)
+         if (mesh %zones(zoneID) % useWallFunction) then
+            
+            !$acc parallel loop gang present(mesh) async(1)
+            do zonefID = 1, mesh % zones(zoneID) % no_of_faces
+               fID =  mesh % zones(zoneID) % faces(zonefID)
 
-            call ViscousFlux_selector( NCONS, NGRAD, mesh % faces(fID) % Nf(1), &
+               !$acc loop vector collapse(2) private(Q, V, Vavg, x)
+               do j = 0, mesh % faces(fID) % Nf(2) ;  do i = 0, mesh % faces(fID) % Nf(1)
+                  
+                  faceID_wm = fID_zoneStart + zonefID
+
+                  call WallGetFaceConnectedQ(mesh, mesh % faces(fID), Q, x, faceID_wm, i, j)
+                  V = Q(IRHOU:IRHOW) / Q(IRHO)
+                  call get_laminar_mu_kappa(Q,mu,kappa)
+                  dWall = norm2(x - mesh % faces(fID) % geom % x(:,i,j))
+
+                  if (useAverageV) then
+                     Vavg = meanVelocity(:,faceID_wm,i,j)
+                  else
+                     Vavg = 0.0_RP
+                  end if 
+                  utau = mesh % faces(fID) % storage(1) % u_tau_NS(i,j)
+                  call WallViscousFlux(V, dWall, mesh % faces(fID) % geom % normal(:,i,j), Q(IRHO), &
+                                       mu, Vavg, mesh % faces(fID) % storage(2) % FStar(:,i,j), &
+                                       utau)
+                  mesh % faces(fID) % storage(1) % u_tau_NS(i,j) = utau
+              
+               end do ; end do
+            end do
+            !$acc end parallel loop
+
+            fID_zoneStart = fID_zoneStart + mesh % zones(zoneID) % no_of_faces
+
+         else
+            !$acc parallel loop gang present(mesh) async(1)
+            do zonefID = 1, mesh % zones(zoneID) % no_of_faces
+               fID =  mesh % zones(zoneID) % faces(zonefID)
+
+               call ViscousFlux_selector( NCONS, NGRAD, mesh % faces(fID) % Nf(1), &
                                          mesh % faces(fID) % Nf(2), 0, &
                                          mesh % faces(fID) % storage(1) % Q , &
                                          mesh % faces(fID) % storage(1) % U_x, &
@@ -1665,18 +1704,19 @@ module SpatialDiscretization
                                          mesh % faces(fID) % storage(1) % mu_NS, &
                                          mesh % faces(fID) % storage(1) % unStar)
             
-            !$acc loop vector collapse(2)
-            do j = 0, mesh % faces(fID) % Nf(2) ;  do i = 0, mesh % faces(fID) % Nf(1)
-               !$acc loop seq
-               do eq = 1, NCONS
-                  mesh % faces(fID) % storage(2) % FStar(eq,i,j) = mesh % faces(fID) % storage(1) % unStar(eq,IX,i,j)* mesh % faces(fID) % geom % normal(IX,i,j) &
-                                                                 + mesh % faces(fID) % storage(1) % unStar(eq,IY,i,j)* mesh % faces(fID) % geom % normal(IY,i,j) &
-                                                                 + mesh % faces(fID) % storage(1) % unStar(eq,IZ,i,j)* mesh % faces(fID) % geom % normal(IZ,i,j)
-               enddo
-            enddo ; enddo
 
-         enddo
-         !$acc end parallel loop 
+               !$acc loop vector collapse(2)
+               do j = 0, mesh % faces(fID) % Nf(2) ;  do i = 0, mesh % faces(fID) % Nf(1)
+                  !$acc loop seq
+                  do eq = 1, NCONS
+                     mesh % faces(fID) % storage(2) % FStar(eq,i,j) = mesh % faces(fID) % storage(1) % unStar(eq,IX,i,j)* mesh % faces(fID) % geom % normal(IX,i,j) &
+                                                                    + mesh % faces(fID) % storage(1) % unStar(eq,IY,i,j)* mesh % faces(fID) % geom % normal(IY,i,j) &
+                                                                    + mesh % faces(fID) % storage(1) % unStar(eq,IZ,i,j)* mesh % faces(fID) % geom % normal(IZ,i,j)
+                  end do
+               end do ; end do
+            end do
+            !$acc end parallel loop 
+         end if
 
          CALL BCs(zoneID) % bc % FlowNeumann(mesh, mesh % zones(zoneID))                             
          
@@ -1713,6 +1753,8 @@ module SpatialDiscretization
          enddo
          !$acc end parallel loop 
       enddo
+      
+      !$acc wait
 
       end subroutine computeBoundaryFlux
 
