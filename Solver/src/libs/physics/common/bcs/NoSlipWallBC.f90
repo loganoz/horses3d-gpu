@@ -727,7 +727,7 @@ module NoSlipWallBCClass
 !        ---------------
 !  
          real(kind=RP), parameter   :: MIN_ = 1.0e-1_RP
-         real(kind=RP)              :: prod, Q(NCOMP)
+         real(kind=RP)              :: prod, Q(NCONS)
          integer                    :: i,j,zonefID,fID
 
          !$acc parallel loop gang present(mesh, self, zone) private(fID) async(1)
