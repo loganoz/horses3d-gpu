@@ -789,7 +789,9 @@ module VolumeIntegrals
 
          end select
 
-         if (num_of_vars == 5) then    ! Ugly old hack.. 
+         ! Special case: when num_of_vars == 5, this corresponds to a 5-component vector (e.g., for 3D Navier-Stokes with additional variables).
+         ! This assignment is required due to legacy code structure and is considered a hack because the number of variables is not handled generically.
+         if (num_of_vars == 5) then
              val(1:5) = [val1, val2, val3, val4, val5]
          else
              val(1:3) = [val1, val2, val3]
