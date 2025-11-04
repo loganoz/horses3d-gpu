@@ -746,27 +746,27 @@ module VolumeIntegrals
                 local1 = local1 + NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
                                   NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
                                   NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
-                                  mesh % elements(eID) % storage % S_NS(IRHO,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
+                                  mesh % elements(eID) % storage % S_NS(1,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
 
                 local2 = local2 + NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
                                   NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
                                   NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
-                                  mesh % elements(eID) % storage % S_NS(IRHOU,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
+                                  mesh % elements(eID) % storage % S_NS(2,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
 
                 local3 = local3 + NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
                                   NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
                                   NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
-                                  mesh % elements(eID) % storage % S_NS(IRHOV,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
+                                  mesh % elements(eID) % storage % S_NS(3,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
 
                 local4 = local4 + NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
                                   NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
                                   NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
-                                  mesh % elements(eID) % storage % S_NS(IRHOW,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
+                                  mesh % elements(eID) % storage % S_NS(4,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
 
                 local5 = local5 + NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
                                   NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
                                   NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
-                                  mesh % elements(eID) % storage % S_NS(IRHOE,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
+                                  mesh % elements(eID) % storage % S_NS(5,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
 
             end do           ; end do;          enddo
 

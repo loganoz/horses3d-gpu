@@ -421,11 +421,11 @@
       use TripForceClass, only: randomTrip
       use WallFunctionDefinitions, only: useAverageV
       use WallFunctionConnectivity, only: Initialize_WallConnection, WallUpdateMeanV, useWallFunc
+      use ChannelForcing, only: initializeChannel, updateChannel
 #endif
 #if defined(NAVIERSTOKES) || defined(INCNS) || defined(MULTIPHASE)
       use SpongeClass, only: sponge
       use ActuatorLine, only: farm, ConstructFarm, DestructFarm, UpdateFarm, WriteFarmForces
-      use ChannelForcing, only: initializeChannel, updateChannel
 #endif
 
       use IBMClass
