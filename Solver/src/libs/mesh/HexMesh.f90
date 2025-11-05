@@ -3765,14 +3765,17 @@ slavecoord:             DO l = 1, 4
 !        Read elements data
 !        ------------------
          fID = putSolutionFileInReadDataMode(trim(fileName))
+!
+!        Get file size for position validation
+!        -------------------------------------
+         inquire(unit=fID, size=fsize_bytes)
          do eID = 1, size(self % elements)
             associate( e => self % elements(eID) )
             pos = POS_INIT_DATA  + (e % globID - 1_AddrInt) * 5_AddrInt * SIZEOF_INT   + 1_AddrInt * padding * e % offsetIO * SIZEOF_RP
-            if (has_sensor) pos = pos + (e % globID - 1) * SIZEOF_RP
+            if (has_sensor) pos = pos + (e % globID - 1_AddrInt) * SIZEOF_RP
 !
 !           Guard: POS must be >= 1 and must not exceed the file size
 !           --------------------------------------------------------
-            inquire(unit=fID, size=fsize_bytes)
             if (pos < 1_AddrInt) pos = 1_AddrInt
             if (pos > fsize_bytes) then
                write(STD_OUT,'(A, I0, A, I0)') "Error reading restart: POS=", pos, " exceeds file size=", fsize_bytes
