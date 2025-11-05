@@ -3776,7 +3776,10 @@ slavecoord:             DO l = 1, 4
 !
 !           Guard: POS must be >= 1 and must not exceed the file size
 !           --------------------------------------------------------
-            if (pos < 1_AddrInt) pos = 1_AddrInt
+            if (pos < 1_AddrInt) then
+               write(STD_OUT,'(A, I0)') "Error reading restart: invalid POS=", pos
+               error stop
+            end if
             if (pos > fsize_bytes) then
                write(STD_OUT,'(A, I0, A, I0)') "Error reading restart: POS=", pos, " exceeds file size=", fsize_bytes
                error stop
