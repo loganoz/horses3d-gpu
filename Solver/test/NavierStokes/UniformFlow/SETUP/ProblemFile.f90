@@ -308,23 +308,21 @@
 !           -----------------------------------------------------------------------
 !
 #if defined(NAVIERSTOKES)
-            INTEGER                            :: expectedIterations(3:5) = [1821,3090,4164]
-            REAL(KIND=RP)                      :: expectedResidual(3:5)   = [9.7985624521602423E-011,&
-                                                                             9.7825050715404729E-011,&
-                                                                             9.7454147241309180E-011]
+            INTEGER                            :: expectedIterations = 100
+            REAL(KIND=RP)                      :: expectedResidual = 0.0_RP
             
             CALL initializeSharedAssertionsManager
             sharedManager => sharedAssertionsManager()
             
-            N = mesh % elements(1) % Nxyz(1) ! This works here because all the elements have the same order
-            CALL FTAssertEqual(expectedValue= expectedIterations(N), &
+            CALL FTAssertEqual(expectedValue= expectedIterations, &
                                actualValue   =  iter, &
                                msg           = "Number of time steps to tolerance")
-            CALL FTAssertEqual(expectedValue = expectedResidual(N), &
+            CALL FTAssertEqual(expectedValue = expectedResidual, &
                                actualValue   = maxResidual, &
-                               tol           = 1.d-3, &
+                               tol           = 1.d-11, &
                                msg           = "Final maximum residual")
             
+            N = mesh % elements(1) % Nxyz(1) ! This works here because all the elements have the same order
             ALLOCATE(QExpected(NCONS,0:N,0:N,0:N))
             
             maxError = 0.0_RP
