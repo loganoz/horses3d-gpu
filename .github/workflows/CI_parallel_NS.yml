@@ -30,8 +30,9 @@ jobs:
         mode: ['RELEASE']
         comm: ['PARALLEL']
         enable_threads: ['NO']
+        hdf5: ['YES']
         
-    name: NS - ${{ matrix.compiler }} - ${{ matrix.mode }} - ${{ matrix.comm }} - ${{ matrix.enable_threads }}
+    name: NS - ${{ matrix.compiler }} - ${{ matrix.mode }} - ${{ matrix.comm }} - OpenMP = ${{ matrix.enable_threads }}
     
     env:
       METIS_HOME:  /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64
@@ -41,6 +42,14 @@ jobs:
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v3
+
+      - name: Install hdf5 (only gfortran)
+        if: (matrix.compiler == 'gfortran')
+        run: |
+          sudo apt-get update
+          sudo apt install libhdf5-dev
+          dpkg -L libhdf5-dev 
+          echo "HDF5_ROOT="/usr/lib/x86_64-linux-gnu/hdf5/serial/"" >> $GITHUB_ENV  
 
       # IF COMPILER = GFORTRAN -> INSTALL OPEN-MPI #
       - name: install openmpi
