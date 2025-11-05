@@ -339,6 +339,31 @@ jobs:
       #   if: '!cancelled()'
 
 #
+# 0) Uniform Flow
+# ---------------
+
+      - name: Build NSUniformFlow
+        working-directory: ./Solver/test/NavierStokes/UniformFlow/SETUP
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+        if: '!cancelled()'
+
+      - name: Run NSUniformFlow_parallel
+        working-directory: ./Solver/test/NavierStokes/UniformFlow
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 3 ./horses3d.ns UniformFlow.control
+        if: '!cancelled()'
+
+      - name: Run NSUniformFlow_serial
+        working-directory: ./Solver/test/NavierStokes/UniformFlow
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 1 ./horses3d.ns UniformFlow.control
+        if: '!cancelled()'
+
+#
 # 1) CYLINDER
 # -----------
 
