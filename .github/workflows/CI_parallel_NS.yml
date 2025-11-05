@@ -363,14 +363,14 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/UniformFlow
         run: |
           source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 3 ./horses3d.ns UniformFlow.control
+          mpiexec -n 3 ./horses3d.ns UniformFlow_HDF5.control
         if: '!cancelled()'
 
       - name: Run NSUniformFlow_serial
         working-directory: ./Solver/test/NavierStokes/UniformFlow
         run: |
           source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 1 ./horses3d.ns UniformFlow.control
+          mpiexec -n 1 ./horses3d.ns UniformFlow_HDF5.control
         if: '!cancelled()'
 
 #
