@@ -293,7 +293,6 @@
 !           Local variables
 !           ---------------
 !
-            INTEGER                            :: numberOfFailures
             CHARACTER(LEN=29)                  :: testName           = "27 element uniform flow tests"
             REAL(KIND=RP)                      :: maxError
             REAL(KIND=RP), ALLOCATABLE         :: QExpected(:,:,:,:)
@@ -305,7 +304,7 @@
 !           -----------------------------------------------------------------------
 !           Expected Values. Note they will change if the run parameters change and
 !           when the eigenvalue computation for the time step is fixed. These 
-!           results are for the Mach 0.5 and rusanov solvers.
+!           results are for the Mach 0.5 and Roe solver.
 !           -----------------------------------------------------------------------
 !
 #if defined(NAVIERSTOKES)
