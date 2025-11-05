@@ -3659,7 +3659,8 @@ slavecoord:             DO l = 1, 4
 !        ---------------
 !
          INTEGER                        :: fID, eID, fileType, no_of_elements, flag, nodetype
-         integer                        :: padding, pos
+         integer                        :: padding
+         integer(kind=AddrInt)          :: pos, fsize_bytes
          integer                        :: Nxp1, Nyp1, Nzp1, no_of_eqs, array_rank, expectedNoEqs
          real(kind=RP), allocatable     :: Q(:,:,:,:)
          character(len=SOLFILE_STR_LEN) :: rstName
@@ -3766,8 +3767,17 @@ slavecoord:             DO l = 1, 4
          fID = putSolutionFileInReadDataMode(trim(fileName))
          do eID = 1, size(self % elements)
             associate( e => self % elements(eID) )
-            pos = POS_INIT_DATA + (e % globID-1)*5*SIZEOF_INT + 1_AddrInt*padding*e % offsetIO*SIZEOF_RP
+            pos = POS_INIT_DATA  + (e % globID - 1_AddrInt) * 5_AddrInt * SIZEOF_INT   + 1_AddrInt * padding * e % offsetIO * SIZEOF_RP
             if (has_sensor) pos = pos + (e % globID - 1) * SIZEOF_RP
+!
+!           Guard: POS must be >= 1 and must not exceed the file size
+!           --------------------------------------------------------
+            inquire(unit=fID, size=fsize_bytes)
+            if (pos < 1_AddrInt) pos = 1_AddrInt
+            if (pos > fsize_bytes) then
+               write(STD_OUT,'(A, I0, A, I0)') "Error reading restart: POS=", pos, " exceeds file size=", fsize_bytes
+               error stop
+            end if
             read(fID, pos=pos) array_rank
             read(fID) no_of_eqs, Nxp1, Nyp1, Nzp1
             if (      ((Nxp1-1) .ne. e % Nxyz(1)) &
