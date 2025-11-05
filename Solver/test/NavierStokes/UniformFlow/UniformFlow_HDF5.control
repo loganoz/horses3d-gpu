@@ -13,8 +13,8 @@ cfl                   = 0.4
 dcfl                  = 0.4
 mach number           = 0.5
 Reynolds number       = 100.0
-AOA theta             = 0.0
-AOA phi               = 0.0
+AOA theta             = 30.0
+AOA phi               = 30.0
 Riemann solver        = Roe
 
 #define boundary left__right__front__back__bottom__top

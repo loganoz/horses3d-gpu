@@ -129,14 +129,6 @@
                   mesh % elements(eID) % storage % Q(:,i,j,k) = Q 
                end do;        end do;        end do
                end associate
-!
-!              -------------------------------------------------
-!              Perturb mean flow in the expectation that it will
-!              relax back to the mean flow
-!              -------------------------------------------------
-!
-               mesh % elements(eID) % storage % Q(1,3,3,3) = 1.05_RP*mesh % elements(eID) % storage % Q(1,3,3,3)
-
             end do
 
             end associate
