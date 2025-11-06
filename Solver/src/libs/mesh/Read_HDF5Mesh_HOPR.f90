@@ -348,7 +348,7 @@ contains
          
       end do      ! l = 1, numberOfElements
       
-      call FinishNodeMap (TempNodes , HOPRNodeMap, self % nodes, self % HOPRnodeIDs)
+      call FinishNodeMap (TempNodes , HOPRNodeMap, NodeToHOPRMap, self % nodes, self % HOPRnodeIDs)
       
       
 !     Construct the element faces
