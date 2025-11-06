@@ -1288,11 +1288,12 @@ contains
 !  ----------------------------------------------------------------
 !  Construct nodes of mesh and deallocate temporal arrays
 !  ----------------------------------------------------------------
-   subroutine FinishNodeMap (TempNodes , HOPRNodeMap, nodes, HOPRnodeIDs)
+   subroutine FinishNodeMap (TempNodes , HOPRNodeMap, NodeToHOPRMap, nodes, HOPRnodeIDs)
       implicit none
       !--------------------------------------------
       real(kind=RP), allocatable, intent(inout) :: TempNodes(:,:)
       integer      , allocatable, intent(inout) :: HOPRNodeMap(:)
+      integer      , allocatable, intent(inout) :: NodeToHOPRMap(:)
       type(Node)   , allocatable, intent(inout) :: nodes(:)
       integer      , allocatable, intent(inout) :: HOPRnodeIDs(:) ! The final node map that is stored in the mesh type
       !--------------------------------------------
