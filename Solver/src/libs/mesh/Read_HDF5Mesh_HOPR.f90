@@ -245,7 +245,7 @@ contains
       self % Ny = Ny
       self % Nz = Nz
      
-      call InitNodeMap (TempNodes , HOPRNodeMap, nUniqueNodes)
+      call InitNodeMap (TempNodes , HOPRNodeMap, NodeToHOPRMap, nUniqueNodes)
       
 !      
 !     Now we construct the elements
@@ -1230,11 +1230,12 @@ contains
 !  Initialize: allocating to the nUniqueNodes.. 
 !     In general, nCornerNodes <= nUniqueNodes
 !  ----------------------------------------------------------------
-   subroutine InitNodeMap (TempNodes , HOPRNodeMap, nUniqueNodes)
+   subroutine InitNodeMap (TempNodes , HOPRNodeMap, NodeToHOPRMap, nUniqueNodes)
       implicit none
       !--------------------------------------------
       real(kind=RP), allocatable, intent(inout) :: TempNodes(:,:)
       integer      , allocatable, intent(inout) :: HOPRNodeMap(:)
+      integer      , allocatable, intent(inout) :: NodeToHOPRMap(:)
       integer                   , intent(in)    :: nUniqueNodes
       !--------------------------------------------
       
