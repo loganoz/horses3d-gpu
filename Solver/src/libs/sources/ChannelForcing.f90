@@ -159,21 +159,24 @@ contains
      Subroutine channelSource(mesh)
          USE HexMeshClass
          Implicit None
-         type(HexMesh), intent(in)         :: mesh
+         type(HexMesh), intent(inout)         :: mesh
 
          real(kind=RP) :: rho, rho_max, rho_min, S_max, S_min
+         real(kind=RP) :: local_rho_max, local_rho_min
          integer       :: i, j, k, eID, dp_ind
          real(kind=RP) :: Su,Sv,Sw,Se
          real(kind=RP) :: dp_vals(3)
 
         if (.not. channelIsActive) return
 !
-        rho_min = huge(0.0)
-        rho_max = -huge(0.0)
+        rho_min = 2.0_RP
+        rho_max = 0.0_RP
 
-!$acc parallel loop gang vector_length(128) present(mesh) async(1)
+!$acc parallel loop gang present(mesh) num_gangs(9700) reduction(max:rho_max) reduction(min:rho_min)
          do eID = 1, mesh % no_of_elements
-            !$acc loop vector collapse(3) reduction(max:rho_max) reduction(min:rho_min)
+            local_rho_min = 2.0_RP
+            local_rho_max = 0.0_RP
+            !$acc loop vector collapse(3) reduction(max:local_rho_max) reduction(min:local_rho_min)
             do k = 0, mesh % elements(eID) % Nxyz(3) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
 
                 rho = mesh % elements(eID) % storage % Q(IRHO,i,j,k)
@@ -188,10 +191,12 @@ contains
                 mesh % elements(eID) % storage % S_NS(IRHOW,i,j,k) = Sw
                 mesh % elements(eID) % storage % S_NS(IRHOE,i,j,k) = Se
 
-                rho_min = min(rho_min, rho)
-                rho_max = max(rho_max, rho)
+                local_rho_min = min(local_rho_min, rho)
+                local_rho_max = max(local_rho_max, rho)
                 
             end do                  ; end do                ; end do
+            rho_min = min(rho_min, local_rho_min)
+            rho_max = max(rho_max, local_rho_min)
          end do
 !$acc end parallel loop
 !
@@ -202,8 +207,10 @@ contains
         dp_ind  = maxloc(abs(dp_vals),1)
         dpdx    = dp_vals(dp_ind)
 
-        S_min   = f_y(1) * rho_min + f_y(2)
-        S_max   = f_y(1) * rho_max + f_y(2)
+        ! S_min   = f_y(1) * rho_min + f_y(2)
+        ! S_max   = f_y(1) * rho_max + f_y(2)
+        S_min   = 0.0_RP
+        S_max   = 0.0_RP
         dp_vals = [dpdy,S_max,S_min]
         dp_ind  = maxloc(abs(dp_vals),1)
         dpdy    = dp_vals(dp_ind)
