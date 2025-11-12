@@ -305,13 +305,13 @@ module MeshPartitioning
 !     --------------------------------
 !     Space-filling curve partitioning
 !     --------------------------------
-      subroutine GetSFCElementsPartition(mesh, no_of_domains, nelem, elementsDomain, useWeights)
+      subroutine GetSFCElementsPartition(mesh, no_of_domains, no_of_elements, elementsDomain, useWeights)
          implicit none
          !-arguments--------------------------------------------------
          type(HexMesh), intent(in)        :: mesh
          integer, intent(in)    :: no_of_domains
-         integer, intent(in)    :: nelem
-         integer, intent(inout) :: elementsDomain(nelem)
+         integer, intent(in)    :: no_of_elements
+         integer, intent(inout) :: elementsDomain(no_of_elements)
          logical, intent(in)    :: useWeights
          !-local-variables--------------------------------------------
          integer :: elems_per_domain(no_of_domains)
@@ -324,8 +324,8 @@ module MeshPartitioning
          !------------------------------------------------------------
 
          if (useWeights) then
-             allocate(weights(nelem))
-             do ielem=1,nelem
+             allocate(weights(no_of_elements))
+             do ielem=1,no_of_elements
                  weights(ielem) = product(mesh % elements(ielem) % Nxyz + 1)
              end do
              if (maxval(weights) .eq. minval(weights)) then
@@ -337,8 +337,8 @@ module MeshPartitioning
              endif
          end if 
          
-         elems_per_domain = nelem / no_of_domains
-         biggerdomains = mod(nelem,no_of_domains)
+         elems_per_domain = no_of_elements / no_of_domains
+         biggerdomains = mod(no_of_elements,no_of_domains)
          elems_per_domain(1:biggerdomains) = elems_per_domain(1:biggerdomains) + 1
          
          first = 1
@@ -359,7 +359,7 @@ module MeshPartitioning
              do domain = 1, no_of_domains-1
                  if (start_index(domain) .ge. start_index(domain+1)) start_index(domain+1) = start_index(domain) + 1
                  dof_in_domain = sum(weights(start_index(domain):start_index(domain+1)))
-                 do ielem=1,nelem
+                 do ielem=1,no_of_elements
                      if (dof_in_domain .lt. max_dof) then
                          start_index(domain+1) = start_index(domain+1) + 1
                          dof_in_domain = sum(weights(start_index(domain):start_index(domain+1)))
