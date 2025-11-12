@@ -10,19 +10,21 @@ module MeshPartitioning
    public   PerformMeshPartitioning
 
    contains
-      subroutine PerformMeshPartitioning(mesh, no_of_domains, partitions, useWeights)
+      subroutine PerformMeshPartitioning(mesh, no_of_allElements, no_of_domains, partitions, useWeights, Nx, Ny, Nz)
          implicit none
          type(HexMesh), intent(in)  :: mesh
+         integer,       intent(in)  :: no_of_allElements
          integer,       intent(in)  :: no_of_domains
          type(PartitionedMesh_t)    :: partitions(no_of_domains)
          logical,       intent(in)  :: useWeights
+         integer,       intent(in)  :: Nx(no_of_allElements), Ny(no_of_allElements), Nz(no_of_allElements)
 !
 !        ---------------
 !        Local variables
 !        ---------------
 !
          integer               :: fID, domain
-         integer               :: elementsDomain(mesh % no_of_elements)
+         integer               :: elementsDomain(no_of_allElements)
 !
 !        Initialize partitions
 !        ---------------------
@@ -32,7 +34,7 @@ module MeshPartitioning
 !
 !        Get each domain elements and nodes
 !        ----------------------------------
-         call GetElementsDomain(mesh, no_of_domains, elementsDomain, partitions, useWeights)
+         call GetElementsDomain(mesh, no_of_allElements, no_of_domains, elementsDomain, partitions, useWeights, Nx, Ny, Nz)
 !
 !        Get the partition boundary faces
 !        --------------------------------
@@ -44,15 +46,17 @@ module MeshPartitioning
          call WritePartitionsFile(mesh, elementsDomain)
       end subroutine PerformMeshPartitioning
 
-      subroutine GetElementsDomain(mesh, no_of_domains, elementsDomain, partitions, useWeights)
+      subroutine GetElementsDomain(mesh, no_of_allElements, no_of_domains, elementsDomain, partitions, useWeights, Nx, Ny, Nz)
          use IntegerDataLinkedList
          use MPI_Process_Info
          implicit none
          type(HexMesh), intent(in)              :: mesh
+         integer,       intent(in)              :: no_of_allElements
          integer,       intent(in)              :: no_of_domains
          integer,       intent(out)             :: elementsDomain(mesh % no_of_elements)
          type(PartitionedMesh_t), intent(inout) :: partitions(no_of_domains)      
          logical,       intent(in)  :: useWeights
+         integer,       intent(in)  :: Nx(no_of_allElements), Ny(no_of_allElements), Nz(no_of_allElements)
 !
 !        ---------------
 !        Local variables
@@ -72,7 +76,7 @@ module MeshPartitioning
 !           Space-filling curve partitioning
 !           --------------------------------
             case (SFC_PARTITIONING)
-               call GetSFCElementsPartition(mesh, no_of_domains, mesh % no_of_elements, elementsDomain, useWeights=useWeights)
+               call GetSFCElementsPartition(no_of_domains, no_of_allElements, elementsDomain, useWeights, Nx, Ny, Nz)
 !     
 !           METIS partitioning
 !           ------------------
@@ -305,14 +309,14 @@ module MeshPartitioning
 !     --------------------------------
 !     Space-filling curve partitioning
 !     --------------------------------
-      subroutine GetSFCElementsPartition(mesh, no_of_domains, no_of_elements, elementsDomain, useWeights)
+      subroutine GetSFCElementsPartition(no_of_domains, no_of_allElements, elementsDomain, useWeights, Nx, Ny, Nz)
          implicit none
          !-arguments--------------------------------------------------
-         type(HexMesh), intent(in)        :: mesh
          integer, intent(in)    :: no_of_domains
-         integer, intent(in)    :: no_of_elements
-         integer, intent(inout) :: elementsDomain(no_of_elements)
+         integer, intent(in)    :: no_of_allElements
+         integer, intent(inout) :: elementsDomain(no_of_allElements)
          logical, intent(in)    :: useWeights
+         integer, intent(in)    :: Nx(no_of_allElements), Ny(no_of_allElements), Nz(no_of_allElements)
          !-local-variables--------------------------------------------
          integer :: elems_per_domain(no_of_domains)
          integer :: biggerdomains
@@ -324,9 +328,9 @@ module MeshPartitioning
          !------------------------------------------------------------
 
          if (useWeights) then
-             allocate(weights(no_of_elements))
-             do ielem=1,no_of_elements
-                 weights(ielem) = product(mesh % elements(ielem) % Nxyz + 1)
+             allocate(weights(no_of_allElements))
+             do ielem=1,no_of_allElements
+                 weights(ielem) = (Nx(ielem) + 1) * (Ny(ielem) + 1) * (Nz(ielem) + 1)
              end do
              if (maxval(weights) .eq. minval(weights)) then
                  neddWeights = .false.
@@ -337,8 +341,8 @@ module MeshPartitioning
              endif
          end if 
          
-         elems_per_domain = no_of_elements / no_of_domains
-         biggerdomains = mod(no_of_elements,no_of_domains)
+         elems_per_domain = no_of_allElements / no_of_domains
+         biggerdomains = mod(no_of_allElements,no_of_domains)
          elems_per_domain(1:biggerdomains) = elems_per_domain(1:biggerdomains) + 1
          
          first = 1
@@ -359,7 +363,7 @@ module MeshPartitioning
              do domain = 1, no_of_domains-1
                  if (start_index(domain) .ge. start_index(domain+1)) start_index(domain+1) = start_index(domain) + 1
                  dof_in_domain = sum(weights(start_index(domain):start_index(domain+1)))
-                 do ielem=1,no_of_elements
+                 do ielem=1,no_of_allElements
                      if (dof_in_domain .lt. max_dof) then
                          start_index(domain+1) = start_index(domain+1) + 1
                          dof_in_domain = sum(weights(start_index(domain):start_index(domain+1)))

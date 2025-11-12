@@ -265,7 +265,7 @@ Module DGSEMClass
 !
 !           Perform the partitioning
 !           ------------------------
-            call PerformMeshPartitioning  (self % mesh, MPI_Process % nProcs, mpi_allPartitions, useWeightsPartition)
+            call PerformMeshPartitioning  (self % mesh, nTotalElem, MPI_Process % nProcs, mpi_allPartitions, useWeightsPartition, Nx, Ny, Nz)
 !
 !           Send the partitions
 !           -------------------
