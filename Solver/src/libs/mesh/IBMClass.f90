@@ -135,7 +135,7 @@ module IBMClass
    subroutine IBM_GetInfo( this, controlVariables )
       use FileReadingUtilities
 #if defined(NAVIERSTOKES)
-      use WallFunctionDefinitions  
+      !use WallFunctionDefinitions  
 #endif
       implicit none
       !-arguments----------------------------------------------------------------
@@ -289,7 +289,7 @@ module IBMClass
      if( controlVariables% containsKey("wall function") ) then
         this% Wallfunction = .true.
 #if defined(NAVIERSTOKES)
-        call Initialize_Wall_Function(controlVariables, correct)   !TO BE REMOVED
+        !call Initialize_Wall_Function(controlVariables, correct)   !TO BE REMOVED
 #endif
         if( allocated(y_plus_target_in) ) then
            this% y_plus_target = y_plus_target_in
@@ -2165,8 +2165,8 @@ module IBMClass
 #if defined(NAVIERSTOKES)  
    subroutine ForcingPointState( Q_IP, y_IP, y_FP, normal, Q_FP )
       use PhysicsStorage
-      use WallFunctionDefinitions
-      use WallFunctionBC
+      !use WallFunctionDefinitions
+      !use WallFunctionBC
       use VariableConversion
       use FluidData   
 #if defined(SPALARTALMARAS)
@@ -2199,12 +2199,12 @@ module IBMClass
    
       u_IPt = dot_product(u_IP,tangent)
  
-      u_tau = u_tau_f(u_IPt, y_IP, nu_IP, u_tau0=.1_RP)
+      !u_tau = u_tau_f(u_IPt, y_IP, nu_IP, u_tau0=.1_RP)
 
       call get_laminar_mu_kappa(Q_FP,mu_FP,kappa_FP)
       nu_FP = mu_FP/Q_FP(IRHO)
 
-      u_FPt = u_plus_f(y_plus_f(y_FP, u_tau, nu_FP)) * u_tau
+      !u_FPt = u_plus_f(y_plus_f(y_FP, u_tau, nu_FP)) * u_tau
 
       u_FPn = dot_product(u_IP,normal) * y_FP/y_IP 
          
@@ -2218,7 +2218,11 @@ module IBMClass
       !chi  = QuarticRealPositiveRoot( 1.0_RP, -kappa*u_tau*y_FP*Dump/nu_FP, 0.0_RP, 0.0_RP, -kappa*u_tau*y_FP*Dump/nu_FP*POW3(SAmodel% cv1) )
 
       !nu_t = nu_FP * chi
-      nu_t = kappa * u_tau * y_FP
+      nu_t = 0.38_RP * u_tau * y_FP ! 0.38 instead of kappa defined in wallFunctionDefinitions
+      !TODO: SHOULD GET KAPPA FROM CONTROL FILE
+      ! WE CANT HAVE IBM MODULE DEPEND ON WALL MODEL FOR ONE PARAMETER - BAD DESIGN
+      ! SO WE JUST PUT A FIXED VALUE FOR NOW
+
 #endif
      ! Q_FP(IRHO)  = Pressure(Q_IP)*refvalues% p/(thermodynamics% R * refValues% T * T_FP)
      ! Q_FP(IRHO)  = Q_FP(IRHO)/refvalues% rho   
