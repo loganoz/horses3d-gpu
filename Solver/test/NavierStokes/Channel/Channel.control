@@ -1,0 +1,97 @@
+/* Control file to run the channel case*/
+Flow equations        = "NS"
+mesh file name        = "MESH/channelWallF.msh"
+Polynomial order      = 4
+Number of time steps  = 100
+Output Interval       = 10
+Convergence tolerance = 1.d-10
+partitioning = SFC
+
+!-------------------- Physical parameters:-
+mach number           = 0.1
+Reynolds number       = 125000
+AOA theta             = 0.0
+AOA phi               = 0.0
+
+!-------------------- restart parameters:-
+solution file name    = "RESULTS/channelA0.hsol"
+restart file name     = "RESULTS/channelA0.hsol"
+restart               = .false.
+!restart polorder      = 4
+
+!----------------------- Time integration:-
+cfl                   = 0.4
+dcfl                  = 0.4
+simulation type       = time-accurate
+final time            = 350.d0
+autosave mode         = "time"
+autosave interval     = 20.0
+
+!------------------------- Discretization:-
+Discretization nodes  = Gauss-Lobatto
+inviscid discretization = Split-Form
+averaging = Pirozzoli
+Riemann solver        = roe
+Viscous discretization  = BR1
+
+!LES model             = vreman
+
+!---ABL---
+wall function         = standard
+wall function boundaries = "[left,right]"
+wall function use average = .false.
+
+use channel           = .true.
+
+
+! -------------------------
+! save surfaces
+! -------------------------
+! boundaries to save = [left,right]
+! surface save utau = .true.
+! surface save gradients = .true.
+! surface save turbulent = .true.
+
+!------------
+! BC
+!------------
+#define boundary front
+  type = periodic
+  coupled boundary = back
+#end
+
+#define boundary back
+   type = periodic
+   coupled boundary = front
+#end
+
+#define boundary left
+  type = NoSlipWall
+#end
+
+#define boundary right
+  type = NoSlipWall
+#end
+
+#define boundary top
+   type = periodic
+   coupled boundary = bottom
+#end
+
+#define boundary bottom
+   type = periodic
+   coupled boundary = top
+#end
+
+!------------
+! monitors
+!------------
+#define volume monitor 1
+   Name = meanMom
+   Variable = momentum
+#end
+
+#define volume monitor 2
+   Name = meanSource
+   Variable = source
+#end
