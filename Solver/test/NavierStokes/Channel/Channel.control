@@ -1,6 +1,6 @@
 /* Control file to run the channel case*/
 Flow equations        = "NS"
-mesh file name        = "MESH/channelWallF.msh"
+mesh file name        = "../../TestMeshes/channelWallF.msh"
 Polynomial order      = 4
 Number of time steps  = 100
 Output Interval       = 10
