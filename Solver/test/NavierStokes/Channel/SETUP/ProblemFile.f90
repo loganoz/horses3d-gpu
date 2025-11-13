@@ -394,6 +394,25 @@
 !
 !//////////////////////////////////////////////////////////////////////// 
 ! 
+#if defined(NAVIERSTOKES)
+         subroutine UserDefinedSourceTermNS(x, Q, time, S, thermodynamics_, dimensionless_, refValues_) ! , Q, dt
+!
+!           --------------------------------------------
+!           Called to apply source terms to the equation
+!           --------------------------------------------
+!
+            use SMConstants
+            USE HexMeshClass
+            use PhysicsStorage
+            use FluidData
+            use OscarChannel
+            IMPLICIT NONE
+            
+         end subroutine UserDefinedSourceTermNS
+#endif
+!
+!//////////////////////////////////////////////////////////////////////// 
+! 
          SUBROUTINE UserDefinedFinalize(mesh, time, iter, maxResidual &
 #if defined(NAVIERSTOKES)
                                                     , thermodynamics_ &
