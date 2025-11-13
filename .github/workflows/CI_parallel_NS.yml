@@ -1065,4 +1065,20 @@ jobs:
       #     source /opt/intel/oneapi/setvars.sh || true
       #     mpiexec -n 64 ./horses3d.ns ActuatorLineController.control
       #   if: '!cancelled()'
+#
+# 39) CYLINDER
+# -----------
 
+      - name: Build Channel
+        working-directory: ./Solver/test/NavierStokes/Channel/SETUP
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+        if: '!cancelled()'
+
+      - name: Run Channel
+        working-directory: ./Solver/test/NavierStokes/Channel
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 8 ./horses3d.ns Channel.control
+        if: '!cancelled()'  
