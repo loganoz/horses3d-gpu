@@ -358,6 +358,7 @@ MODULE ExplicitMethods
       REAL(KIND=RP), PARAMETER :: ENER_CEIL  = 1.0e6_RP
 
       INTEGER :: i, j, k, l, m, id
+      INTEGER :: i_el, j_el, k_el
 
       !$acc enter data copyin(a,b,c)
 
@@ -374,9 +375,9 @@ MODULE ExplicitMethods
             do id = 1, SIZE( mesh % elements )
    #ifdef FLOW
                !$acc parallel loop gang present(mesh,a,b,c,dt_vec)
-               do i_el = 0, mesh % elements(id) % Nxyz(1)
+               do k_el = 0, mesh % elements(id) % Nxyz(3)
                   do j_el = 0, mesh % elements(id) % Nxyz(2)
-                     do k_el = 0, mesh % elements(id) % Nxyz(3)
+                     do i_el = 0, mesh % elements(id) % Nxyz(1)
                         !$acc loop seq
                         do m = 1, NCONS
 
