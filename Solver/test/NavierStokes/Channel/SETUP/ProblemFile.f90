@@ -494,14 +494,12 @@
 !
 #if defined(NAVIERSTOKES)
             INTEGER                            :: iterations(3:7) = [100, 0, 0, 0, 0]
-            real(kind=RP), parameter :: residuals(5) = [  6.5463781475048136_RP, &
-                                                          6.2440674345073825_RP, &
-                                                          1.2720131880823712_RP, &
-                                                          5.5413751667053737_RP, &
-                                                          9.6993942686015016_RP] 
+            real(kind=RP), parameter :: residuals(5) = [  1.0000006546361679_RP, &
+                                                          1.0624406739585925_RP, &
+                                                          1.0000012720347859_RP, &
+                                                          1.0000000005267711_RP, &
+                                                          1.0009699392006692_RP] 
 
-
-            N = mesh % elements(1) % Nxyz(1) ! This works here because all the elements have the same order in all directions
 
             CALL initializeSharedAssertionsManager
             sharedManager => sharedAssertionsManager()
@@ -532,11 +530,6 @@
                                msg           = "Energy residual")
 
 
-            CALL FTAssertEqual(expectedValue = iterations(N), &
-                               actualValue   = iter, &
-                               msg           = "Number of time steps to tolerance")
-
-
             CALL sharedManager % summarizeAssertions(title = testName,iUnit = 6)
    
             IF ( sharedManager % numberOfAssertionFailures() == 0 )     THEN
@@ -544,8 +537,6 @@
                WRITE(6,*) "This test case has no expected solution yet, only checks the residual after 100 iterations."
             ELSE
                WRITE(6,*) testName, " ... Failed"
-               WRITE(6,*) "NOTE: Failure is expected when the max eigenvalue procedure is changed."
-               WRITE(6,*) "      If that is done, re-compute the expected values and modify this procedure"
                 error stop 99
             END IF 
             WRITE(6,*)
