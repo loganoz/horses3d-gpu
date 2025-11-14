@@ -201,7 +201,7 @@ MODULE ExplicitMethods
 !  ------------------------------
 !  Routine for taking a RK3 step.
 !  ------------------------------
-   SUBROUTINE TakeRK3Step( mesh, particles, t, deltaT, ComputeTimeDerivative, dt_vec, dts, global_dt, iter)
+   SUBROUTINE TakeRK3Step_old( mesh, particles, t, deltaT, ComputeTimeDerivative, dt_vec, dts, global_dt, iter)
 !
 !     ----------------------------------
 !     Williamson's 3rd order Runge-Kutta
@@ -307,6 +307,180 @@ MODULE ExplicitMethods
       end if
 !
 !     To obtain the updated residuals
+      if ( CTD_AFTER_STEPS ) CALL ComputeTimeDerivative( mesh, particles, t+deltaT, CTD_IGNORE_MODE)
+
+      call checkForNan(mesh, t)
+
+   END SUBROUTINE TakeRK3Step_old
+
+   !  ----------------------------------------
+   !  Routine for taking a RK3 step with clamp
+   !  ----------------------------------------
+   SUBROUTINE TakeRK3Step( mesh, particles, t, deltaT, ComputeTimeDerivative, dt_vec, dts, global_dt, iter)
+   !
+   !     ----------------------------------
+   !     Williamson's 3rd order Runge-Kutta
+   !     ----------------------------------
+   !
+      IMPLICIT NONE
+
+   !
+   !     -----------------
+   !     Input parameters:
+   !     -----------------
+   !
+      type(HexMesh)      :: mesh
+   #ifdef FLOW
+      type(Particles_t)  :: particles
+   #else
+      logical            :: particles
+   #endif
+      REAL(KIND=RP)      :: t, deltaT, tk
+      real(kind=RP), allocatable, dimension(:), intent(in), optional :: dt_vec
+      procedure(ComputeTimeDerivative_f)    :: ComputeTimeDerivative
+      logical, intent(in), optional :: dts
+      real(kind=RP), intent(in), optional :: global_dt
+      integer, intent(in), optional :: iter
+
+   !
+   !     ---------------
+   !     Local variables
+   !     ---------------
+   !
+      REAL(KIND=RP), DIMENSION(3) :: a = (/0.0_RP       , -5.0_RP /9.0_RP , -153.0_RP/128.0_RP/)
+      REAL(KIND=RP), DIMENSION(3) :: b = (/0.0_RP       ,  1.0_RP /3.0_RP ,    3.0_RP/4.0_RP  /)
+      REAL(KIND=RP), DIMENSION(3) :: c = (/1.0_RP/3.0_RP,  15.0_RP/16.0_RP,    8.0_RP/15.0_RP /)
+
+      ! ---- limiter constants ----
+      REAL(KIND=RP), PARAMETER :: RHO_FLOOR  = 1.0e-6_RP
+      REAL(KIND=RP), PARAMETER :: RHO_CEIL   = 1.0e6_RP
+      REAL(KIND=RP), PARAMETER :: ENER_FLOOR = 1.0e-6_RP
+      REAL(KIND=RP), PARAMETER :: ENER_CEIL  = 1.0e6_RP
+
+      INTEGER :: i, j, k, l, m, id
+
+      !$acc enter data copyin(a,b,c)
+
+      if (present(dt_vec)) then   
+
+         do k = 1,3
+            tk = t + b(k)*deltaT
+            call ComputeTimeDerivative( mesh, particles, tk, CTD_IGNORE_MODE)
+            if ( present(dts) ) then
+               if (dts) call ComputePseudoTimeDerivative(mesh, tk, global_dt)
+            end if
+
+   !$omp parallel do schedule(runtime)
+            do id = 1, SIZE( mesh % elements )
+   #ifdef FLOW
+               !$acc parallel loop gang present(mesh,a,b,c,dt_vec)
+               do i_el = 0, mesh % elements(id) % Nxyz(1)
+                  do j_el = 0, mesh % elements(id) % Nxyz(2)
+                     do k_el = 0, mesh % elements(id) % Nxyz(3)
+                        !$acc loop seq
+                        do m = 1, NCONS
+
+                           mesh % elements(id) % storage % G_NS(m,i_el,j_el,k_el) = &
+                              a(k) * mesh % elements(id) % storage % G_NS(m,i_el,j_el,k_el) + &
+                                       mesh % elements(id) % storage % QDot(m,i_el,j_el,k_el)
+
+                           mesh % elements(id) % storage % Q(m,i_el,j_el,k_el) = &
+                              mesh % elements(id) % storage % Q(m,i_el,j_el,k_el) + &
+                              c(k)*dt_vec(id) * mesh % elements(id) % storage % G_NS(m,i_el,j_el,k_el)
+
+                           ! ======== LIMITER BEGIN (density & energy) ========
+                           if (m == 1) then
+                              ! fast NaN check
+                              if ( mesh%elements(id)%storage%Q(m,i_el,j_el,k_el) /= &
+                                 mesh%elements(id)%storage%Q(m,i_el,j_el,k_el) ) then
+                                 mesh%elements(id)%storage%Q(m,i_el,j_el,k_el) = RHO_FLOOR
+                              end if
+                              mesh%elements(id)%storage%Q(m,i_el,j_el,k_el) = &
+                                 max(RHO_FLOOR, min(RHO_CEIL, mesh%elements(id)%storage%Q(m,i_el,j_el,k_el)))
+                           else if (m == 5) then
+                              if ( mesh%elements(id)%storage%Q(m,i_el,j_el,k_el) /= &
+                                 mesh%elements(id)%storage%Q(m,i_el,j_el,k_el) ) then
+                                 mesh%elements(id)%storage%Q(m,i_el,j_el,k_el) = ENER_FLOOR
+                              end if
+                              mesh%elements(id)%storage%Q(m,i_el,j_el,k_el) = &
+                                 max(ENER_FLOOR, min(ENER_CEIL, mesh%elements(id)%storage%Q(m,i_el,j_el,k_el)))
+                           end if
+                           ! ========= LIMITER END =========
+
+                        end do
+                     end do
+                  end do
+               end do
+   #endif
+            end do ! id
+   !$omp end parallel do
+
+         end do ! k
+
+      else
+
+         !$acc data copyin(deltaT)
+
+         do l = 1,3
+            tk = t + b(l)*deltaT
+            call ComputeTimeDerivative( mesh, particles, tk, CTD_IGNORE_MODE)
+            if ( present(dts) ) then
+               if (dts) call ComputePseudoTimeDerivative(mesh, tk, global_dt)
+            end if
+
+            !$acc parallel loop gang present(mesh,a,b,c,deltaT)
+            do id = 1, SIZE( mesh % elements )
+               !$acc loop vector collapse(3)
+               do k = 0, mesh % elements(id) % Nxyz(3)
+                  do j = 0, mesh % elements(id) % Nxyz(2)
+                     do i = 0, mesh % elements(id) % Nxyz(1)
+   #ifdef FLOW
+                        !$acc loop seq
+                        do m = 1, NCONS
+
+                           mesh % elements(id) % storage % G_NS(m,i,j,k) = &
+                              a(l)*mesh % elements(id) % storage % G_NS(m,i,j,k) + &
+                                    mesh % elements(id) % storage % QDot(m,i,j,k)
+
+                           mesh % elements(id) % storage % Q(m,i,j,k) = &
+                              mesh % elements(id) % storage % Q(m,i,j,k) + &
+                              c(l)*deltaT * mesh % elements(id) % storage % G_NS(m,i,j,k)
+
+                           ! ======== LIMITER BEGIN (density & energy) ========
+                           if (m == 1) then
+                              if ( mesh%elements(id)%storage%Q(m,i,j,k) /= &
+                                 mesh%elements(id)%storage%Q(m,i,j,k) ) then
+                                 mesh%elements(id)%storage%Q(m,i,j,k) = RHO_FLOOR
+                              end if
+                              mesh%elements(id)%storage%Q(1,i,j,k) = &
+                                 max(RHO_FLOOR, min(RHO_CEIL, mesh%elements(id)%storage%Q(1,i,j,k)))
+                           else if (m == 5) then
+                              if ( mesh%elements(id)%storage%Q(m,i,j,k) /= &
+                                 mesh%elements(id)%storage%Q(m,i,j,k) ) then
+                                 mesh%elements(id)%storage%Q(m,i,j,k) = ENER_FLOOR
+                              end if
+                              mesh%elements(id)%storage%Q(5,i,j,k) = &
+                                 max(ENER_FLOOR, min(ENER_CEIL, mesh%elements(id)%storage%Q(5,i,j,k)))
+                           end if
+                           ! ========= LIMITER END =========
+
+                        end do ! m
+   #endif
+
+                     end do
+                  end do
+               end do
+            end do ! id
+            !$acc end parallel loop
+
+         end do ! l
+
+         !$acc end data
+
+      end if
+
+   !
+   !     To obtain the updated residuals
       if ( CTD_AFTER_STEPS ) CALL ComputeTimeDerivative( mesh, particles, t+deltaT, CTD_IGNORE_MODE)
 
       call checkForNan(mesh, t)
