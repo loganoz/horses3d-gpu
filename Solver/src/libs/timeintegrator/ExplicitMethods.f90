@@ -350,10 +350,10 @@ MODULE ExplicitMethods
       REAL(KIND=RP), DIMENSION(3) :: c = (/1.0_RP/3.0_RP,  15.0_RP/16.0_RP,    8.0_RP/15.0_RP /)
 
       ! ---- limiter constants ----
-      REAL(KIND=RP), PARAMETER :: RHO_FLOOR  = 1.0e-15_RP
-      REAL(KIND=RP), PARAMETER :: RHO_CEIL   = 1.0e15_RP
-      REAL(KIND=RP), PARAMETER :: ENER_FLOOR = 1.0e-15_RP
-      REAL(KIND=RP), PARAMETER :: ENER_CEIL  = 1.0e15_RP
+      REAL(KIND=RP), PARAMETER :: RHO_FLOOR  = 1.0e-6_RP
+      REAL(KIND=RP), PARAMETER :: RHO_CEIL   = 1.0e6_RP
+      REAL(KIND=RP), PARAMETER :: ENER_FLOOR = 1.0e-6_RP
+      REAL(KIND=RP), PARAMETER :: ENER_CEIL  = 1.0e6_RP
 
       INTEGER :: i, j, k, l, m, id
 
