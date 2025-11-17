@@ -2,7 +2,7 @@
 Flow equations        = NS
 simulation type       = time-accurate 
 mesh file name        = "../../TestMeshes/Box27.h5"
-partitioning          = SFC
+partitioning          = METIS
 restart file name     = "RESULTS/Box27.hsol"
 solution file name    = "RESULTS/Box27_saved.hsol"
 restart               = .false.
