@@ -357,7 +357,7 @@ MODULE ExplicitMethods
 
       INTEGER :: i, j, k, l, m, id
 
-      !$acc enter data copyin(a,b,c)
+      !$acc enter data copyin(a,b,c, RHO_FLOOR, RHO_CEIL, ENER_FLOOR, ENER_CEIL)
 
       if (present(dt_vec)) then   
          
@@ -396,7 +396,7 @@ MODULE ExplicitMethods
             end if
 
 !!$omp parallel do schedule(runtime)
-            !$acc parallel loop gang present(mesh,a,b,c,deltaT)
+            !$acc parallel loop gang present(mesh,a,b,c,deltaT, RHO_FLOOR, RHO_CEIL, ENER_FLOOR, ENER_CEIL)
             do id = 1, SIZE( mesh % elements )
                !$acc loop vector collapse(3)
                do k = 0, mesh % elements(id) % Nxyz(3) 
