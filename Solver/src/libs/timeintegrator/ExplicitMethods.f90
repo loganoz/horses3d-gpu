@@ -352,8 +352,8 @@ MODULE ExplicitMethods
       ! ---- limiter constants ----
       REAL(KIND=RP), PARAMETER :: RHO_FLOOR  = 0.5e0_RP
       REAL(KIND=RP), PARAMETER :: RHO_CEIL   = 1.5e0_RP
-      REAL(KIND=RP), PARAMETER :: ENER_FLOOR = 1.0e0_RP
-      REAL(KIND=RP), PARAMETER :: ENER_CEIL  = 5.0e0_RP
+      REAL(KIND=RP), PARAMETER :: ENER_FLOOR = 1.0e-6_RP
+      REAL(KIND=RP), PARAMETER :: ENER_CEIL  = 5.0e6_RP
 
       INTEGER :: i, j, k, l, m, id
 
