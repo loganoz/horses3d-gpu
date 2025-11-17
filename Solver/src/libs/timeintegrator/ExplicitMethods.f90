@@ -424,8 +424,6 @@ MODULE ExplicitMethods
                                  max(ENER_FLOOR, min(ENER_CEIL, mesh%elements(id)%storage%Q(5,i,j,k)))
                            end if
                            ! ========= LIMITER END =========
-                           print*, "density", mesh%elements(id)%storage%Q(1,1,1,1)
-                           print*, "energy", mesh%elements(id)%storage%Q(5,1,1,1)
                         enddo
 #endif
 
