@@ -18,7 +18,7 @@ module Read_HDF5Mesh_HOPR
    use FacePatchClass
    use MappedGeometryClass
    use MPI_Process_Info
-   use PartitionedMeshClass            , only: mpi_partition
+   use PartitionedMeshClass            , only: mpi_partition, MPI_Partitioning, SFC_PARTITIONING, METIS_PARTITIONING
    use NodeClass                       , only: Node, ConstructNode
    use MPI_Face_Class                  , only: ConstructMPIFaces
    use Utilities                       , only: toLower
@@ -493,8 +493,9 @@ contains
       real(kind=RP)   , allocatable    :: NodeCoords(:,:)
       integer         , allocatable    :: ElemInfo(:,:)
       integer         , allocatable    :: SideInfo(:,:)
-      integer                          :: offset
-      integer                          :: first, last
+      integer                          :: first_elem, last_elem, offset_elem, no_of_elements_toread
+      integer                          :: first_node, last_node, offset_node, no_of_nodes_toread
+      integer                          :: first_side, last_side, offset_side, no_of_sides_toread
       INTEGER(HSIZE_T),POINTER         :: HSize(:)
       integer                          :: nBCs
       integer                          :: nDims
@@ -535,33 +536,68 @@ contains
       CALL GetHDF5Attribute(File_ID,'nSides',1,IntegerScalar=nSides)
       CALL GetHDF5Attribute(File_ID,'nNodes',1,IntegerScalar=nNodes)
       
-      allocate(ElemInfo(6,1:numberOfAllElements))
-      call ReadArrayFromHDF5(File_ID,'ElemInfo',2,(/6,numberOfAllElements/),0,IntegerArray=ElemInfo)
+!
+!     Prepare memory allocation and read in 
+!     ------------------------------------- 
+      if (MPI_Partitioning == SFC_PARTITIONING) then
+         ! If the partitioning is done with SFC, we can save some storage because the elements have contiguous numbering
+         ! We only allocate the necessary storage
+
+         ! Elements
+         first_elem = mpi_partition % elementIDs(1)
+         last_elem = first_elem + mpi_partition % no_of_elements
+         no_of_elements_toread = mpi_partition % no_of_elements
+
+         ! Nodes (as in HOPR)
+         no_of_nodes_toread = no_of_elements_toread * (bFaceOrder + 1)**3
+      else
+         ! If it's not an SFC, we read all elements: This can probably be improved...
+
+         ! Elements
+         first_elem = 1
+         last_elem = numberOfAllElements
+         no_of_elements_toread = numberOfAllElements
+
+         ! Nodes (as in HOPR)
+         no_of_nodes_toread = nNodes
+      end if
+      offset_elem = first_elem - 1
+
+      allocate(ElemInfo(6, first_elem:last_elem))
+
+      call ReadArrayFromHDF5(File_ID,'ElemInfo',2,(/6,no_of_elements_toread/),offset_elem,IntegerArray=ElemInfo)
       
-      offset=ElemInfo(ELEM_FirstNodeInd,1) ! hdf5 array starts at 0-> -1
-      first=offset+1
-      last =offset+nNodes
+      offset_node = ElemInfo(ELEM_FirstNodeInd,first_elem) ! hdf5 array starts at 0-> -1 !
+      first_node = offset_node + 1
+      last_node = offset_node + no_of_nodes_toread
       
-      ALLOCATE( GlobalNodeIDs(first:last) )
-      CALL ReadArrayFromHDF5(File_ID,'GlobalNodeIDs',1,(/nNodes/),offset,IntegerArray=GlobalNodeIDs)
+      ALLOCATE( GlobalNodeIDs(first_node:last_node) )
+      CALL ReadArrayFromHDF5(File_ID,'GlobalNodeIDs',1,(/no_of_nodes_toread/),offset_node,IntegerArray=GlobalNodeIDs)
       
-      allocate( NodeCoords(1:3,first:last),TempArray(1:3,first:last) )
-      CALL ReadArrayFromHDF5(File_ID,'NodeCoords',2,(/3,nNodes/),offset,RealArray=TempArray)
+      allocate( NodeCoords(1:3,first_node:last_node),TempArray(1:3,first_node:last_node) )
+      CALL ReadArrayFromHDF5(File_ID,'NodeCoords',2,(/3,no_of_nodes_toread/),offset_node,RealArray=TempArray)
       NodeCoords = TempArray
       deallocate (TempArray)
       
-      offset=ElemInfo(ELEM_FirstSideInd,1) ! hdf5 array starts at 0-> -1  
-      first=offset+1
-      last =offset+nSides
-      ALLOCATE(SideInfo(5,first:last))
-      CALL ReadArrayFromHDF5(File_ID,'SideInfo',2,(/5,nSides/),offset,IntegerArray=SideInfo) ! There's a mistake in the documentation of HOPR regarding the SideInfo size!!
+      offset_side=ElemInfo(ELEM_FirstSideInd,first_elem) ! hdf5 array starts at 0-> -1  
+      if (MPI_Partitioning == SFC_PARTITIONING) then
+         ! Sides (as in HOPR)
+         no_of_sides_toread = ElemInfo(ELEM_LastSideInd,last_elem) - ElemInfo(ELEM_FirstSideInd,first_elem)
+      else
+         ! Sides (as in HOPR)
+         no_of_sides_toread = nSides
+      end if
+      first_side = offset_side + 1
+      last_side =offset_side + no_of_sides_toread
+      ALLOCATE(SideInfo(5,first_side:last_side))
+      CALL ReadArrayFromHDF5(File_ID,'SideInfo',2,(/5,no_of_sides_toread/),offset_side,IntegerArray=SideInfo) ! There's a mistake in the documentation of HOPR regarding the SideInfo size!!
       
       ! Read boundary names from HDF5 file
       CALL GetHDF5DataSize(File_ID,'BCNames',nDims,HSize)
       nBCs=INT(HSize(1),4)
       DEALLOCATE(HSize)
       ALLOCATE(BCNames(nBCs)) !, BCMapping(nBCs))
-      CALL ReadArrayFromHDF5(File_ID,'BCNames',1,(/nBCs/),Offset,StrArray=BCNames)  ! Type is a dummy type only
+      CALL ReadArrayFromHDF5(File_ID,'BCNames',1,(/nBCs/),0,StrArray=BCNames)  ! offset=0 makes every process read all BCs
       
 !      
 !     Set up for face patches
@@ -619,9 +655,10 @@ contains
 !     Construct the zoneNameDictionary: 
 !        It must be in the order of appearance of the boundaries in the global
 !        element numbering
+!        TODO: See if loop first_elem, last_elem breaks something!
 !     ------------------------------------------------------------------------
 !
-      do l = 1, NumberOfAllElements
+      do l = first_elem, last_elem
          
          do k = 1, FACES_PER_ELEMENT
             j = SideInfo(5,ElemInfo(3,l) + HSideMap(k))
