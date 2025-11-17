@@ -359,11 +359,18 @@ jobs:
           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
         if: '!cancelled()'
 
-      - name: Run NSUniformFlow_parallel
+      - name: Run NSUniformFlow_parallel_SFC
         working-directory: ./Solver/test/NavierStokes/UniformFlow
         run: |
           source /opt/intel/oneapi/setvars.sh || true
           mpiexec -n 3 ./horses3d.ns UniformFlow_HDF5.control
+        if: '!cancelled()'
+
+      - name: Run NSUniformFlow_parallel_METIS
+        working-directory: ./Solver/test/NavierStokes/UniformFlow
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 3 ./horses3d.ns UniformFlow_HDF5_METIS.control
         if: '!cancelled()'
 
       - name: Run NSUniformFlow_serial

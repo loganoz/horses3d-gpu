@@ -588,9 +588,9 @@ contains
          no_of_sides_toread = nSides
       end if
       first_side = offset_side + 1
-      last_side =offset_side + no_of_sides_toread
+      last_side = offset_side + no_of_sides_toread
       ALLOCATE(SideInfo(5,first_side:last_side))
-      CALL ReadArrayFromHDF5(File_ID,'SideInfo',2,(/5,no_of_sides_toread/),offset_side,IntegerArray=SideInfo) ! There's a mistake in the documentation of HOPR regarding the SideInfo size!!
+      CALL ReadArrayFromHDF5(File_ID,'SideInfo',2,(/5,no_of_sides_toread/),offset_side,IntegerArray=SideInfo)
       
       ! Read boundary names from HDF5 file
       CALL GetHDF5DataSize(File_ID,'BCNames',nDims,HSize)
