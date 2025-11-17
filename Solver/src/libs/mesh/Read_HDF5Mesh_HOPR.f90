@@ -579,14 +579,15 @@ contains
       NodeCoords = TempArray
       deallocate (TempArray)
       
-      offset_side=ElemInfo(ELEM_FirstSideInd,first_elem) ! hdf5 array starts at 0-> -1  
-      if (MPI_Partitioning == SFC_PARTITIONING) then
-         ! Sides (as in HOPR)
-         no_of_sides_toread = ElemInfo(ELEM_LastSideInd,last_elem) - ElemInfo(ELEM_FirstSideInd,first_elem)
-      else
-         ! Sides (as in HOPR)
+      ! offset_side=ElemInfo(ELEM_FirstSideInd,first_elem) ! hdf5 array starts at 0-> -1  
+      offset_side=ElemInfo(ELEM_FirstSideInd,1) ! hdf5 array starts at 0-> -1  
+      ! if (MPI_Partitioning == SFC_PARTITIONING) then
+      !    ! Sides (as in HOPR)
+      !    no_of_sides_toread = ElemInfo(ELEM_LastSideInd,last_elem) - ElemInfo(ELEM_FirstSideInd,first_elem)
+      ! else
+      !    ! Sides (as in HOPR)
          no_of_sides_toread = nSides
-      end if
+      ! end if
       first_side = offset_side + 1
       last_side = offset_side + no_of_sides_toread
       ALLOCATE(SideInfo(5,first_side:last_side))
