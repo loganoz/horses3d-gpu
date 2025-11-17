@@ -34,7 +34,7 @@
 #endif
       implicit none
 !
-!     Paramaters
+!     Parameters
 !     ----------
       real(kind=RP), parameter :: alpha    =  0.9_RP
 !
@@ -476,12 +476,12 @@
 !
 !           -----------------------------------------------------------------------------------------
 !           Expected solutions. 
-!           Front periodic copuled Back
-!           Back periodic copuled Front            
+!           Front periodic coupled Back
+!           Back periodic coupled Front            
 !           Left NoSlipWall
 !           Right NoSlipWall
-!           Top periodic copuled Bottom
-!           Bottom periodic copuled Top
+!           Top periodic coupled Bottom
+!           Bottom periodic coupled Top
 !           use channel true
 !           -----------------------------------------------------------------------------------------
 !

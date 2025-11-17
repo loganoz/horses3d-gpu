@@ -1066,7 +1066,7 @@ jobs:
       #     mpiexec -n 64 ./horses3d.ns ActuatorLineController.control
       #   if: '!cancelled()'
 #
-# 39) CYLINDER
+# 39) CHANNEL
 # -----------
 
       - name: Build Channel
