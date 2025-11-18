@@ -60,10 +60,6 @@ contains
 #ifdef HAS_HDF5
       integer(HID_T) :: file_id       ! File identifier
       !----------------------------------
-
-!     Initialize FORTRAN predefined datatypes
-!     ---------------------------------------
-      call h5open_f(iError)
       
 !     Open the specified mesh file
 !     ----------------------------
@@ -168,9 +164,6 @@ contains
 !
 !     Prepare to read file
 !     ------------------------------------
-      
-      ! Initialize FORTRAN predefined datatypes
-      call h5open_f(iError)
       
       ! Open the specified mesh file.
       call h5fopen_f (trim(filename), H5F_ACC_RDONLY_F, file_id, iError) ! instead of H5F_ACC_RDONLY_F one can also use  H5F_ACC_RDWR_F
@@ -533,8 +526,6 @@ contains
 !     Prepare to read file
 !     ------------------------------------
       
-      ! Initialize FORTRAN predefined datatypes
-      call h5open_f(iError)
 #ifdef _HAS_MPI_
       CALL H5Pcreate_f(H5P_FILE_ACCESS_F, fapl, iError)
       CALL H5Pset_fapl_mpio_f(fapl, MPI_COMM_WORLD, MPI_INFO_NULL, iError)
