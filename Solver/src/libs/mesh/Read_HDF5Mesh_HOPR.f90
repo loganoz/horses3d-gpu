@@ -74,6 +74,10 @@ contains
 !     Read the number of elements
 !     ---------------------------
       CALL GetHDF5Attribute(File_ID,'nElems',1,IntegerScalar=nelem)
+      
+!     Close HDF5 file
+!     ---------------
+      call H5Fclose_f(file_id, iError)
 #else
       error stop ':: HDF5 is not linked correctly'
 #endif
@@ -447,6 +451,9 @@ contains
       
       call self % ExportBoundaryMesh (trim(fileName))
 
+!     Close HDF5 file
+!     ---------------
+      call H5Fclose_f(file_id, iError)
 #else
       error stop ':: HDF5 is not linked correctly'
 #endif
@@ -458,6 +465,9 @@ contains
 !  Subroutine to construct individual mesh partitions from an HDF5 mesh file
 !  -----------------------------------------------------------------------------------------------------------------------
    subroutine ConstructMeshPartition_FromHDF5File_( self, fileName, nodes, Nx, Ny, Nz, MeshInnerCurves, dir2D, periodRelative, success )
+#ifdef _HAS_MPI_
+   use MPI
+#endif      
       implicit none
       !-arguments--------------------------------------------------------------
       class(HexMesh)  , intent(inout) :: self
@@ -510,6 +520,7 @@ contains
       integer                    :: HSideMap(6)          ! Map from the side index of an element in HORSES3D to the side index used in HOPR
       integer, allocatable       :: HNodeSideMap(:,:,:)  ! Map from the face-node-index of an element to the global node index of HOPR (for surface curvature)
       logical                    :: CurveCondition
+      INTEGER(HID_T) :: fapl
       !---------------------------------------------------------------
       
 !
@@ -524,9 +535,14 @@ contains
       
       ! Initialize FORTRAN predefined datatypes
       call h5open_f(iError)
-      
+#ifdef _HAS_MPI_
+      CALL H5Pcreate_f(H5P_FILE_ACCESS_F, fapl, iError)
+      CALL H5Pset_fapl_mpio_f(fapl, MPI_COMM_WORLD, MPI_INFO_NULL, iError)
+      call h5fopen_f (trim(filename), H5F_ACC_RDONLY_F, file_id, iError, fapl) ! instead of H5F_ACC_RDONLY_F one can also use  H5F_ACC_RDWR_F
+#else
       ! Open the specified mesh file.
       call h5fopen_f (trim(filename), H5F_ACC_RDONLY_F, file_id, iError) ! instead of H5F_ACC_RDONLY_F one can also use  H5F_ACC_RDWR_F
+#endif /*_HAS_MPI_*/      
         
 !
 !     Read important mesh attributes
@@ -545,7 +561,7 @@ contains
 
          ! Elements
          first_elem = mpi_partition % elementIDs(1)
-         last_elem = first_elem + mpi_partition % no_of_elements
+         last_elem = first_elem + mpi_partition % no_of_elements - 1
          no_of_elements_toread = mpi_partition % no_of_elements
 
          ! Nodes (as in HOPR)
@@ -579,15 +595,14 @@ contains
       NodeCoords = TempArray
       deallocate (TempArray)
       
-      ! offset_side=ElemInfo(ELEM_FirstSideInd,first_elem) ! hdf5 array starts at 0-> -1  
-      offset_side=ElemInfo(ELEM_FirstSideInd,1) ! hdf5 array starts at 0-> -1  
-      ! if (MPI_Partitioning == SFC_PARTITIONING) then
-      !    ! Sides (as in HOPR)
-      !    no_of_sides_toread = ElemInfo(ELEM_LastSideInd,last_elem) - ElemInfo(ELEM_FirstSideInd,first_elem)
-      ! else
-      !    ! Sides (as in HOPR)
+      offset_side=(first_elem - 1) * 6 !ElemInfo(ELEM_FirstSideInd,first_elem) ! hdf5 array starts at 0-> -1  
+      if (MPI_Partitioning == SFC_PARTITIONING) then
+         ! Sides (as in HOPR)
+         no_of_sides_toread = no_of_elements_toread * 6! ElemInfo(ELEM_LastSideInd,last_elem) - ElemInfo(ELEM_FirstSideInd,first_elem)
+      else
+         ! Sides (as in HOPR)
          no_of_sides_toread = nSides
-      ! end if
+      end if
       first_side = offset_side + 1
       last_side = offset_side + no_of_sides_toread
       ALLOCATE(SideInfo(5,first_side:last_side))
@@ -896,6 +911,9 @@ contains
 !
       call self % PrepareForIO
 
+!     Close HDF5 file
+!     ---------------
+      call H5Fclose_f(file_id, iError)
 #else
       error stop ':: HDF5 is not linked correctly'
 #endif
@@ -1031,6 +1049,10 @@ contains
       CALL H5SSELECT_HYPERSLAB_F(FileSpace, H5S_SELECT_SET_F, Offset, Dimsf, iError)
       ! Create property list
       CALL H5PCREATE_F(H5P_DATASET_XFER_F, PList_ID, iError)
+#ifdef _HAS_MPI_
+      ! Set property list to collective dataset read
+      CALL H5PSET_DXPL_MPIO_F(PList_ID, H5FD_MPIO_COLLECTIVE_F, iError)
+#endif /*_HAS_MPI_*/
       ! Read the data
       IF(PRESENT(RealArray))THEN
         CALL H5DREAD_F(DSet_ID,H5T_NATIVE_DOUBLE,&
