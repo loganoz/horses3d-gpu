@@ -206,6 +206,20 @@ contains
       ALLOCATE(BCNames(nBCs)) !, BCMapping(nBCs))
       CALL ReadArrayFromHDF5(.true., File_ID,'BCNames',1,(/nBCs/),0,1,StrArray=BCNames)  ! Type is a dummy type only
       
+!
+!     ---------------------------------------------------------------------------
+!     Construct the zoneNameDictionary: 
+!        It must be in the order of appearance of the boundaries in the mesh file
+!     ---------------------------------------------------------------------------
+!
+      DO k = 1, nBCs
+         call toLower(BCNames(k))
+         zoneNames => zoneNameDictionary % allKeys()
+         if ( all(trim(BCNames(k)) .ne. zoneNames) ) then
+            call zoneNameDictionary % addValueForKey(trim(BCNames(k)), trim(BCNames(k)))
+         end if
+         deallocate (zoneNames)
+      END DO  
 !      
 !     Set up for face patches
 !     Face patches are defined at equidistant points in HOPR (not Chebyshev-Lobatto as in .mesh format)
@@ -335,11 +349,6 @@ contains
          DO k = 1, 6
             IF(TRIM(names(k)) /= emptyBCName) then
                numberOfBoundaryFaces = numberOfBoundaryFaces + 1
-               zoneNames => zoneNameDictionary % allKeys()
-               if ( all(trim(names(k)) .ne. zoneNames) ) then
-                  call zoneNameDictionary % addValueForKey(trim(names(k)), trim(names(k)))
-               end if
-               deallocate (zoneNames)
             end if
          END DO  
          
@@ -659,35 +668,20 @@ contains
       end do
       
 !
-!     ------------------------------------------------------------------------
+!     ---------------------------------------------------------------------------
 !     Construct the zoneNameDictionary: 
-!        It must be in the order of appearance of the boundaries in the global
-!        element numbering
-!        TODO: See if loop first_elem, last_elem breaks something!
-!     ------------------------------------------------------------------------
+!        It must be in the order of appearance of the boundaries in the mesh file
+!     ---------------------------------------------------------------------------
 !
-      do l = first_elem, last_elem
-         
-         do k = 1, FACES_PER_ELEMENT
-            j = SideInfo(5,ElemInfo(3,l) + HSideMap(k))
-            if (j == 0) then
-               names(k) = emptyBCName
-            else
-               names(k) = trim(BCNames(j))
-            end if
-         end do
-         
-         do k = 1, 6
-            IF(TRIM(names(k)) /= emptyBCName) then
-               call toLower( names(k) )
-               zoneNames => zoneNameDictionary % allKeys()
-               if ( all(trim(names(k)) .ne. zoneNames) ) then
-                  call zoneNameDictionary % addValueForKey(trim(names(k)), trim(names(k)))
-               end if
-               deallocate (zoneNames)
-            end if
-         end do
-      end do
+      ! Fill zoneNameDictionary in the order of BCNames of the mesh file
+      DO k = 1, nBCs
+         call toLower(BCNames(k))
+         zoneNames => zoneNameDictionary % allKeys()
+         if ( all(trim(BCNames(k)) .ne. zoneNames) ) then
+            call zoneNameDictionary % addValueForKey(trim(BCNames(k)), trim(BCNames(k)))
+         end if
+         deallocate (zoneNames)
+      END DO  
       
 !      
 !     Now we construct the elements (only read the elements of the current partition)
