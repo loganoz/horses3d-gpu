@@ -34,9 +34,6 @@ module Read_HDF5Mesh_HOPR
 !  Module variables
 !  ----------------
 !
-#ifdef HAS_HDF5
-   integer(HID_T) :: file_id       ! File identifier
-#endif
    integer        :: iError        ! Error flag
    integer        :: idx = 0       ! Index of node to add to the list
 !   
@@ -60,8 +57,9 @@ contains
       !----------------------------------
       CHARACTER(LEN=*), intent(in) :: fileName
       integer                      :: nelem
-      !----------------------------------
 #ifdef HAS_HDF5
+      integer(HID_T) :: file_id       ! File identifier
+      !----------------------------------
 
 !     Initialize FORTRAN predefined datatypes
 !     ---------------------------------------
@@ -106,6 +104,7 @@ contains
       logical         , intent(out)   :: success
       !-local-variables---------------------------------------------------------
 #ifdef HAS_HDF5
+      integer(HID_T) :: file_id       ! File identifier
       ! Variables as called by Kopriva
       integer  :: numberOfElements  ! ...
       integer  :: bFaceOrder        ! Polynomial order for aproximating curved faces
@@ -480,6 +479,7 @@ contains
       logical         , intent(out)   :: success
       !-local-variables---------------------------------------------------------
 #ifdef HAS_HDF5
+      integer(HID_T) :: file_id       ! File identifier
       ! Variables as called by Kopriva
       integer  :: numberOfAllElements
       integer  :: bFaceOrder        ! Polynomial order for aproximating curved faces
@@ -958,6 +958,7 @@ contains
       INTEGER(HID_T)                 :: Attr_ID, Type_ID,Loc_ID  ! ?
       INTEGER(HSIZE_T), DIMENSION(1) :: Dimsf  ! ?
       INTEGER                        :: inttolog  ! ?
+      integer(HID_T) :: file_id       ! File identifier
       !===================================================================================================================================
 
       Dimsf(1)=nVal
