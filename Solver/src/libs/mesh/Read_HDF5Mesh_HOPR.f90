@@ -538,7 +538,7 @@ contains
 #ifdef _HAS_MPI_
       CALL H5Pcreate_f(H5P_FILE_ACCESS_F, fapl, iError)
       CALL H5Pset_fapl_mpio_f(fapl, MPI_COMM_WORLD, MPI_INFO_NULL, iError)
-      call h5fopen_f (trim(filename), H5F_ACC_RDONLY_F, file_id, iError, fapl) ! instead of H5F_ACC_RDONLY_F one can also use  H5F_ACC_RDWR_F
+      call h5fopen_f (trim(filename), H5F_ACC_RDONLY_F, file_id, iError, access_prp = fapl) ! instead of H5F_ACC_RDONLY_F one can also use  H5F_ACC_RDWR_F
 #else
       ! Open the specified mesh file.
       call h5fopen_f (trim(filename), H5F_ACC_RDONLY_F, file_id, iError) ! instead of H5F_ACC_RDONLY_F one can also use  H5F_ACC_RDWR_F
