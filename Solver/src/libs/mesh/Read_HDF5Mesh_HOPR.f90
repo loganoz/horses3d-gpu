@@ -176,19 +176,20 @@ contains
       CALL GetHDF5Attribute(File_ID,'nSides',1,IntegerScalar=nSides)
       CALL GetHDF5Attribute(File_ID,'nNodes',1,IntegerScalar=nNodes)
       CALL GetHDF5Attribute(File_ID,'nUniqueNodes',1,IntegerScalar=nUniqueNodes)
-      
+
       allocate(ElemInfo(6,1:numberOfElements))
-      call ReadArrayFromHDF5(File_ID,'ElemInfo',2,(/6,numberOfElements/),0,IntegerArray=ElemInfo)
+      call ReadArrayFromHDF5(.true., File_ID,'ElemInfo',2,(/6,numberOfElements/),0,IntegerArray=ElemInfo)
       
       offset=ElemInfo(ELEM_FirstNodeInd,1) ! hdf5 array starts at 0-> -1
       first=offset+1
       last =offset+nNodes
       
       ALLOCATE( GlobalNodeIDs(first:last) )
-      CALL ReadArrayFromHDF5(File_ID,'GlobalNodeIDs',1,(/nNodes/),offset,IntegerArray=GlobalNodeIDs)
+
+      CALL ReadArrayFromHDF5(.true., File_ID,'GlobalNodeIDs',1,(/nNodes/),offset,IntegerArray=GlobalNodeIDs)
       
       allocate( NodeCoords(1:3,first:last),TempArray(1:3,first:last) )
-      CALL ReadArrayFromHDF5(File_ID,'NodeCoords',2,(/3,nNodes/),offset,RealArray=TempArray)
+      CALL ReadArrayFromHDF5(.true., File_ID,'NodeCoords',2,(/3,nNodes/),offset,RealArray=TempArray)
       NodeCoords = TempArray
       deallocate (TempArray)
       
@@ -196,14 +197,14 @@ contains
       first=offset+1
       last =offset+nSides
       ALLOCATE(SideInfo(5,first:last))
-      CALL ReadArrayFromHDF5(File_ID,'SideInfo',2,(/5,nSides/),offset,IntegerArray=SideInfo) ! There's a mistake in the documentation of HOPR regarding the SideInfo size!!
+      CALL ReadArrayFromHDF5(.true., File_ID,'SideInfo',2,(/5,nSides/),offset,IntegerArray=SideInfo) ! There's a mistake in the documentation of HOPR regarding the SideInfo size!!
       
       ! Read boundary names from HDF5 file
       CALL GetHDF5DataSize(File_ID,'BCNames',nDims,HSize)
       nBCs=INT(HSize(1),4)
       DEALLOCATE(HSize)
       ALLOCATE(BCNames(nBCs)) !, BCMapping(nBCs))
-      CALL ReadArrayFromHDF5(File_ID,'BCNames',1,(/nBCs/),Offset,StrArray=BCNames)  ! Type is a dummy type only
+      CALL ReadArrayFromHDF5(.true., File_ID,'BCNames',1,(/nBCs/),Offset,StrArray=BCNames)  ! Type is a dummy type only
       
 !      
 !     Set up for face patches
@@ -572,17 +573,17 @@ contains
 
       allocate(ElemInfo(6, first_elem:last_elem))
 
-      call ReadArrayFromHDF5(File_ID,'ElemInfo',2,(/6,no_of_elements_toread/),offset_elem,IntegerArray=ElemInfo)
+      call ReadArrayFromHDF5(.false., File_ID,'ElemInfo',2,(/6,no_of_elements_toread/),offset_elem,IntegerArray=ElemInfo)
       
       offset_node = ElemInfo(ELEM_FirstNodeInd,first_elem) ! hdf5 array starts at 0-> -1 !
       first_node = offset_node + 1
       last_node = offset_node + no_of_nodes_toread
-      
+
       ALLOCATE( GlobalNodeIDs(first_node:last_node) )
-      CALL ReadArrayFromHDF5(File_ID,'GlobalNodeIDs',1,(/no_of_nodes_toread/),offset_node,IntegerArray=GlobalNodeIDs)
+      CALL ReadArrayFromHDF5(.false., File_ID,'GlobalNodeIDs',1,(/no_of_nodes_toread/),offset_node,IntegerArray=GlobalNodeIDs)
       
       allocate( NodeCoords(1:3,first_node:last_node),TempArray(1:3,first_node:last_node) )
-      CALL ReadArrayFromHDF5(File_ID,'NodeCoords',2,(/3,no_of_nodes_toread/),offset_node,RealArray=TempArray)
+      CALL ReadArrayFromHDF5(.false., File_ID,'NodeCoords',2,(/3,no_of_nodes_toread/),offset_node,RealArray=TempArray)
       NodeCoords = TempArray
       deallocate (TempArray)
       
@@ -597,14 +598,14 @@ contains
       first_side = offset_side + 1
       last_side = offset_side + no_of_sides_toread
       ALLOCATE(SideInfo(5,first_side:last_side))
-      CALL ReadArrayFromHDF5(File_ID,'SideInfo',2,(/5,no_of_sides_toread/),offset_side,IntegerArray=SideInfo)
+      CALL ReadArrayFromHDF5(.false., File_ID,'SideInfo',2,(/5,no_of_sides_toread/),offset_side,IntegerArray=SideInfo)
       
       ! Read boundary names from HDF5 file
       CALL GetHDF5DataSize(File_ID,'BCNames',nDims,HSize)
       nBCs=INT(HSize(1),4)
       DEALLOCATE(HSize)
       ALLOCATE(BCNames(nBCs)) !, BCMapping(nBCs))
-      CALL ReadArrayFromHDF5(File_ID,'BCNames',1,(/nBCs/),0,StrArray=BCNames)  ! offset=0 makes every process read all BCs
+      CALL ReadArrayFromHDF5(.false., File_ID,'BCNames',1,(/nBCs/),0,StrArray=BCNames)  ! offset=0 makes every process read all BCs
       
 !      
 !     Set up for face patches
@@ -1006,7 +1007,7 @@ contains
    ! HOPR is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License 
    ! as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 !  -----------------------------------------------------------------------------------------------------------------------
-   SUBROUTINE ReadArrayFromHDF5(Loc_ID,ArrayName,Rank,nVal,Offset_in,RealArray,IntegerArray,StrArray)
+   SUBROUTINE ReadArrayFromHDF5(serial_read, Loc_ID,ArrayName,Rank,nVal,Offset_in,RealArray,IntegerArray,StrArray)
    !===================================================================================================================================
    ! Subroutine to read arrays of rank "Rank" with dimensions "Dimsf(1:Rank)".
    !===================================================================================================================================
@@ -1015,6 +1016,7 @@ contains
       IMPLICIT NONE
       !-----------------------------------------------------------------------------------------------------------------------------------
       ! INPUT VARIABLES
+      logical, intent(in)                :: serial_read
       INTEGER, INTENT(IN)                :: Rank ! ?
       INTEGER, INTENT(IN)                :: Offset_in  ! ?
       INTEGER, INTENT(IN)                            :: nVal(Rank)  ! ?
@@ -1043,7 +1045,7 @@ contains
       CALL H5PCREATE_F(H5P_DATASET_XFER_F, PList_ID, iError)
 #ifdef _HAS_MPI_
       ! Set property list to collective dataset read
-      CALL H5PSET_DXPL_MPIO_F(PList_ID, H5FD_MPIO_COLLECTIVE_F, iError)
+      if (.not. serial_read) CALL H5PSET_DXPL_MPIO_F(PList_ID, H5FD_MPIO_COLLECTIVE_F, iError)
 #endif /*_HAS_MPI_*/
       ! Read the data
       IF(PRESENT(RealArray))THEN
