@@ -100,6 +100,7 @@ module VariableConversion_MU
       real(kind=RP), intent(out) :: U_x(NDIM), U_y(NDIM), U_z(NDIM)
       !-local-variables---------------------------------------------
       real(kind=RP) :: rho, invRho, invRho2, uDivRho(NDIM)
+	  integer       :: i
       !-------------------------------------------------------------
 
        ! rho = dimensionless_ % rho(1)*Q(IMC) + dimensionless_ % rho(2)*(1-Q(IMC))
