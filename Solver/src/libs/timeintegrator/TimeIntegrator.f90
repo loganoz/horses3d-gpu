@@ -461,7 +461,7 @@
       use ChannelForcing, only: initializeChannel, updateChannel
 #endif
 #if defined(FLOW) 
-      use SpongeClass, only: sponge, ConstructSponge, DestructSponge, UpdateBaseFlowSponge, WriteBaseFlowSponge
+      use SpongeClass
 #endif
 
 #if defined(NAVIERSTOKES) || defined(MULTIPHASE)

@@ -1355,8 +1355,8 @@ module StorageClass
                                      outArray   = other % U_z  )
             end if
 			
-            this % Q(1:,0:,0:,0:) => this % QbaseSponge
-            other % Q(1:,0:,0:,0:) => other % QbaseSponge
+            this % Q => this % QbaseSponge
+            other % Q=> other % QbaseSponge
 
             call Interp3DArrays  (Nvars      = NCONS   , &
                                   Nin        = this  % Nxyz , &

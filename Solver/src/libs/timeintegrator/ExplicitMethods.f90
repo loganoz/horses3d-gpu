@@ -1021,8 +1021,6 @@ MODULE ExplicitMethods
       REAL(KIND=RP) :: corrector, corrector2, aLoc
       REAL(KIND=RP), ALLOCATABLE :: cLL(:) , tk(:), deltaTL(:) ! 
       
-      !$acc enter data copyin(a,b,c,d)
-      
       nLevel = mesh % MLRK % maxLevel
       
       allocate(k(nLevel), cLL(nLevel), tk(nLevel), deltaTL(nLevel), MLIterN(nLevel) , MLIter(nLevel+1), MLIter_eIDN(size(mesh % elements)))
@@ -1034,7 +1032,7 @@ MODULE ExplicitMethods
       deltaTL(:) = deltaT       ! Local timestep, for level 1 is the deltaT
       tk(:)      = t
       
-      !$acc data copyin(MLIter_eIDN,MLIterN,t)
+      !$acc data copyin(MLIter_eIDN,MLIterN,t,a,b,c,d)
       k(:) = kmax                ! A counter array to track at which stage and level , 3 is the total number of stages
       do k1 = 1,kmax
 !           LEVEL 1
