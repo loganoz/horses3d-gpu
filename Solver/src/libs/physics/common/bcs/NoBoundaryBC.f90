@@ -465,10 +465,8 @@ module NoBoundaryBCClass
       end subroutine NoBoundaryBC_FlowState
 
       subroutine NoBoundaryBC_FlowGradVars(self, mesh, zone)
-         !TODO slightly unsure about this one 
 !
 !        **************************************************************
-!           Use the interior velocity: Neumann BC!
 !        **************************************************************
 !
          implicit none

@@ -530,7 +530,7 @@ pure subroutine sortAscendInt(A)
     !--------------------------------------
     integer :: n, newn
     integer :: i
-	real(RP):: temp
+	integer :: temp
     !--------------------------------------
 
     n = size(A)

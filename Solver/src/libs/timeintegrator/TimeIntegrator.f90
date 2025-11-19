@@ -53,9 +53,9 @@
          type(MultiTauEstim_t)                  :: TauEstimator
          character(len=LINE_LENGTH)             :: integration_method
          integer                                :: RKStep_key
-		 REAL(KIND=RP)                          :: ML_CFL_CutOff
-		 INTEGER                                :: ML_ReLevel_Iteration, ML_Counter, ML_nLevel
-		 logical                                :: ML_ReLevel	
+         REAL(KIND=RP)                          :: ML_CFL_CutOff
+         INTEGER                                :: ML_ReLevel_Iteration, ML_iteration_counter, ML_nLevel
+         logical                                :: ML_ReLevel   
          PROCEDURE(TimeStep_FCN), NOPASS , POINTER :: RKStep
 !
 !        ========
@@ -190,30 +190,30 @@
                !Create the array of High-Order elements and faces for the Euler-RK3 method
                call sem % mesh % UpdateHOArrays()
 
-			case(ML_RK3_NAME)
-				if ( controlVariables % ContainsKey("cfl cut-off") ) then
-				     self % ML_CFL_CutOff = controlVariables % doublePrecisionValueForKey("cfl cut-off")
-					 self % ML_CFL_CutOff = min(max(self % ML_CFL_CutOff,0.0001_RP),10.0_RP)
-				else 
-					 self % ML_CFL_CutOff = 0.5_RP
-			    end if 
-				if ( controlVariables % ContainsKey("relevel iteration") ) then
-				     self % ML_ReLevel_Iteration = controlVariables % integerValueForKey ("relevel iteration")
-				else 
-					 self % ML_ReLevel_Iteration = 1000000000
-			    end if
-				if ( controlVariables % ContainsKey("number of level") ) then
-				     self % ML_nLevel = controlVariables % integerValueForKey ("number of level")
-				else 
-					 self % ML_nLevel = 3
-			    end if
-				self % ML_ReLevel = .true. 
-				
+            case(ML_RK3_NAME)
+                if ( controlVariables % ContainsKey("cfl cut-off") ) then
+                     self % ML_CFL_CutOff = controlVariables % doublePrecisionValueForKey("cfl cut-off")
+                     self % ML_CFL_CutOff = min(max(self % ML_CFL_CutOff,0.0001_RP),10.0_RP)
+                else 
+                     self % ML_CFL_CutOff = 0.5_RP
+                end if 
+                if ( controlVariables % ContainsKey("relevel iteration") ) then
+                     self % ML_ReLevel_Iteration = controlVariables % integerValueForKey ("relevel iteration")
+                else 
+                     self % ML_ReLevel_Iteration = 1000000000
+                end if
+                if ( controlVariables % ContainsKey("number of level") ) then
+                     self % ML_nLevel = controlVariables % integerValueForKey ("number of level")
+                else 
+                     self % ML_nLevel = 3
+                end if
+                self % ML_ReLevel = .true. 
+                
                 !self % RKStep => TakeMLRK3Step
                 self % RKStep_key = ML_RK3_KEY
-				self % ML_Counter = 0
-				
-				! call sem % mesh % MLRK % construct(sem % mesh, self % ML_nLevel) ! construct nlevel  
+                self % ML_iteration_counter = 0
+                
+                ! call sem % mesh % MLRK % construct(sem % mesh, self % ML_nLevel) ! construct nlevel  
 
             case default
                print*, "Explicit time integration method not implemented"
@@ -309,13 +309,13 @@
                write(STD_OUT,'(A)') "SSPRK43"
             case (EULER_RK3_KEY)
                write(STD_OUT,'(A)') "Euler-RK3"
-			case (ML_RK3_KEY)
+            case (ML_RK3_KEY)
                write(STD_OUT,'(A)') "Multi-Level RK3"
-			   write(STD_OUT,'(35X,A,A23,I14)')   "->" , "Number of Level: ", self % ML_nLevel
-			   write(STD_OUT,'(35X,A,A23,F7.4)') "->" , "CFL Cut-Off: ", self % ML_CFL_CutOff
-			   write(STD_OUT,'(35X,A,A23,I14)')   "->" , "Update Iteration: ", self % ML_ReLevel_Iteration
-			   write(STD_OUT,'(35X,A,A23,A)')  "->" , "Cut-Off Level 1: ","CFL Cut-Off"
-			   write(STD_OUT,'(35X,A,A23,A)')  "->" , "Cut-Off Level N: ","CFL Cut-Off x 2.5^(N-1) "
+               write(STD_OUT,'(35X,A,A23,I14)')   "->" , "Number of Level: ", self % ML_nLevel
+               write(STD_OUT,'(35X,A,A23,F7.4)') "->" , "CFL Cut-Off: ", self % ML_CFL_CutOff
+               write(STD_OUT,'(35X,A,A23,I14)')   "->" , "Update Iteration: ", self % ML_ReLevel_Iteration
+               write(STD_OUT,'(35X,A,A23,A)')  "->" , "Cut-Off Level 1: ","CFL Cut-Off"
+               write(STD_OUT,'(35X,A,A23,A)')  "->" , "Cut-Off Level N: ","CFL Cut-Off x 2.5^(N-1) "
             end select
 
             write(STD_OUT,'(30X,A,A28)',advance='no') "->" , "Stage limiter: "
@@ -449,7 +449,7 @@
       use FASMultigridClass
       use AnisFASMultigridClass
       use RosenbrockTimeIntegrator
-	  use ExplicitMethods	
+      use ExplicitMethods   
       use StopwatchClass
       use FluidData
       use mainKeywordsModule
@@ -496,10 +496,10 @@
       REAL(KIND=RP)                 :: t
       REAL(KIND=RP)                 :: maxResidual(NCONS)
       REAL(KIND=RP)                 :: dt
-	  REAL(KIND=RP)                 :: globalMax, globalMin, maxCFLInterf
+      REAL(KIND=RP)                 :: globalMax, globalMin, maxCFLInterf
       integer                       :: k
       integer                       :: eID
-	  logical                       :: updatelevel
+      logical                       :: updatelevel
       CHARACTER(len=LINE_LENGTH)    :: SolutionFileName
       ! Time-step solvers:
       type(FASMultigrid_t)          :: FASSolver
@@ -714,26 +714,26 @@
 #if defined(NAVIERSTOKES)
             if( sem % mesh % IBM % active ) call sem % mesh % IBM % SemiImplicitCorrection( sem % mesh % elements, dt )
 #endif
-			! Need to add more scheme, Nvfortran does not like the pointer here - select function might solve the problem
-			if (self % RKStep_key .eq. RK3_KEY) then
-				CALL TakeRK3Step( sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
-				!$acc wait
-			elseif (self % RKStep_key .eq. ML_RK3_KEY) then
-				self % ML_Counter = self % ML_Counter + 1
-				if ((self % ML_Counter .eq. self % ML_ReLevel_Iteration).or.(self % ML_ReLevel)) THEN
-					CALL DetermineCFL(sem, self % dt, globalMax, globalMin, maxCFLInterf)
-					CALL sem % mesh % MLRK % construct(sem % mesh, self % ML_nLevel) ! reconstruct nLevel  
-					CALL sem % mesh % MLRK % update (sem % mesh, self % ML_CFL_CutOff, globalMax, globalMin, maxCFLInterf)
-					self % ML_ReLevel = .false. 
-					self % ML_Counter = 0
-					CALL sem % mesh % MLRK_UpdateDevice()
-				end if 
-				CALL TakeMLRK3Step( sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
-				!$acc wait
-			else 
-				CALL TakeRK3Step( sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
-				!$acc wait
-		    end if 
+            ! Need to add more scheme, Nvfortran does not like the pointer here - select function might solve the problem
+            if (self % RKStep_key .eq. RK3_KEY) then
+                CALL TakeRK3Step( sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
+                !$acc wait
+            elseif (self % RKStep_key .eq. ML_RK3_KEY) then
+                self % ML_iteration_counter = self % ML_iteration_counter + 1
+                if ((self % ML_iteration_counter .eq. self % ML_ReLevel_Iteration).or.(self % ML_ReLevel)) THEN
+                    CALL DetermineCFL(sem, self % dt, globalMax, globalMin, maxCFLInterf)
+                    CALL sem % mesh % MLRK % construct(sem % mesh, self % ML_nLevel) ! reconstruct nLevel  
+                    CALL sem % mesh % MLRK % update (sem % mesh, self % ML_CFL_CutOff, globalMax, globalMin, maxCFLInterf)
+                    self % ML_ReLevel = .false. 
+                    self % ML_iteration_counter = 0
+                    CALL sem % mesh % MLRK_UpdateDevice()
+                end if 
+                CALL TakeMLRK3Step( sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
+                !$acc wait
+            else 
+                CALL TakeRK3Step( sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
+                !$acc wait
+            end if 
 #if defined(NAVIERSTOKES)
             if( sem % mesh % IBM % active ) call sem % mesh % IBM % SemiImplicitCorrection( sem % mesh % elements, dt )
 #endif

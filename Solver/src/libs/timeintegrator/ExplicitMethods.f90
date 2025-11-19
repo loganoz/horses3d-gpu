@@ -1013,141 +1013,141 @@ MODULE ExplicitMethods
       REAL(KIND=RP), DIMENSION(3) :: a = (/0.0_RP       , -5.0_RP /9.0_RP , -153.0_RP/128.0_RP/)
       REAL(KIND=RP), DIMENSION(4) :: b = (/0.0_RP       ,  1.0_RP /3.0_RP ,    3.0_RP/4.0_RP  ,     1.0_RP     /)
       REAL(KIND=RP), DIMENSION(3) :: c = (/1.0_RP/3.0_RP,  15.0_RP/16.0_RP,    8.0_RP/15.0_RP /)
-	  REAL(KIND=RP), DIMENSION(3) :: d = (/1.0_RP/3.0_RP,  5.0_RP/12.0_RP,    1.0_RP/4.0_RP /)        ! Temporal step of stages
-	  
+      REAL(KIND=RP), DIMENSION(3) :: d = (/1.0_RP/3.0_RP,  5.0_RP/12.0_RP,    1.0_RP/4.0_RP /)        ! Temporal step of stages
+      
       INTEGER       :: i, j, j1, id, locLevel, k2, k3, k1, nLevel, eLevel, eLevelN, m, i1, i2, i3
-	  INTEGER, ALLOCATABLE :: k(:), MLIter_eIDN(:), MLIterN(:), MLIter(:)
-	  INTEGER, parameter :: kmax = 3
-	  REAL(KIND=RP) :: corrector, corrector2, aLoc
-	  REAL(KIND=RP), ALLOCATABLE :: cLL(:) , tk(:), deltaTL(:) ! 
-	  
-	  !$acc enter data copyin(a,b,c,d)
-	  
-	  nLevel = mesh % MLRK % maxLevel
-	  
-	  allocate(k(nLevel), cLL(nLevel), tk(nLevel), deltaTL(nLevel), MLIterN(nLevel) , MLIter(nLevel+1), MLIter_eIDN(size(mesh % elements)))
-	  
-	  MLIter_eIDN 			= mesh % MLRK % MLIter_eIDN
-	  MLIterN     			= mesh % MLRK % MLIter(:,8)
-	  MLIter      			= 0
-	  MLIter(1:nLevel)      = mesh % MLRK % MLIter(:,1)
-	  deltaTL(:) = deltaT		! Local timestep, for level 1 is the deltaT
-	  tk(:)      = t
-	  
-	  !$acc data copyin(MLIter_eIDN,MLIterN,t)
+      INTEGER, ALLOCATABLE :: k(:), MLIter_eIDN(:), MLIterN(:), MLIter(:)
+      INTEGER, parameter :: kmax = 3
+      REAL(KIND=RP) :: corrector, corrector2, aLoc
+      REAL(KIND=RP), ALLOCATABLE :: cLL(:) , tk(:), deltaTL(:) ! 
+      
+      !$acc enter data copyin(a,b,c,d)
+      
+      nLevel = mesh % MLRK % maxLevel
+      
+      allocate(k(nLevel), cLL(nLevel), tk(nLevel), deltaTL(nLevel), MLIterN(nLevel) , MLIter(nLevel+1), MLIter_eIDN(size(mesh % elements)))
+      
+      MLIter_eIDN           = mesh % MLRK % MLIter_eIDN
+      MLIterN               = mesh % MLRK % MLIter(:,8)
+      MLIter                = 0
+      MLIter(1:nLevel)      = mesh % MLRK % MLIter(:,1)
+      deltaTL(:) = deltaT       ! Local timestep, for level 1 is the deltaT
+      tk(:)      = t
+      
+      !$acc data copyin(MLIter_eIDN,MLIterN,t)
       k(:) = kmax                ! A counter array to track at which stage and level , 3 is the total number of stages
       do k1 = 1,kmax
 !           LEVEL 1
-            tk(:) = t + b(k1)*deltaT    											! Actual time at each level 
-            call ComputeTimeDerivative( mesh, particles, tk(1), CTD_IGNORE_MODE)  	! Compute Qdot all elements
-			locLevel = 1															! Level locator
+            tk(:) = t + b(k1)*deltaT                                                ! Actual time at each level 
+            call ComputeTimeDerivative( mesh, particles, tk(1), CTD_IGNORE_MODE)    ! Compute Qdot all elements
+            locLevel = 1                                                            ! Level locator
 !           -------------------------------------------------------------------------------------------------------------------------------
 !           LEVEL 2-LEVEL N-1
 !           -------------------------------------------------------------------------------------------------------------------------------
-			do k2 = 1, max(kmax**(nLevel-2),1)				! loop for the intermediate levels nstages**(nLevel-2)
-				k(nLevel-1) = k(nLevel-1)+1					! Update the counter level-stages by adding by 1 for nLevel-1
-				do i=nLevel-1,1,-1							! Check if stages already exceed total number of stages
-					if (k(i).gt.kmax) then
-						k(i)=1
-						if (i.ne.1) then
-							k(i-1)=k(i-1) +1
-						end if 
-					else
-						exit
-					end if						
-				end do 
-				
-				do i=2, nLevel 								! Update the local timestep for level 2: nLevel
-					deltaTL(i) = deltaTL(i-1) * d(k(i-1))
-					cLL(i-1)   = deltaTL(i-1) * c(k(i-1))   ! local coefficient timestep
-				end do 
+            do k2 = 1, max(kmax**(nLevel-2),1)              ! loop for the intermediate levels nstages**(nLevel-2)
+                k(nLevel-1) = k(nLevel-1)+1                 ! Update the counter level-stages by adding by 1 for nLevel-1
+                do i=nLevel-1,1,-1                          ! Check if stages already exceed total number of stages
+                    if (k(i).gt.kmax) then
+                        k(i)=1
+                        if (i.ne.1) then
+                            k(i-1)=k(i-1) +1
+                        end if 
+                    else
+                        exit
+                    end if                      
+                end do 
+                
+                do i=2, nLevel                              ! Update the local timestep for level 2: nLevel
+                    deltaTL(i) = deltaTL(i-1) * d(k(i-1))
+                    cLL(i-1)   = deltaTL(i-1) * c(k(i-1))   ! local coefficient timestep
+                end do 
 !               -------------------------------------------------------------------------------------------------------------------------------
 !               LEVEL N 
 !               -------------------------------------------------------------------------------------------------------------------------------
-				do k3 = 1,kmax
-					k(nLevel)   = k3							! Update the counter level-stages for nLevel
-					cLL(nLevel) = deltaTL(nLevel) * c(k3)       ! local coefficient timestep
-					
-					aLoc = a(k(locLevel))
-					j = MLIter(locLevel)
-					j1= MLIter(locLevel+1)
-					
+                do k3 = 1,kmax
+                    k(nLevel)   = k3                            ! Update the counter level-stages for nLevel
+                    cLL(nLevel) = deltaTL(nLevel) * c(k3)       ! local coefficient timestep
+                    
+                    aLoc = a(k(locLevel))
+                    j = MLIter(locLevel)
+                    j1= MLIter(locLevel+1)
+                    
 !------------------- PARALLEL SWEEP OVER ELEMENTS -------------------------
-!$omp parallel do schedule(runtime)	private(id, corrector, corrector2, eLevel, eLevelN, i1, i2, i3, m)	
-                    !$acc parallel loop gang vector_length(32) present(mesh,a,b,c,d,MLIterN,MLIter_eIDN) copyin(aLoc,j,j1,cLL,locLevel,k) private(id, corrector, corrector2, eLevel, eLevelN, i1, i2, i3, m)	
-					do i = 1, MLIterN(locLevel)            ! Loop elements with neighbour at locLevel to update the Q / c
+!$omp parallel do schedule(runtime) private(id, corrector, corrector2, eLevel, eLevelN, i1, i2, i3, m)  
+                    !$acc parallel loop gang vector_length(32) present(mesh,a,b,c,d,MLIterN,MLIter_eIDN) copyin(aLoc,j,j1,cLL,locLevel,k) private(id, corrector, corrector2, eLevel, eLevelN, i1, i2, i3, m)    
+                    do i = 1, MLIterN(locLevel)            ! Loop elements with neighbour at locLevel to update the Q / c
 
-						id      = MLIter_eIDN(i)                ! ID of element + neighbour
-						eLevel  = mesh % elements(id) % MLevel
-						eLevelN = mesh % elements(id) % MLevelwN
-						
-						corrector2 = cLL(eLevel)
-						if (eLevelN /= eLevel) corrector2 = corrector2 * d(k(eLevelN))
-						
-!						Update G_NS / G_CH for element with level > locLevel
-						if (i .le. j) then
-						!if (eLevel.ge.locLevel) then
-						
-							corrector = merge(aLoc, 0.0_RP, i.gt.j1)
-							!corrector = merge(aLoc, 0.0_RP, eLevel==locLevel)
-							!$acc loop vector collapse(3)
-							do i3 = 0, mesh % elements(id) % Nxyz(3) ; do i2 = 0, mesh % elements(id) % Nxyz(2) ; do i1 = 0, mesh % elements(id) % Nxyz(1)
+                        id      = MLIter_eIDN(i)                ! ID of element + neighbour
+                        eLevel  = mesh % elements(id) % MLevel
+                        eLevelN = mesh % elements(id) % MLevelwN
+                        
+                        corrector2 = cLL(eLevel)
+                        if (eLevelN /= eLevel) corrector2 = corrector2 * d(k(eLevelN))
+                        
+!                       Update G_NS / G_CH for element with level > locLevel
+                        if (i .le. j) then
+                        !if (eLevel.ge.locLevel) then
+                        
+                            corrector = merge(aLoc, 0.0_RP, i.gt.j1)
+                            !corrector = merge(aLoc, 0.0_RP, eLevel==locLevel)
+                            !$acc loop vector collapse(3)
+                            do i3 = 0, mesh % elements(id) % Nxyz(3) ; do i2 = 0, mesh % elements(id) % Nxyz(2) ; do i1 = 0, mesh % elements(id) % Nxyz(1)
 #ifdef FLOW        
-								!$acc loop seq
-								do m=1, NCONS
-									mesh % elements(id) % storage % G_NS(m,i1,i2,i3) = corrector * mesh % elements(id) % storage % G_NS(m,i1,i2,i3) + mesh % elements(id) % storage % QDot(m,i1,i2,i3)
-								end do 
+                                !$acc loop seq
+                                do m=1, NCONS
+                                    mesh % elements(id) % storage % G_NS(m,i1,i2,i3) = corrector * mesh % elements(id) % storage % G_NS(m,i1,i2,i3) + mesh % elements(id) % storage % QDot(m,i1,i2,i3)
+                                end do 
 #endif
 #if (defined(CAHNHILLIARD)) && (!defined(FLOW))
-								mesh % elements(id) % storage % G_CH(1,i1,i2,i3) = corrector * mesh % elements(id) % storage % G_CH(1,i1,i2,i3) + mesh % elements(id) % storage % cDot(1,i1,i2,i3)
+                                mesh % elements(id) % storage % G_CH(1,i1,i2,i3) = corrector * mesh % elements(id) % storage % G_CH(1,i1,i2,i3) + mesh % elements(id) % storage % cDot(1,i1,i2,i3)
 #endif
-							end do               ; end do                ; end do
-						end if 
-!						Update Q / c (integrate in time)	
-						!$acc loop vector collapse(3)
-						do i3 = 0, mesh % elements(id) % Nxyz(3) ; do i2 = 0, mesh % elements(id) % Nxyz(2) ; do i1 = 0, mesh % elements(id) % Nxyz(1)					
+                            end do               ; end do                ; end do
+                        end if 
+!                       Update Q / c (integrate in time)    
+                        !$acc loop vector collapse(3)
+                        do i3 = 0, mesh % elements(id) % Nxyz(3) ; do i2 = 0, mesh % elements(id) % Nxyz(2) ; do i1 = 0, mesh % elements(id) % Nxyz(1)                  
 #ifdef FLOW             
-							!$acc loop seq
-							do m=1, NCONS
-								mesh % elements(id) %  storage % Q(m,i1,i2,i3)    = mesh % elements(id) % storage % Q(m,i1,i2,i3)  + corrector2 * mesh % elements(id) % storage % G_NS(m,i1,i2,i3)
-							end do
+                            !$acc loop seq
+                            do m=1, NCONS
+                                mesh % elements(id) %  storage % Q(m,i1,i2,i3)    = mesh % elements(id) % storage % Q(m,i1,i2,i3)  + corrector2 * mesh % elements(id) % storage % G_NS(m,i1,i2,i3)
+                            end do
 #endif
 
 #if (defined(CAHNHILLIARD)) && (!defined(FLOW))
-							mesh % elements(id) % storage % c(1,i1,i2,i3)    = mesh % elements(id) % storage % c(1,i1,i2,i3) + corrector2 * mesh % elements(id) % storage % G_CH(1,i1,i2,i3)
+                            mesh % elements(id) % storage % c(1,i1,i2,i3)    = mesh % elements(id) % storage % c(1,i1,i2,i3) + corrector2 * mesh % elements(id) % storage % G_CH(1,i1,i2,i3)
 #endif
-						end do               ; end do                ; end do
-					end do 
-					!$acc end parallel loop
-!$omp end parallel do	
+                        end do               ; end do                ; end do
+                    end do 
+                    !$acc end parallel loop
+!$omp end parallel do   
 !------------------- PARALLEL SWEEP OVER ELEMENTS -------------------------
-				
+                
                     if (all(k(2:nLevel) == kmax)) then
-						exit
-					else
-						do i=nLevel,2,-1
-						    locLevel =i                   	! The level for next loop
-							if (k(i).ne.kmax) exit
-						end do 
-					end if 
-					
-					tk(locLevel)=tk(locLevel-1)+b(k(locLevel)+1) * deltaTL(locLevel)
-					call ComputeTimeDerivative( mesh, particles, tk(locLevel), CTD_IGNORE_MODE, Level=locLevel) ! Update Qdot
-				end do 
-			end do 
+                        exit
+                    else
+                        do i=nLevel,2,-1
+                            locLevel =i                     ! The level for next loop
+                            if (k(i).ne.kmax) exit
+                        end do 
+                    end if 
+                    
+                    tk(locLevel)=tk(locLevel-1)+b(k(locLevel)+1) * deltaTL(locLevel)
+                    call ComputeTimeDerivative( mesh, particles, tk(locLevel), CTD_IGNORE_MODE, Level=locLevel) ! Update Qdot
+                end do 
+            end do 
 
        end do ! k1
-	   
-	   call ComputeTimeDerivative( mesh, particles, t+deltaT, CTD_IGNORE_MODE) ! Necessary for residual computation
+       
+       call ComputeTimeDerivative( mesh, particles, t+deltaT, CTD_IGNORE_MODE) ! Necessary for residual computation
 !
 !     To obtain the updated residuals
       if ( CTD_AFTER_STEPS ) CALL ComputeTimeDerivative( mesh, particles, t+deltaT, CTD_IGNORE_MODE)
 
       call checkForNan(mesh, t)
-	  
-	  !$acc end data
-	  
-	  deallocate(k, cLL, tk, deltaTL, MLIter_eIDN, MLIterN, MLIter)
+      
+      !$acc end data
+      
+      deallocate(k, cLL, tk, deltaTL, MLIter_eIDN, MLIterN, MLIter)
 
    END SUBROUTINE TakeMLRK3Step
 !
