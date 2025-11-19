@@ -806,7 +806,7 @@
          real(kind=RP)  :: U_eta(NCONS)
          real(kind=RP)  :: U_zeta(NCONS)
          real(kind=RP)  :: inv_jac
-         !$acc loop vector collapse(3) private(U_xi, U_eta, U_zeta)
+         !$acc loop vector collapse(3) private(U_xi, U_eta, U_zeta, inv_jac)
          do k = 0, self % Nxyz(3) ; do j = 0, self % Nxyz(2) ; do i = 0, self % Nxyz(1)
             
             !***

@@ -653,7 +653,7 @@ Module DGSEMClass
       R5 = 0.0_RP
       R6 = 0.0_RP
       c    = 0.0_RP
-
+!$acc data copy(R1,R2,R3,R4,R5,R6,c)
 !$acc parallel loop gang present(mesh) reduction(max:R1,R2,R3,R4,R5,c)
 !$omp parallel shared(maxResidual, R1, R2, R3, R4, R5, R6, c, mesh) default(private)
 !$omp do reduction(max:R1,R2,R3,R4,R5,R6,c) schedule(runtime)
@@ -712,6 +712,9 @@ Module DGSEMClass
 !$omp end do
 !$omp end parallel
 !$acc end parallel loop
+!$acc end data
+
+!$acc wait
       
 #if defined FLOW && (!(SPALARTALMARAS))
       maxResidual(1:NCONS) = [R1, R2, R3, R4, R5]

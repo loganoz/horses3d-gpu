@@ -112,9 +112,15 @@ module VariableConversion_MU
        ! u_y = invRho * Q_y(IMSQRHOU:IMSQRHOW) - uDivRho * Q_y(IMC)*(dimensionless_ % rho(1) - dimensionless_ % rho(2))
        ! u_z = invRho * Q_z(IMSQRHOU:IMSQRHOW) - uDivRho * Q_z(IMC)*(dimensionless_ % rho(1) - dimensionless_ % rho(2))
 	   
-	    u_x =  Q_x(IMSQRHOU:IMSQRHOW) 
-        u_y =  Q_y(IMSQRHOU:IMSQRHOW)
-        u_z =  Q_z(IMSQRHOU:IMSQRHOW) 
+	    ! u_x =  Q_x(IMSQRHOU:IMSQRHOW) 
+        ! u_y =  Q_y(IMSQRHOU:IMSQRHOW)
+        ! u_z =  Q_z(IMSQRHOU:IMSQRHOW) 
+		
+		do i = 1, NDIM
+			u_x(i) = Q_x(i+1)
+			u_y(i) = Q_y(i+1)
+			u_z(i) = Q_z(i+1)
+		end do
 
    end subroutine getVelocityGradients
 

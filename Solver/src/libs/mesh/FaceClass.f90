@@ -320,7 +320,7 @@
             enddo ; enddo
          end select
       case(2)
-         !$acc loop vector collapse(2)
+         !$acc loop vector collapse(2) private(ii,jj)
          do j = 0, self % NfRight(2)   ; do i = 0, self % NfRight(1)
             call leftIndexes2Right(i,j,self % NfRight(1), self % NfRight(2), self % rotation, ii, jj)
 			!$acc loop seq
@@ -359,7 +359,7 @@
                enddo
             enddo ; enddo
       case(2)
-         !$acc loop vector collapse(2)
+         !$acc loop vector collapse(2) private(ii,jj)
          do j = 0, self % NfRight(2)   ; do i = 0, self % NfRight(1)
             call leftIndexes2Right(i,j,self % NfRight(1), self % NfRight(2), self % rotation, ii, jj)
             !$acc loop seq
@@ -406,7 +406,7 @@
                end select
             end do ; end do ; end do
       case(2)
-         !$acc loop vector collapse(3)
+         !$acc loop vector collapse(3) private(ii,jj)
          do j = 0, self % NfRight(2)   ; do i = 0, self % NfRight(1) ; do eq = 1, nEqn
             call leftIndexes2Right(i,j,self % NfRight(1), self % NfRight(2), self % rotation, ii, jj)
             select case (dir)
@@ -538,7 +538,7 @@
 !           2nd and 3rd stage: Rotation and Inversion
 !           *********
 !      
-            !$acc loop vector collapse(3)
+            !$acc loop vector collapse(3) private(ii,jj)
             do j = 0, self % NfRight(2)   ; do i = 0, self % NfRight(1) ; do eq = 1, nEqn
                call leftIndexes2Right(i,j,self % NfRight(1), self % NfRight(2), self % rotation, ii, jj)
                   self % storage(2) % Fstar(eq,ii,jj) = -flux(eq,i,j) 
@@ -751,7 +751,7 @@
 !           2nd stage: Rotation & 3rd stage: Multiplication by a factor (inversion usually)
 !           *********
 !      
-         !$acc loop vector collapse(2)
+         !$acc loop vector collapse(2) private(ii,jj)
          do j = 0, self % NfRight(2)   ; do i = 0, self % NfRight(1)
             call leftIndexes2Right(i,j,self % NfRight(1), self % NfRight(2), self % rotation, ii, jj)
             !$acc loop seq

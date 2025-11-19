@@ -497,7 +497,7 @@ Module SpongeClass  !
         if (.not. self % isActive) return
 
 !$omp do schedule(runtime) private(i,j,k,eq,eID)
-!$acc parallel loop gang vector_length(128) present(mesh,self) async(1)
+!$acc parallel loop gang vector_length(128) present(mesh,self) private(eID) async(1)
          do spongeEID = 1, self % nElements
 			eID = self % elementIndexMap(spongeEID)
             !$acc loop vector collapse(4)

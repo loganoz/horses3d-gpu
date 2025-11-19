@@ -1022,9 +1022,8 @@ slavecoord:             DO l = 1, 4
 			 
 			 select case ( self %nodeType )
 			 case(1) !Gauss
-!$acc wait
 !$omp do schedule(runtime) private(eID, fID)
-!$acc parallel loop gang vector_length(128) collapse(2) present(self, self % MLRK) num_gangs(size(self % elements)) copyin(locLevel) async(1)
+!$acc parallel loop gang vector_length(128) collapse(2) present(self, self % MLRK) num_gangs(size(self % elements)) copyin(locLevel) private(eID) async(1)
 			 do lID = 1, self % MLRK % MLIter(locLevel,8)
 				do fID = 1, 6
 				eID = self % MLRK % MLIter_eIDN(lID)
@@ -1032,24 +1031,10 @@ slavecoord:             DO l = 1, 4
 			 end do ; end do
 !$acc end parallel loop
 !$omp end do
-!$acc wait
 			 case(2) !Gauss-Lobatto
-			 
-!$acc wait
-!$omp do schedule(runtime) private(eID, fID)
-!$acc parallel loop gang vector_length(128) collapse(2) present(self, self % MLRK) num_gangs(size(self % elements)) copyin(locLevel) async(1)  
-			 do lID = 1, self % MLRK % MLIter(locLevel,8)
-				do fID = 1, 6
-				eID = lID
-				call HexElement_ProlongSolToFaces_GL(self % elements(eID), nEqn, self % faces(self % elements(eID) % faceIDs(fID)), fID)                        
-			 end do ; end do
-!$acc end parallel loop
-!$omp end do
-!$acc wait
 
-!$acc wait
 !$omp do schedule(runtime) private(eID, fID)
-!$acc parallel loop gang vector_length(128) collapse(2) present(self, self % MLRK) num_gangs(size(self % elements)) copyin(locLevel) async(1)  
+!$acc parallel loop gang vector_length(128) collapse(2) present(self, self % MLRK) num_gangs(size(self % elements)) copyin(locLevel) private(eID) async(1)  
 			 do lID = 1, self % MLRK % MLIter(locLevel,8)
 				do fID = 1, 6
 				eID = self % MLRK % MLIter_eIDN(lID)
@@ -1057,12 +1042,7 @@ slavecoord:             DO l = 1, 4
 			 end do ; end do
 !$acc end parallel loop
 !$omp end do
-!$acc wait
 
-! !$acc host_data use_device(self % MLRK % MLIter)
-! print *, 'Host pointer:', loc(self % MLRK % MLIter(:,8))
-! print *, 'Device pointer (via host_data):', self % MLRK % MLIter(:,8)
-! !$acc end host_data
          end select
 		 
 		 else
@@ -1284,6 +1264,8 @@ slavecoord:             DO l = 1, 4
 !
 !     -----------------------------------------------------------------------
 !     Subroutine to update the MPIFaces solution Q (MPI Receive and MPI Send)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!     WARNING: This GPU version does not work for anisotropic polynomial order
 !     -----------------------------------------------------------------------
       subroutine HexMesh_UpdateMPIFacesSolution(self, nEqn)
          use MPI_Face_Class
@@ -1306,8 +1288,8 @@ slavecoord:             DO l = 1, 4
 		 nShared = self % MPIfaces % nDomainShared
 		 ! Return when no faces are shared
 		 if (nShared <= 0) then
-			! Add token to sync (necessary for MU with MLRK and very big case)
-			call MPI_Allreduce(1, token, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD, ierr)
+			! Add token to sync
+			!call MPI_Allreduce(1, token, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD, ierr)
 			return
 		 end if
 
@@ -1338,7 +1320,6 @@ slavecoord:             DO l = 1, 4
 			domain = MPIfaces % listDomain(k)
 			
 			if (MPIfaces % faces(domain) % no_of_faces <= 0) then
-				idx_send = idx_send + 1
 				cycle
 			end if
 !
@@ -1352,25 +1333,22 @@ slavecoord:             DO l = 1, 4
                fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
                faceSize = (self % faces(fID) % Nf(2) + 1) * (self % faces(fID) % Nf(1) + 1) * nEqn  ! Total size of the face data block
-               !!$acc loop vector collapse(3)
+               !$acc loop vector collapse(3) private(linear_idx)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1) ; do m = 1, nEqn 
                   linear_idx = ((mpifID - 1) * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
                   self % MPIfaces % faces(domain) % Qsend(linear_idx) = self % faces(fID) % storage(thisSide) % Q(m,i,j)
                end do               ; end do        ; end do 
             end do
             !$acc end parallel loop
-			!$acc wait
-			
 !
 !           -------------
 !           Send solution
 !           -------------
 !
             call MPIfaces % faces(domain) % SendQ(domain, nEqn, all_reqs(idx_send))
-			!$acc wait
+
 			idx_send = idx_send + 1
          end do
-		 !$acc wait
 !
 !        ********************************************
 !        Wait for all posted operations (recv + send)
@@ -1379,8 +1357,8 @@ slavecoord:             DO l = 1, 4
 		 call MPI_Waitall(nreqs, all_reqs, MPI_STATUSES_IGNORE, ierr)
 		 
 		 deallocate(all_reqs)
-		 ! Add token to sync (necessary for MU with MLRK and very big case)
-		 call MPI_Allreduce(1, token, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD, ierr)
+		 ! Add token to sync (this can be commented out for performance)
+		 !call MPI_Allreduce(1, token, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD, ierr)
 		end associate
 #endif
       end subroutine HexMesh_UpdateMPIFacesSolution
@@ -1389,6 +1367,8 @@ slavecoord:             DO l = 1, 4
 !
 !     ---------------------------------------------------------------------------
 !     Subroutine to update the MPIFaces solution gradQ (MPI Receive and MPI Send)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!     WARNING: This GPU version does not work for anisotropic polynomial order
 !     ---------------------------------------------------------------------------
       subroutine HexMesh_UpdateMPIFacesGradients(self, nEqn)
          use MPI_Face_Class
@@ -1443,7 +1423,6 @@ slavecoord:             DO l = 1, 4
 			domain = MPIfaces % listDomain(k)
 			
 			if (MPIfaces % faces(domain) % no_of_faces <= 0) then
-				idx_send = idx_send + 1
 				cycle
 			end if
 !
@@ -1457,36 +1436,33 @@ slavecoord:             DO l = 1, 4
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
                faceSize = (self % faces(fID) % Nf(2) + 1) * (self % faces(fID) % Nf(1) + 1) * nEqn  ! Total size of the face data block
 
-               !!$acc loop vector collapse(3)
+               !$acc loop vector collapse(3) private(linear_idx_x)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1) ; do m = 1, nEqn     
                   linear_idx_x = ((mpifID - 1) * 3 * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
                   self % MPIfaces % faces(domain) % U_xyzsend(linear_idx_x) = self % faces(fID) % storage(thisSide) % U_x(m,i,j)
                end do               ; end do               ; end do
 
-               !!$acc loop vector collapse(3)
+               !$acc loop vector collapse(3) private(linear_idx_y)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1) ; do m = 1, nEqn 
                   linear_idx_y = ((mpifID - 1) * 3 * faceSize) + faceSize + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
                   self % MPIfaces % faces(domain) % U_xyzsend(linear_idx_y) = self % faces(fID) % storage(thisSide) % U_y(m,i,j)
                end do               ; end do               ; end do
 
-               !!$acc loop vector collapse(3)
+               !$acc loop vector collapse(3) private(linear_idx_z)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1) ; do m = 1, nEqn 
                   linear_idx_z = ((mpifID - 1) * 3 * faceSize) + 2 * faceSize + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
                   self % MPIfaces % faces(domain) % U_xyzsend(linear_idx_z) = self % faces(fID) % storage(thisSide) % U_z(m,i,j)
                end do               ; end do               ; end do
             end do
             !$acc end parallel loop
-			!$acc wait
 !
 !           -------------
 !           Send gradients
 !           -------------
 !
             call MPIfaces % faces(domain) % SendU_xyz(domain, nEqn, all_reqs(idx_send))
-			!$acc wait
 			idx_send = idx_send + 1
          end do
-		 !$acc wait
 !
 !        ********************************************
 !        Wait for all posted operations (recv + send)
@@ -1694,6 +1670,8 @@ slavecoord:             DO l = 1, 4
 !
 !     --------------------------------------------------------------------------------
 !     Subroutine to gather the MPIFaces solution Q (From MPI Storage to Faces Storage)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!     WARNING: This GPU version does not work for anisotropic polynomial order
 !     --------------------------------------------------------------------------------
       subroutine HexMesh_GatherMPIFacesSolution(self, nEqn)
          implicit none
@@ -1723,7 +1701,7 @@ slavecoord:             DO l = 1, 4
                fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
                faceSize = (self % faces(fID) % Nf(2) + 1) * (self % faces(fID) % Nf(1) + 1) * nEqn  ! Total size of the face data block
-               !!$acc loop vector collapse(3)
+               !$acc loop vector collapse(3) private(linear_idx)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)  ; do m = 1, nEqn
                   linear_idx = ((mpifID - 1) * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
                   self % faces(fID) % storage(otherSide(thisSide)) % Q(m,i,j) = self % MPIfaces % faces(domain) % Qrecv(linear_idx)
@@ -1738,6 +1716,8 @@ slavecoord:             DO l = 1, 4
 !
 !     ---------------------------------------------------------------------------
 !     Subroutine to gather the MPIFaces gradQ (From MPI Storage to Faces Storage)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!     WARNING: This GPU version does not work for anisotropic polynomial order
 !     ---------------------------------------------------------------------------
       subroutine HexMesh_GatherMPIFacesGradients(self, nEqn)
          implicit none
@@ -1768,17 +1748,17 @@ slavecoord:             DO l = 1, 4
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
                faceSize = (self % faces(fID) % Nf(2) + 1) * (self % faces(fID) % Nf(1) + 1) * nEqn  ! Total size of the face data block
 
-               !!$acc loop vector collapse(3)
+               !$acc loop vector collapse(3) private(linear_idx_x)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)  ; do m = 1, nEqn
                   linear_idx_x = ((mpifID - 1) * 3 * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
                   self % faces(fID) % storage(otherSide(thisSide)) % U_x(m,i,j) = self % MPIfaces % faces(domain) % U_xyzrecv(linear_idx_x)
                end do               ; end do               ; end do
-               !!$acc loop vector collapse(3)
+               !$acc loop vector collapse(3) private(linear_idx_y)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)  ; do m = 1, nEqn
                   linear_idx_y = ((mpifID - 1) * 3 * faceSize) + faceSize + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
                   self % faces(fID) % storage(otherSide(thisSide)) % U_y(m,i,j) = self % MPIfaces % faces(domain) % U_xyzrecv(linear_idx_y)
                end do               ; end do               ; end do
-               !!$acc loop vector collapse(3)
+               !$acc loop vector collapse(3) private(linear_idx_z)
                do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)  ; do m = 1, nEqn
                   linear_idx_z = ((mpifID - 1) * 3 * faceSize) + 2 * faceSize + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
                   self % faces(fID) % storage(otherSide(thisSide)) % U_z(m,i,j) = self % MPIfaces % faces(domain) % U_xyzrecv(linear_idx_z)
@@ -4703,23 +4683,34 @@ slavecoord:             DO l = 1, 4
             !$acc enter data copyin(self % elements(eID) % storage % stats)
             !$acc enter data copyin(self % elements(eID) % storage % stats % data)
          end if
+		 
+#ifdef FLOW
+		 ! These are the actual memory
+		 !$acc enter data copyin(self % elements(eID) % storage % QNS)
+		 !$acc enter data copyin(self % elements(eID) % storage % QDotNS)
+         !$acc enter data copyin(self % elements(eID) % storage % U_xNS)
+         !$acc enter data copyin(self % elements(eID) % storage % U_yNS)
+         !$acc enter data copyin(self % elements(eID) % storage % U_zNS)
+         !$acc enter data copyin(self % elements(eID) % storage % rho)
+         !$acc enter data copyin(self % elements(eID) % storage % G_NS)
+         !$acc enter data copyin(self % elements(eID) % storage % S_NS)
+         !$acc enter data copyin(self % elements(eID) % storage % FluxF)
+         !$acc enter data copyin(self % elements(eID) % storage % FluxG)
+         !$acc enter data copyin(self % elements(eID) % storage % FluxH)
+         !$acc enter data copyin(self % elements(eID) % storage % contravariantFlux)
+#endif
 
+#ifndef ACOUSTIC
+         !$acc enter data copyin(self % elements(eID) % storage % mu_NS)
+         !$acc enter data copyin(self % elements(eID) % storage % mu_turb_NS)
+#endif
+		 ! These are the pointer
          !$acc enter data copyin(self % elements(eID) % storage % Q)
          !$acc enter data copyin(self % elements(eID) % storage % QDot)
          !$acc enter data copyin(self % elements(eID) % storage % U_x)
          !$acc enter data copyin(self % elements(eID) % storage % U_y)
          !$acc enter data copyin(self % elements(eID) % storage % U_z)
 
-         !$acc enter data copyin(self % elements(eID) % storage % rho)
-         !$acc enter data copyin(self % elements(eID) % storage % G_NS)
-         !$acc enter data copyin(self % elements(eID) % storage % FluxF)
-         !$acc enter data copyin(self % elements(eID) % storage % FluxG)
-         !$acc enter data copyin(self % elements(eID) % storage % FluxH)
-         !$acc enter data copyin(self % elements(eID) % storage % contravariantFlux)
-
-         !$acc enter data copyin(self % elements(eID) % storage % S_NS)
-         !$acc enter data copyin(self % elements(eID) % storage % mu_NS)
-         !$acc enter data copyin(self % elements(eID) % storage % mu_turb_NS)
          !$acc enter data copyin(self % elements(eID) % geom)
          !$acc enter data copyin(self % elements(eID) % geom % x)
          !$acc enter data copyin(self % elements(eID) % geom % jGradXi)
@@ -4778,7 +4769,34 @@ slavecoord:             DO l = 1, 4
          !$acc enter data copyin(self % faces(iFace) % rotation)
          !$acc enter data copyin(self % faces(iFace) % projectionType)
          !$acc enter data copyin(self % faces(iFace) % storage)
+		 
+		 ! !$acc enter data copyin(self % faces(iFace) % storage(1) % genericInterfaceFluxMemory)
+		 ! !$acc enter data copyin(self % faces(iFace) % storage(2) % genericInterfaceFluxMemory)
+         ! !$acc enter data copyin(self % faces(iFace) % storage(1) % flux)
+		 ! !$acc enter data copyin(self % faces(iFace) % storage(2) % flux)
+		 
+#ifdef FLOW
+		 ! These are the actual memory
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % QNS)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % QNS)
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % U_xNS)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % U_xNS)
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % U_yNS)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % U_yNS)
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % U_zNS)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % U_zNS)
+		 
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % Q_aux)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % Q_aux)
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % mu_NS)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % mu_NS)
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % u_tau_NS)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % u_tau_NS)
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % rho)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % rho)
+#endif	 
 
+		 ! These are the pointer
          !$acc enter data copyin(self % faces(iFace) % storage(1) % Q)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % Q)
          !$acc enter data copyin(self % faces(iFace) % storage(1) % U_x)
@@ -4787,22 +4805,11 @@ slavecoord:             DO l = 1, 4
          !$acc enter data copyin(self % faces(iFace) % storage(2) % U_y)
          !$acc enter data copyin(self % faces(iFace) % storage(1) % U_z)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % U_z)
-
-
-         !$acc enter data copyin(self % faces(iFace) % storage(1) % Q_aux)
-         !$acc enter data copyin(self % faces(iFace) % storage(2) % Q_aux)
-        
-
-         !$acc enter data copyin(self % faces(iFace) % storage(1) % mu_NS)
-         !$acc enter data copyin(self % faces(iFace) % storage(2) % mu_NS)
-         !$acc enter data copyin(self % faces(iFace) % storage(1) % u_tau_NS)
-         !$acc enter data copyin(self % faces(iFace) % storage(2) % u_tau_NS)
          !$acc enter data copyin(self % faces(iFace) % storage(1) % fStar)
-         !$acc enter data copyin(self % faces(iFace) % storage(1) % unStar)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % fStar)
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % unStar)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % unStar)
-         !$acc enter data copyin(self % faces(iFace) % storage(1) % rho)
-         !$acc enter data copyin(self % faces(iFace) % storage(2) % rho)
+
          !$acc enter data copyin(self % faces(iFace) % geom)
          !$acc enter data copyin(self % faces(iFace) % geom % x)
          !$acc enter data copyin(self % faces(iFace) % geom % h)
@@ -4900,20 +4907,36 @@ slavecoord:             DO l = 1, 4
       !-----------------------------------------------------------
 
       DO eID = 1, SIZE(self % elements)
-         !$acc exit data delete(self % elements(eID) % Nxyz)
+	  
+		 ! These are the pointer
          !$acc exit data delete(self % elements(eID) % storage % Q)
-         !$acc exit data delete(self % elements(eID) % storage % rho)
          !$acc exit data delete(self % elements(eID) % storage % QDot)
+         !$acc exit data delete(self % elements(eID) % storage % U_x)
+         !$acc exit data delete(self % elements(eID) % storage % U_y)
+		 !$acc exit data delete(self % elements(eID) % storage % U_z)
+		 
+#ifdef FLOW
+		 ! These are the actual memory
+         !$acc exit data delete(self % elements(eID) % storage % QNS)
+         !$acc exit data delete(self % elements(eID) % storage % QDotNS)
+         !$acc exit data delete(self % elements(eID) % storage % U_xNS)
+         !$acc exit data delete(self % elements(eID) % storage % U_yNS)
+         !$acc exit data delete(self % elements(eID) % storage % U_zNS)
+         !$acc exit data delete(self % elements(eID) % storage % rho)
          !$acc exit data delete(self % elements(eID) % storage % G_NS)
+         !$acc exit data delete(self % elements(eID) % storage % S_NS)
          !$acc exit data delete(self % elements(eID) % storage % FluxF)
          !$acc exit data delete(self % elements(eID) % storage % FluxG)
          !$acc exit data delete(self % elements(eID) % storage % FluxH)
          !$acc exit data delete(self % elements(eID) % storage % contravariantFlux)
-         !$acc exit data delete(self % elements(eID) % storage % U_x)
-         !$acc exit data delete(self % elements(eID) % storage % U_y)
-         !$acc exit data delete(self % elements(eID) % storage % U_z)
+#endif
+#ifndef ACOUSTIC
          !$acc exit data delete(self % elements(eID) % storage % mu_NS)
          !$acc exit data delete(self % elements(eID) % storage % mu_turb_NS)
+#endif
+		 
+		 !$acc exit data delete(self % elements(eID) % Nxyz)
+		 
          !$acc exit data delete(self % elements(eID) % geom % jGradXi)
          !$acc exit data delete(self % elements(eID) % geom % jGradEta)
          !$acc exit data delete(self % elements(eID) % geom % jGradZeta)
@@ -4953,29 +4976,49 @@ slavecoord:             DO l = 1, 4
       ENDDO
 
       do iFace = 1, size(self % faces)
-         !$acc exit data delete(self % faces(iFace) % Nf)
-         !$acc exit data delete(self % faces(iFace) % NfRight)
-         !$acc exit data delete(self % faces(iFace) % rotation)
-         !$acc exit data delete(self % faces(iFace) % projectionType)
+	  
+		 ! These are the pointer
          !$acc exit data delete(self % faces(iFace) % storage(1) % Q)
          !$acc exit data delete(self % faces(iFace) % storage(2) % Q)
-         !$acc exit data delete(self % faces(iFace) % storage(1) % Q_aux)
-         !$acc exit data delete(self % faces(iFace) % storage(2) % Q_aux)
          !$acc exit data delete(self % faces(iFace) % storage(1) % U_x)
          !$acc exit data delete(self % faces(iFace) % storage(1) % U_y)
          !$acc exit data delete(self % faces(iFace) % storage(1) % U_z)
          !$acc exit data delete(self % faces(iFace) % storage(2) % U_x)
          !$acc exit data delete(self % faces(iFace) % storage(2) % U_y)
          !$acc exit data delete(self % faces(iFace) % storage(2) % U_z)
-         !$acc exit data delete(self % faces(iFace) % storage(1) % mu_NS)
-         !$acc exit data delete(self % faces(iFace) % storage(2) % mu_NS)
-         !$acc exit data delete(self % faces(iFace) % storage(1) % u_tau_NS)
-         !$acc exit data delete(self % faces(iFace) % storage(2) % u_tau_NS)
          !$acc exit data delete(self % faces(iFace) % storage(1) % fStar)
          !$acc exit data delete(self % faces(iFace) % storage(1) % unStar)
          !$acc exit data delete(self % faces(iFace) % storage(2) % fStar)
          !$acc exit data delete(self % faces(iFace) % storage(2) % unStar)
+		 
+#ifdef FLOW
+		 ! These are the actual memory
+         !$acc exit data delete(self % faces(iFace) % storage(1) % QNS)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % QNS)
+         !$acc exit data delete(self % faces(iFace) % storage(1) % U_xNS)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % U_xNS)
+         !$acc exit data delete(self % faces(iFace) % storage(1) % U_yNS)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % U_yNS)
+         !$acc exit data delete(self % faces(iFace) % storage(1) % U_zNS)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % U_zNS)
+		 
+         !$acc exit data delete(self % faces(iFace) % storage(1) % Q_aux)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % Q_aux)
+         !$acc exit data delete(self % faces(iFace) % storage(1) % mu_NS)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % mu_NS)
+         !$acc exit data delete(self % faces(iFace) % storage(1) % u_tau_NS)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % u_tau_NS)
+         !$acc exit data delete(self % faces(iFace) % storage(1) % rho)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % rho)
+#endif	 
+
+         !$acc exit data delete(self % faces(iFace) % Nf)
+         !$acc exit data delete(self % faces(iFace) % NfRight)
+         !$acc exit data delete(self % faces(iFace) % rotation)
+         !$acc exit data delete(self % faces(iFace) % projectionType)
+		 
          !$acc exit data delete(self % faces(iFace) % storage)
+		 
          !$acc exit data delete(self % faces(iFace) % geom % normal)
          !$acc exit data delete(self % faces(iFace) % geom % t1)
          !$acc exit data delete(self % faces(iFace) % geom % t2)

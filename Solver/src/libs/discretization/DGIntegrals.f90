@@ -244,7 +244,7 @@ module DGIntegrals
             do iEta = 0, Nxyz(2) 
                do iXi = 0, Nxyz(1)
                   do eq = 1, NEQ
-                     intFace(eq,iXi,iEta,iZeta) = intFace(eq,iXi,iEta,iZeta) + sign * ( &
+                     intFace(eq,iXi,iEta,iZeta) = intFace(eq,iXi,iEta,iZeta) + (sign+0.0_RP) * ( &
                                                 + F_L(eq, iEta, iZeta) * NodalStorage(Nxyz(1)) % b(iXi, LEFT)    &
                                                 + F_R(eq, iEta, iZeta) * NodalStorage(Nxyz(1)) % b(iXi, RIGHT)   &
                                                 + F_FR(eq, iXi, iZeta) * NodalStorage(Nxyz(2)) % b(iEta, LEFT)   &

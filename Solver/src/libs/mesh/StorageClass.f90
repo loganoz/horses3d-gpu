@@ -187,11 +187,11 @@ module StorageClass
       real(kind=RP), dimension(:,:,:),     pointer, contiguous :: Q
       real(kind=RP), dimension(:,:,:),     pointer, contiguous :: Qdot
       real(kind=RP), dimension(:,:,:),     pointer, contiguous :: U_x, U_y, U_z
-      real(kind=RP), dimension(:,:,:),     pointer, contiguous :: FStar
-      real(kind=RP), dimension(:),         allocatable :: flux
+      real(kind=RP), dimension(:,:,:),     allocatable :: FStar
+	  real(kind=RP), dimension(:,:,:,:),   allocatable :: unStar
+      ! real(kind=RP), dimension(:,:,:),     allocatable :: flux                       ! FStar points to this memory
       real(kind=RP), dimension(:,:,:),     allocatable :: AviscFlux
-      real(kind=RP), dimension(:,:,:,:),   pointer, contiguous :: unStar
-      real(kind=RP), dimension(:),         allocatable :: genericInterfaceFluxMemory ! unStar and fStar point to this memory simultaneously. This seems safe.
+      ! real(kind=RP), dimension(:,:,:,:),   allocatable :: genericInterfaceFluxMemory ! unStar points to this memory
 #ifdef FLOW
       real(kind=RP), dimension(:,:,:),     allocatable :: QNS
       real(kind=RP), dimension(:,:,:),     allocatable :: QdotNS
@@ -1388,15 +1388,12 @@ module StorageClass
 !        Local variables
 !        ---------------
 !
-         integer     :: interfaceFluxMemorySize
 
          self % Nf  = Nf
          self % Nel = Nel
          self % NDIM = NDIM
          self % computeGradients = computeGradients
          self % computeQdot = computeQdot
-
-         interfaceFluxMemorySize = 0
 
 #ifdef FLOW
          ALLOCATE( self % QNS   (NCONS,0:Nf(1),0:Nf(2)) )
@@ -1411,16 +1408,17 @@ module StorageClass
          if (computeQdot) then
              ALLOCATE( self % QdotNS   (NCONS,0:Nf(1),0:Nf(2)) )
          end if
+!
+!        Reserve memory for the interface fluxes
+!        ---------------------------------------
+         allocate(self % FStar(1:NCONS, 0:self % Nf(1), 0:self % Nf(2)))
+         allocate(self % unStar(1:NGRAD, 1:NDIM, 0:self % Nf(1), 0:self % Nf(2)))
 #if defined (ACOUSTIC)
          ALLOCATE( self % Qbase (NCONS,0:Nf(1),0:Nf(2)) )
 #endif
-!        Biggest Interface flux memory size is u\vec{n}
-!        ----------------------------------------------
-         interfaceFluxMemorySize = NGRAD * nDIM * product(Nf + 1)
-
          allocate( self % rho       (0:Nf(1),0:Nf(2)) )
 #ifndef ACOUSTIC
-         allocate( self % mu_NS     (1:3,0:Nf(1),0:Nf(2)) )
+         allocate( self % mu_NS     (1:NDIM,0:Nf(1),0:Nf(2)) )
          allocate( self % u_tau_NS  (0:Nf(1),0:Nf(2)) )
          allocate( self % wallNodeDistance  (0:Nf(1),0:Nf(2)) )
 #endif
@@ -1438,18 +1436,18 @@ module StorageClass
          allocate(self % mu_z(NCOMP , 0:Nf(1), 0:Nf(2)))
          allocate(self % v   (1:NDIM, 0:Nf(1), 0:Nf(2)))
 !
-!        CH will never be the biggest memory requirement unless NSE are disabled
-!        -----------------------------------------------------------------------
-         interfaceFluxMemorySize = max(interfaceFluxMemorySize, NCOMP*nDIM*product(Nf+1))
+!        Reserve memory for the interface fluxes
+!        ---------------------------------------
+		 if (.not.allocated(self % FStar)) then
+			allocate(self % FStar(1:NCOMP, 0:self % Nf(1), 0:self % Nf(2)))
+		 end if 
+		 if (.not.allocated(self % unStar)) then
+			allocate(self % unStar(1:NCOMP, 1:NDIM, 0:self % Nf(1), 0:self % Nf(2)))
+		 end if 
 #endif
 #ifdef MULTIPHASE
          allocate( self % invMa2       (0:Nf(1),0:Nf(2)) )
 #endif
-!
-!        Reserve memory for the interface fluxes
-!        ---------------------------------------
-         allocate(self % flux(NCONS*product(Nf + 1)))
-         allocate(self % genericInterfaceFluxMemory(interfaceFluxMemorySize))
 
 #ifdef FLOW
 !
@@ -1475,6 +1473,9 @@ module StorageClass
          if (computeQdot) then
             self % QdotNS = 0.0_RP
          end if
+		 
+		 self % unStar = 0.0_RP
+		 self % FStar = 0.0_RP
 #if defined (ACOUSTIC)
          self % Qbase    = 0.0_RP
 #endif
@@ -1486,7 +1487,6 @@ module StorageClass
          self % wallNodeDistance = 0.0_RP
 #endif
 
-         self % flux = 0.0_RP
 #endif
 
 #ifdef NAVIERSTOKES
@@ -1504,6 +1504,8 @@ module StorageClass
          self % mu_y  = 0.0_RP
          self % mu_z  = 0.0_RP
          self % v     = 0.0_RP
+		 self % unStar = 0.0_RP
+		 self % FStar = 0.0_RP
 #endif
 
 #ifdef MULTIPHASE
@@ -1607,13 +1609,14 @@ module StorageClass
          safedeallocate(self % invMa2 )
 #endif
 
-         safedeallocate(self % genericInterfaceFluxMemory)
+         safedeallocate(self % unStar)
+		 safedeallocate(self % FStar)
 
          self % Q      => NULL()
          self % U_x    => NULL() ; self % U_y => NULL() ; self % U_z => NULL()
          self % Qdot   => NULL()
-         self % unStar => NULL()
-         self % fStar  => NULL()
+         ! self % unStar => NULL()
+         ! self % fStar  => NULL()
 
          safedeallocate(self % AviscFlux)
 
@@ -1631,22 +1634,18 @@ module StorageClass
 #endif
 !        Get sizes
 !        ---------
-         self % Q   (1:,0:,0:)            => self % QNS
-         !self % fStar(1:NCONS, 0:self % Nel(1), 0:self % Nel(2)) => self % genericInterfaceFluxMemory
-         self % fStar(1:NCONS, 0:self % Nel(1), 0:self % Nel(2)) => self % flux
-
-         self % genericInterfaceFluxMemory = 0.0_RP
-         self % flux = 0.0_RP
-
+         self % Q   (1:NCONS,0:self % Nf(1),0:self % Nf(2))            => self % QNS
+         ! self % fStar(1:NCONS, 0:self % Nf(1), 0:self % Nf(2)) => self % flux
+		 
          if (self % computeGradients) then
-            self % U_x (1:,0:,0:) => self % U_xNS
-            self % U_y (1:,0:,0:) => self % U_yNS
-            self % U_z (1:,0:,0:) => self % U_zNS
-            self % unStar(1:NGRAD, 1:NDIM, 0:self % Nel(1), 0:self % Nel(2)) => self % genericInterfaceFluxMemory
+            self % U_x (1:NCONS,0:self % Nf(1),0:self % Nf(2)) => self % U_xNS
+            self % U_y (1:NCONS,0:self % Nf(1),0:self % Nf(2)) => self % U_yNS
+            self % U_z (1:NCONS,0:self % Nf(1),0:self % Nf(2)) => self % U_zNS
+            ! self % unStar(1:NGRAD, 1:NDIM, 0:self % Nf(1), 0:self % Nf(2)) => self % genericInterfaceFluxMemory
          end if
 
          if (self % computeQdot) then
-             self % QDot(1:,0:,0:) => self % QDotNS
+             self % QDot(1:NGRAD,0:self % Nf(1),0:self % Nf(2)) => self % QDotNS
          end if
 
       end subroutine FaceStorage_SetStorageToNS
@@ -1693,8 +1692,8 @@ module StorageClass
                self % U_x    => NULL()
                self % U_y    => NULL()
                self % U_z    => NULL()
-               self % FStar  => NULL()
-               self % unStar => NULL()
+               ! self % FStar  => NULL()
+               ! self % unStar => NULL()
 #ifdef FLOW
             case (NS,NSSA,CAA)
                call self % SetStorageToNS
@@ -1726,7 +1725,8 @@ module StorageClass
          to % currentlyLoaded = from % currentlyLoaded
          to % Nf = from % Nf
          to % Nel = from % Nel
-         to % genericInterfaceFluxMemory = from % genericInterfaceFluxMemory
+         to % unStar = from % unStar
+		 to % FStar = from % FStar
 
 #ifdef FLOW
          to % QNS = from % QNS

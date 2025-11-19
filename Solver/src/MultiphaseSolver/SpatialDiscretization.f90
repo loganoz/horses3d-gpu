@@ -288,7 +288,7 @@ module SpatialDiscretization
 #endif
 
 !$omp do schedule(runtime) private(fID, i, j)
-         !$acc parallel loop gang vector_length(128) present(mesh) copyin(locLevel) async(1)
+         !$acc parallel loop gang vector_length(128) present(mesh) copyin(locLevel) private(fID) async(1)
          do lID = 1, mesh % MLRK % MLIter(locLevel,2)
             fID = mesh % MLRK % MLIter_fID(lID)
             !$acc loop vector collapse(2)
@@ -312,18 +312,18 @@ module SpatialDiscretization
          select case (mode)
          case (CTD_IGNORE_MODE,CTD_IMEX_EXPLICIT)
 !$omp do schedule(runtime) private(eID, i, j, k)
-!$acc parallel loop gang vector_length(128) present(mesh) copyin(locLevel) async(1)
+!$acc parallel loop gang vector_length(128) present(mesh) copyin(locLevel) private(eID) async(1)
             do lID = 1, mesh % MLRK % MLIter(locLevel,8)
                eID = mesh % MLRK % MLIter_eIDN(lID)
                !$acc loop vector collapse(3)
                do k = 0, mesh % elements(eID) % Nxyz(3) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
                   mesh % elements(eID) % storage % c(1,i,j,k) = mesh % elements(eID) % storage % Q(IMC,i,j,k)
                   mesh % elements(eID) % storage % S_NS(1,i,j,k) = 0.0_RP                                             ! Assign initial value to source term
-				  mesh % elements(eID) % storage % S_NS(2,i,j,k) = 0.0_RP      
-				  mesh % elements(eID) % storage % S_NS(3,i,j,k) = 0.0_RP 
-				  mesh % elements(eID) % storage % S_NS(4,i,j,k) = 0.0_RP   
-				  mesh % elements(eID) % storage % S_NS(5,i,j,k) = 0.0_RP        
-				  
+                  mesh % elements(eID) % storage % S_NS(2,i,j,k) = 0.0_RP      
+                  mesh % elements(eID) % storage % S_NS(3,i,j,k) = 0.0_RP 
+                  mesh % elements(eID) % storage % S_NS(4,i,j,k) = 0.0_RP   
+                  mesh % elements(eID) % storage % S_NS(5,i,j,k) = 0.0_RP        
+                  
                end do               ; end do                ; end do
             end do
 !$acc end parallel loop 
@@ -337,7 +337,6 @@ module SpatialDiscretization
 !
 !$omp single
          !call mesh % SetStorageToEqn(C_BC)
-         !$acc wait
          select case (mode)
          case (CTD_IGNORE_MODE,CTD_IMEX_EXPLICIT)
             call SetBoundaryConditionsEqn(C_BC)
@@ -376,6 +375,7 @@ module SpatialDiscretization
 #ifdef _HAS_MPI_
 !$omp single
          call HexMesh_UpdateMPIFacesGradients(mesh, NCOMP)
+         call HexMesh_GatherMPIFacesGradients(mesh, NCOMP)
 !$omp end single
 #endif
 !
@@ -384,13 +384,12 @@ module SpatialDiscretization
 !        ----------------------
 !
 !        Get the concentration Laplacian (into QDot => cDot)
-!$acc wait
          call ComputeLaplacian(mesh, time, Level=locLevel)
-!$acc wait
+
          select case (mode)
          case (CTD_IGNORE_MODE, CTD_IMEX_EXPLICIT)
 !$omp do schedule(runtime) private(eID, i, j, k)
-            !$acc parallel loop gang vector_length(128) present(mesh, multiphase) copyin(locLevel) async(1)
+            !$acc parallel loop gang vector_length(128) present(mesh, multiphase) copyin(locLevel) private(eID) async(1)
             do lID = 1, mesh % MLRK % MLIter(locLevel,1)
                eID = mesh % MLRK % MLIter_eID(lID)
 !
@@ -408,7 +407,7 @@ module SpatialDiscretization
             end do
             !$acc end parallel loop 
 !$omp end do    
-!$acc wait    
+   
          case (CTD_IMEX_IMPLICIT)
 !$omp do schedule(runtime) private(i, j, k)
             !$acc parallel loop gang vector_length(128) present(mesh, multiphase) async(1)
@@ -440,7 +439,7 @@ module SpatialDiscretization
 !!$omp end single
             ! copy mu to Q(1)
 !$omp do schedule(runtime) private(eID, i, j, k)
-            !$acc parallel loop gang vector_length(128) present(mesh, mesh % elements) copyin(locLevel) async(1)
+            !$acc parallel loop gang vector_length(128) present(mesh, mesh % elements) copyin(locLevel) private(eID) async(1)
             do lID = 1, mesh % MLRK % MLIter(locLevel,8)
                eID = mesh % MLRK % MLIter_eIDN(lID)
                !$acc loop vector collapse(3)
@@ -450,7 +449,7 @@ module SpatialDiscretization
             end do
             !$acc end parallel loop 
 !$omp end do         
-!$acc wait
+
             call HexMesh_ProlongSolToFaces(mesh, NCOMP, Level=locLevel)
 !
 !         ----------------
@@ -468,7 +467,7 @@ module SpatialDiscretization
 
             !!! copy c to Q(1) &&&  copy Q faces to mu faces !!!!
 !$omp do schedule(runtime) private(eID, i, j, k)
-            !$acc parallel loop gang vector_length(128) present(mesh) copyin(locLevel) async(1)
+            !$acc parallel loop gang vector_length(128) present(mesh) copyin(locLevel) private(eID) async(1)
             do lID = 1, mesh % MLRK % MLIter(locLevel,8)
                eID = mesh % MLRK % MLIter_eIDN(lID)
                !$acc loop vector collapse(3)
@@ -478,9 +477,9 @@ module SpatialDiscretization
             end do
             !$acc end parallel loop 
 !$omp end do  
-!$acc wait
+
 !$omp do schedule(runtime) private(fID, i, j)
-         !$acc parallel loop gang present(mesh) copyin(locLevel) async(1)
+         !$acc parallel loop gang present(mesh) copyin(locLevel) private(fID) async(1)
          do lID = 1, mesh % MLRK % MLIter(locLevel,2)
             fID = mesh % MLRK % MLIter_fID(lID)
             !$acc loop vector collapse(2)
@@ -521,7 +520,6 @@ module SpatialDiscretization
 #ifdef _HAS_MPI_
 !$omp single
             call HexMesh_UpdateMPIFacesGradients(mesh, NCOMP)
-            call HexMesh_GatherMPIFacesGradients(mesh, NCOMP)
 !$omp end single
 #endif
 !
@@ -559,7 +557,7 @@ module SpatialDiscretization
 !        Prolong solution to faces        
 !        -------------------------
 !
-!$acc wait
+
          call HexMesh_ProlongSolToFaces(mesh, NCONS, Level=locLevel)
 !
 !        ----------------
@@ -573,7 +571,6 @@ module SpatialDiscretization
          call HexMesh_GatherMPIFacesSolution(mesh, NCONS)
 !$omp end single
 #endif
-!$acc wait
 !
 !        -------------------------------------
 !        Get the density and invMa2 in faces and elements
@@ -587,10 +584,10 @@ module SpatialDiscretization
          cs_2 = sqrt(dimensionless % invMa2(2) / dimensionless % rho(2))
 
 !$omp do schedule(runtime) private(eID, Qclip, invMa2_lin, invMa2_quad, invMa2_const, i, j, k)
-         !$acc parallel loop gang vector_length(128) present(mesh, dimensionless, mesh % elements, mesh % MLRK) copyin(locLevel, use_mask, model_mask, cs_1, cs_2) async(1)
+         !$acc parallel loop gang vector_length(128) present(mesh, dimensionless, mesh % elements, mesh % MLRK) copyin(locLevel, use_mask, model_mask, cs_1, cs_2) private(eID) async(1)
          do lID = 1, mesh % MLRK % MLIter(locLevel,1)
             eID = mesh % MLRK % MLIter_eID(lID)
-            !$acc loop vector collapse(3)                                                                                                                                                          
+            !$acc loop vector collapse(3) private(Qclip, invMa2_lin, invMa2_quad, invMa2_const)
             do k = 0, mesh % elements(eID) % Nxyz(3) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
             
                 ! Clip Q between 0 and 1
@@ -613,12 +610,12 @@ module SpatialDiscretization
          end do
    !$acc end parallel loop
 !$omp end do nowait
-!$acc wait
-!$omp do schedule(runtime) private(fID, Qclip, invMa2_lin, invMa2_quad, invMa2_const, i, j, k, side)
-         !$acc parallel loop gang vector_length(128) present(mesh, mesh % faces, dimensionless) copyin(locLevel, use_mask, model_mask, cs_1, cs_2) async(1)
+
+!$omp do schedule(runtime) private(fID, Qclip, invMa2_lin, invMa2_quad, invMa2_const, i, j, side)
+         !$acc parallel loop gang vector_length(128) present(mesh, mesh % faces, dimensionless) copyin(locLevel, use_mask, model_mask, cs_1, cs_2) private(fID) async(1)
          do lID = 1, mesh % MLRK % MLIter(locLevel,2)
             fID = mesh % MLRK % MLIter_fID(lID)
-            !$acc loop vector collapse(2)
+            !$acc loop vector collapse(2) private(Qclip, invMa2_lin, invMa2_quad, invMa2_const, side)
             do j = 0, mesh % faces(fID) % Nf(2)  ; do i = 0, mesh % faces(fID) % Nf(1) 
             
                 !$acc loop seq 
@@ -653,30 +650,30 @@ module SpatialDiscretization
          !set_mu is always true for MU
          set_mu = .true.
          call HexMesh_ComputeLocalGradientMU(mesh, set_mu, Level=locLevel)
-!$acc wait
+
 !
 !        --------------------
 !        Update MPI Gradients
 !        --------------------
 !
-!$acc wait
-#ifdef _HAS_MPI_
-!$omp single
-         call HexMesh_UpdateMPIFacesGradients(mesh, NCONS)
-         call HexMesh_GatherMPIFacesGradients(mesh, NCONS)
-!$omp end single
-#endif
-!$acc wait
+! !$acc wait
+! #ifdef _HAS_MPI_
+! !$omp single
+         ! call HexMesh_UpdateMPIFacesGradients(mesh, NCONS)
+         ! call HexMesh_GatherMPIFacesGradients(mesh, NCONS)
+! !$omp end single
+! #endif
+
 !
 !        -------------------------------------
 !        Add the Non-Conservative term to QDot
 !        -------------------------------------
 !
 !$omp do schedule(runtime) private(i,j,k,sqrtRho,invMa2,eID,jacobian)
-!$acc parallel loop gang vector_length(128) present(mesh, mesh % elements) copyin(locLevel) async(1)
+!$acc parallel loop gang vector_length(128) present(mesh, mesh % elements) copyin(locLevel) private(eID) async(1)
          do lID = 1, mesh % MLRK % MLIter(locLevel,1) ! 
             eID = mesh % MLRK % MLIter_eID(lID)
-            !$acc loop vector collapse(3)
+            !$acc loop vector collapse(3) private(jacobian,sqrtRho,invMa2)
             do k = 0, mesh % elements(eID) % Nxyz(3) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
                jacobian = mesh % elements(eID) % geom % jacobian(i,j,k)
                sqrtRho = sqrt(mesh % elements(eID) % storage % rho(i,j,k))
@@ -709,9 +706,7 @@ module SpatialDiscretization
 !$acc wait
 #ifdef _HAS_MPI_
 !$omp single
-         ! Not sure about the position of this w.r.t the MPI directly above
          call HexMesh_UpdateMPIFacesGradients(mesh,NCONS)
-         call HexMesh_GatherMPIFacesGradients(mesh,NCONS)
 !$omp end single
 #endif  
 !$acc wait
@@ -836,7 +831,7 @@ module SpatialDiscretization
          integer     :: eID , i, j, k, ierr, locLevel,lID
          integer     :: fID, side, iFace, iEl, m
          real(kind=RP) :: sqrtRho, invSqrtRho, delta, factor, minvalC, maxvalC
-         real(kind=RP)  :: Source(NCONS)
+         real(kind=RP) :: Source(NCONS), prod
          
          if (present(Level)) then
             locLevel = Level
@@ -845,11 +840,12 @@ module SpatialDiscretization
          end if
          
          if ( LESModel % active) then
-!$omp do schedule(runtime) private(i,j,k,delta,eID)
-            !$acc parallel loop gang present(mesh, LESModel) copyin(locLevel) private(i,j,k,delta,eID) async(1)
+!$omp do schedule(runtime) private(i,j,k,delta,eID,prod)
+            !$acc parallel loop gang present(mesh, LESModel) copyin(locLevel) private(delta,eID,prod) async(1)
             do lID = 1, mesh % MLRK % MLIter(locLevel,1)
                eID = mesh % MLRK % MLIter_eID(lID)
-               delta = (mesh % elements(eID) % geom % Volume / product(mesh % elements(eID) % Nxyz + 1)) ** (1.0_RP / 3.0_RP)
+			   prod  = (mesh % elements(eID) % Nxyz(1) + 1.0_RP)*(mesh % elements(eID) % Nxyz(2) + 1.0_RP)*(mesh % elements(eID) % Nxyz(3) + 1.0_RP)
+               delta = (mesh % elements(eID) % geom % Volume / prod) ** (1.0_RP / 3.0_RP)
                !$acc loop vector collapse(3)
                do k = 0, mesh % elements(eID) % Nxyz(3) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
                   call LESModel_Selector(LESModel, delta, mesh % elements(eID) % geom % dWall(i,j,k), &
@@ -865,7 +861,6 @@ module SpatialDiscretization
             !$acc end parallel loop
 !$omp end do
       end if
-!$acc wait
 !
 !        Compute viscosity at interior and boundary faces
 !        ------------------------------------------------
@@ -885,7 +880,7 @@ module SpatialDiscretization
 !
 !$acc wait
 !$omp do schedule(runtime) private(fID, side)
-!$acc parallel loop gang collapse(2) present(mesh, multiphase) copyin(locLevel) async(1)
+!$acc parallel loop gang collapse(2) present(mesh, multiphase) copyin(locLevel) private(fID) async(1)
          do iFace = 1, mesh % MLRK % MLIter(locLevel,3) ; do side = 1,2
             fID = mesh % MLRK % MLIter_fID_Interior(iFace)
             call computeElementInterfaceFlux_MUviscous(mesh % faces(fID), side)
@@ -895,23 +890,23 @@ module SpatialDiscretization
 !$acc wait
          call computeElementInterfaceFlux_MU(mesh, Level=locLevel)
 !$acc wait
-         call computeBoundaryFlux_MU(mesh,t) ! No level in this as the boundary faces are now inside zones 
+         call computeBoundaryFlux_MU(mesh,t) ! No level in this as the boundary faces are now inside zones  
 !$acc wait
-!
-!        *************************************************************************************
-!        Element without shared faces: Surface integrals, scaling of elements with Jacobian, 
-!                                      sqrt(rho), and add source terms
-!        *************************************************************************************
-!
+! !
+! !        *************************************************************************************
+! !        Element without shared faces: Surface integrals, scaling of elements with Jacobian, 
+! !                                      sqrt(rho), and add source terms
+! !        *************************************************************************************
+! !
 !$acc wait
 !$omp do schedule(runtime) private(i,j,k,sqrtRho,invSqrtRho, eID)
-         !$acc parallel loop gang vector_length(128) present(mesh, dimensionless) copyin(locLevel) async(1)
+         !$acc parallel loop gang vector_length(128) present(mesh, dimensionless) copyin(locLevel) private(eID) async(1)
          do iEl = 1, mesh % MLRK % MLIter(locLevel,5)
             eID = mesh % MLRK % MLIter_eID_Seq(iEl)
             
             call TimeDerivative_FacesContribution(mesh % elements(eID), mesh)
             
-            !$acc loop vector collapse(3)
+            !$acc loop vector collapse(3) private(sqrtRho,invSqrtRho)
             do k = 0, mesh % elements(eID) % Nxyz(3) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1) 
                sqrtRho = sqrt(mesh % elements(eID) % storage % rho(i,j,k))
                invSqrtRho = 1.0_RP / sqrtRho
@@ -926,40 +921,34 @@ module SpatialDiscretization
                mesh % elements(eID) % storage % QDot(IMSQRHOW,i,j,k) = mesh % elements(eID) % storage % QDot(IMSQRHOW,i,j,k) * invSqrtRho
                mesh % elements(eID) % storage % QDot(IMSQRHOW,i,j,k) = mesh % elements(eID) % storage % QDot(IMSQRHOW,i,j,k) & 
                                                                               + sqrtRho * dimensionless % invFr2 * dimensionless % gravity_dir(3)
-               
-
-!
-!            + Add user defined source terms
-             !  call UserDefinedSourceTermNS(e % geom % x(:,i,j,k), e % storage % Q(:,i,j,k), t, e % storage % S_NS(:,i,j,k), thermodynamics, dimensionless, refValues, multiphase)
-             !  e % storage % QDot(:,i,j,k) = e % storage % QDot(:,i,j,k) + e % storage % S_NS(:,i,j,k) / [1.0_RP,sqrtRho,sqrtRho,sqrtRho,1.0_RP]
 
             end do         ; end do          ; end do 
          end do
          !$acc end parallel loop
 !$omp end do
-!
-!        ******************************************
-!        Do the same for elements with shared faces
-!        ******************************************
-!
+! !
+! !        ******************************************
+! !        Do the same for elements with shared faces
+! !        ******************************************
+! !
 !$acc wait
 #ifdef _HAS_MPI_
          if ( MPI_Process % doMPIAction ) then
 !$omp single
-            call HexMesh_GatherMPIFacesGradients(mesh, NCONS)
+             call HexMesh_GatherMPIFacesGradients(mesh, NCONS)
 !$omp end single
 !$acc wait
-!
-!           Compute viscosity at MPI faces
-!           ------------------------------
-            call compute_viscosity_at_faces(mesh % MLRK % MLIter(locLevel,7), 2, mesh % MLRK % MLIter_fID_MPI(1:mesh % MLRK % MLIter(locLevel,7)), mesh)
+! !
+! !           Compute viscosity at MPI faces
+! !           ------------------------------
+             call compute_viscosity_at_faces(mesh % MLRK % MLIter(locLevel,7), 2, mesh % MLRK % MLIter_fID_MPI(1:mesh % MLRK % MLIter(locLevel,7)), mesh)
 !$acc wait
-!           **************************************
-!           Compute Riemann solver of shared faces
-!           **************************************
-!
+! !           **************************************
+! !           Compute Riemann solver of shared faces
+! !           **************************************
+! !
 !$omp do schedule(runtime) private(fID)
-!$acc parallel loop gang vector_length(128) present(mesh, multiphase, ViscousDiscretization) copyin(locLevel) async(1)
+!$acc parallel loop gang vector_length(128) present(mesh, multiphase, ViscousDiscretization) copyin(locLevel) private(fID) async(1)
             do iFace = 1, mesh % MLRK % MLIter(locLevel,7)
                fID = mesh % MLRK % MLIter_fID_MPI(iFace)
                CALL computeMPIFaceFlux_MU( mesh % faces(fID) )
@@ -967,19 +956,19 @@ module SpatialDiscretization
 !$acc end parallel loop
 !$omp end do 
 !$acc wait
-!
-!           ***********************************************************
-!           Surface integrals and scaling of elements with shared faces
-!           ***********************************************************
-! 
+! !
+! !           ***********************************************************
+! !           Surface integrals and scaling of elements with shared faces
+! !           ***********************************************************
+! ! 
 !$omp do schedule(runtime) private(i,j,k, eID, sqrtRho, invSqrtRho)
-!$acc parallel loop gang vector_length(128) present(mesh,dimensionless) copyin(locLevel) async(1)
+!$acc parallel loop gang vector_length(128) present(mesh,dimensionless) copyin(locLevel) private(eID) async(1)
             do iEl = 1, mesh % MLRK % MLIter(locLevel,6)
                eID = mesh % MLRK % MLIter_eID_MPI(iEl)
                
                call TimeDerivative_FacesContribution(mesh % elements(eID), mesh)
                
-            !$acc loop vector collapse(3)
+            !$acc loop vector collapse(3) private(sqrtRho,invSqrtRho)
                 do k = 0, mesh % elements(eID) % Nxyz(3) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1) 
                    sqrtRho = sqrt(mesh % elements(eID) % storage % rho(i,j,k))
                    invSqrtRho = 1.0_RP / sqrtRho
@@ -1012,13 +1001,13 @@ module SpatialDiscretization
 
 
 !           User-defined source term for CPU 
-#ifdef _OPENACC
+#ifndef _OPENACC
 !$omp do schedule(runtime) private(i,j,k, invSqrtRho, eID)
          do lID = 1, mesh % MLRK % MLIter(locLevel,1)
             eID = mesh % MLRK % MLIter_eID(lID)
-			
+            
             do k = 0, mesh % elements(eID) % Nxyz(3)   ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1) 
-				invSqrtRho = 1.0_RP / sqrt(e % storage % rho(i,j,k))
+                invSqrtRho = 1.0_RP / sqrt(mesh % elements(eID) % storage % rho(i,j,k))
                 call UserDefinedSourceTermNS(mesh % elements(eID) % geom % x(:,i,j,k), mesh % elements(eID) % storage % Q(:,i,j,k), t, mesh % elements(eID) % storage % S_NS(:,i,j,k), thermodynamics, dimensionless, refValues, multiphase)
             end do   ;  end do   ;  end do   
          end do
@@ -1040,7 +1029,7 @@ module SpatialDiscretization
 !        Now add all the source terms
 !        ****************************
 !$omp do schedule(runtime) private(i,j,k,eID,m)
-!$acc parallel loop gang vector_length(128) present(mesh) copyin(locLevel) async(1)
+!$acc parallel loop gang vector_length(128) present(mesh) copyin(locLevel) private(eID) async(1)
          do lID = 1, mesh % MLRK % MLIter(locLevel,1)
             eID = mesh % MLRK % MLIter_eID(lID)
             !$acc loop vector collapse(4)
@@ -1060,15 +1049,15 @@ module SpatialDiscretization
             if( .not. mesh% IBM% semiImplicit ) then 
 !$omp do schedule(runtime) private(i,j,k,Source, eID)
                   ! Check if update(t) is required
-                  !$acc parallel loop gang vector_length(128) present(mesh) copyin(t, locLevel) private(Source) async(1)
+                  !$acc parallel loop gang vector_length(128) present(mesh) copyin(t, locLevel) private(Source,eID) async(1)
                   do lID = 1, mesh % MLRK % MLIter(locLevel,1)
                      eID = mesh % MLRK % MLIter_eID(lID)
-                     !$acc loop vector collapse(3) 
+                     !$acc loop vector collapse(3) private(Source)
                      do k = 0, mesh % elements(eID) % Nxyz(3)   ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
                         if( mesh % elements(eID) % isInsideBody(i,j,k) ) then
                            ! only without moving for now in MULTIPHASE
                            if( .not. mesh % IBM % stl(mesh % elements(eID) % STL(i,j,k)) % move ) then 
-						      Source = 0.0_RP
+                              Source = 0.0_RP
                               call IBM_SourceTerm(mesh % IBM, eID = eID, Q = mesh % elements(eID) % storage % Q(:,i,j,k), Source = Source, wallfunction = .false. )
                            end if 
                            !$acc loop seq
@@ -1121,7 +1110,7 @@ module SpatialDiscretization
 !        Compute inviscid - viscous contravariant flux
 !        ---------------------------------------------
 !$omp do schedule(runtime) private(eID, i, j, k, m, beta, kappa, mu, inviscidFlux, viscousFlux, jGradXi, jGradEta, jGradZeta)
-         !$acc parallel loop gang vector_length(128) present(mesh, multiphase) copyin(locLevel) async(1)
+         !$acc parallel loop gang vector_length(128) present(mesh, multiphase) copyin(locLevel) private(eID) async(1)
          do lID = 1, mesh % MLRK % MLIter(locLevel,1)
             eID = mesh % MLRK % MLIter_eID(lID)
 
@@ -1149,7 +1138,8 @@ module SpatialDiscretization
                jGradZeta(1) = mesh % elements(eID) % geom % jGradZeta(1,i,j,k)
                jGradZeta(2) = mesh % elements(eID) % geom % jGradZeta(2,i,j,k)
                jGradZeta(3) = mesh % elements(eID) % geom % jGradZeta(3,i,j,k)
-
+               
+               !$acc loop seq
                do m =1, NCONS
 
                inviscidFlux(m,1) = inviscidFlux(m,1) - viscousFlux(m,1)
@@ -1195,7 +1185,7 @@ module SpatialDiscretization
          type(Element)           :: e
          type(HexMesh)           :: mesh
 
-         integer                 :: i,j,k,eID,m
+         integer                 :: i,j,k,m
 
          call ScalarWeakIntegrals_StdFace( NCONS, e % Nxyz, &
                       mesh % faces(e % faceIDs(EFRONT))  % storage(e % faceSide(EFRONT))  % fStar, &
@@ -1206,7 +1196,7 @@ module SpatialDiscretization
                       mesh % faces(e % faceIDs(ELEFT))   % storage(e % faceSide(ELEFT))   % fStar, &
                       -1, e % storage % QDot )
 
-         !$acc loop vector collapse(3)
+         !$acc loop vector collapse(3) private(m)
          do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
             !$acc loop seq
             do m = 1,NCONS
@@ -1223,51 +1213,49 @@ module SpatialDiscretization
 ! 
 !///////////////////////////////////////////////////////////////////////////////////////////// 
 ! 
-      subroutine computeElementInterfaceFlux_MUviscous(fc, side)
-         !$acc routine vector
-         use FaceClass
-         use RiemannSolvers_MU
-         implicit none
-         type(Face)   , intent(inout) :: fc
-         integer,       intent(in)    :: side
+	  subroutine computeElementInterfaceFlux_MUviscous(fc, side)
+		 !$acc routine vector
+		 use FaceClass
+		 use RiemannSolvers_MU
+		 implicit none
+		 type(Face)   , intent(inout) :: fc
+		 integer,       intent(in)    :: side
 
-         integer       :: i, j
-         real(kind=RP) :: mu
-         real(kind=RP) :: U_xS(1:NCONS), U_yS(1:NCONS), U_zS(1:NCONS)
-         
-         !$acc loop vector collapse(2) private(U_xS, U_yS, U_zS, mu)
-         do j = 0, fc % Nf(2) ; do i = 0, fc % Nf(1)
+		 integer       :: i, j, k
+		 real(kind=RP) :: mu
+		 real(kind=RP) :: U_xS(1:NCONS), U_yS(1:NCONS), U_zS(1:NCONS)
+		 real(kind=RP) :: scaleMu(1:NCONS)
 
-            call GetmTwoFluidsViscosity(fc % storage(side) % Q(IMC,i,j), mu)
-            
-            mu = mu + fc % storage(side) % mu_NS(1,i,j)   ! Add subgrid viscosity
-            
-            U_xS(1) = fc % storage(side) % U_x(1,i,j)
-            U_xS(2) = fc % storage(side) % U_x(2,i,j) * mu
-            U_xS(3) = fc % storage(side) % U_x(3,i,j) * mu
-            U_xS(4) = fc % storage(side) % U_x(4,i,j) * mu
-            U_xS(5) = fc % storage(side) % U_x(5,i,j)
-            
-            U_yS(1) = fc % storage(side) % U_y(1,i,j)
-            U_yS(2) = fc % storage(side) % U_y(2,i,j) * mu
-            U_yS(3) = fc % storage(side) % U_y(3,i,j) * mu
-            U_yS(4) = fc % storage(side) % U_y(4,i,j) * mu
-            U_yS(5) = fc % storage(side) % U_y(5,i,j)
-            
-            U_zS(1) = fc % storage(side) % U_z(1,i,j)
-            U_zS(2) = fc % storage(side) % U_z(2,i,j) * mu
-            U_zS(3) = fc % storage(side) % U_z(3,i,j) * mu
-            U_zS(4) = fc % storage(side) % U_z(4,i,j) * mu
-            U_zS(5) = fc % storage(side) % U_z(5,i,j)
+		 ! alias storage 
+		 associate(s => fc%storage(side))
 
-            call mViscousFlux( NCONS, NGRAD, fc % storage(side) % Q(:,i,j) , &
-                              U_xS, U_yS, U_zS, 1.0_RP, multiphase % M0_star, &
-                              0.0_RP, fc % storage(side) % unStar(:,:,i,j))   
-                              
-         end do ; end do
+		 !$acc loop vector collapse(2) private(U_xS, U_yS, U_zS, mu, scaleMu, k)
+		 do j = 0, fc%Nf(2)
+			do i = 0, fc%Nf(1)
 
- 
-      end subroutine computeElementInterfaceFlux_MUviscous
+				! compute local viscosity 
+				call GetmTwoFluidsViscosity(s%Q(IMC,i,j), mu)
+				mu = mu + s%mu_NS(1,i,j)   ! Add subgrid viscosity
+
+				! prepare scaleMu factors: 1 for first and last components, mu for velocity components
+				scaleMu = 1.0_RP
+				scaleMu(2:4) = mu
+
+				do k = 1, NCONS
+				   U_xS(k) = s%U_x(k,i,j) * scaleMu(k)
+				   U_yS(k) = s%U_y(k,i,j) * scaleMu(k)
+				   U_zS(k) = s%U_z(k,i,j) * scaleMu(k)
+				end do
+
+				call mViscousFlux( NCONS, NGRAD, s%Q(:,i,j) , &
+								   U_xS, U_yS, U_zS, 1.0_RP, multiphase % M0_star, &
+								   0.0_RP, s%unStar(:,:,i,j))
+
+			end do
+		 end do
+
+		 end associate
+	  end subroutine computeElementInterfaceFlux_MUviscous
 
       SUBROUTINE computeElementInterfaceFlux_MU(mesh, Level)
          use HexMeshClass
@@ -1289,14 +1277,15 @@ module SpatialDiscretization
          else
             locLevel = 1
          end if
+         
 
-!$omp do schedule(runtime) private(fID, i, j, m )
-         !$acc parallel loop gang vector_length(128) present(mesh, ViscousDiscretization, multiphase) copyin(locLevel) async(1)
+!$omp do schedule(runtime) private(fID, i, j, m)
+         !$acc parallel loop gang vector_length(128) present(mesh, ViscousDiscretization, multiphase) copyin(locLevel) private(fID)
          do iFace = 1, mesh % MLRK % MLIter(locLevel,3)
             fID = mesh % MLRK % MLIter_fID_Interior(iFace)
          
             call BR1_RiemannSolver_acc(mesh % faces(fID), NCONS, NGRAD, [multiphase % M0_star, 0.0_RP, 0.0_RP, 0.0_RP, 0.0_RP], &
-                                       ViscousDiscretization % sigma, mesh % faces(fID) % storage(2) % FStar)
+                                         ViscousDiscretization % sigma, mesh % faces(fID) % storage(2) % FStar)
 
             call RiemannSolver_Selector_MU(mesh % faces(fID) % Nf(1), &                         
                                            mesh % faces(fID) % Nf(2), &
@@ -1341,120 +1330,117 @@ module SpatialDiscretization
          use RiemannSolvers_MU
          use EllipticBR1
          TYPE(Face)   , INTENT(inout) :: f   
-         integer       :: i, j, Sidearray, maxId, m
-         real(kind=RP) :: muL, muR, flux(2)
-         real(kind=RP) :: UxL(1:NGRAD), UyL(1:NGRAD), UzL(1:NGRAD)
-         real(kind=RP) :: UxR(1:NGRAD), UyR(1:NGRAD), UzR(1:NGRAD)
-
-         !$acc loop vector collapse(2)
-         DO j = 0, f % Nf(2) ; DO i = 0, f % Nf(1)
-
-               call GetmTwoFluidsViscosity(f % storage(1) % Q(IMC,i,j), muL)
-               call GetmTwoFluidsViscosity(f % storage(2) % Q(IMC,i,j), muR)
-
-               muL = muL +f % storage(1) % mu_NS(1,i,j)   ! Add subgrid viscosity
-               muR = muR +f % storage(2) % mu_NS(1,i,j)   ! Add subgrid viscosity       
 !
-!            - Premultiply velocity gradients by the viscosity
-!              -----------------------------------------------             
-                !-----------------------------------
-                ! Left side
-                !-----------------------------------
-                UxL(1) = 1.0_RP * f%storage(1)%U_x(1,i,j)
-                UxL(2) = muL    * f%storage(1)%U_x(2,i,j)
-                UxL(3) = muL    * f%storage(1)%U_x(3,i,j)
-                UxL(4) = muL    * f%storage(1)%U_x(4,i,j)
-                UxL(5) = 1.0_RP * f%storage(1)%U_x(5,i,j)
-
-                UyL(1) = 1.0_RP * f%storage(1)%U_y(1,i,j)
-                UyL(2) = muL    * f%storage(1)%U_y(2,i,j)
-                UyL(3) = muL    * f%storage(1)%U_y(3,i,j)
-                UyL(4) = muL    * f%storage(1)%U_y(4,i,j)
-                UyL(5) = 1.0_RP * f%storage(1)%U_y(5,i,j)
-
-                UzL(1) = 1.0_RP * f%storage(1)%U_z(1,i,j)
-                UzL(2) = muL    * f%storage(1)%U_z(2,i,j)
-                UzL(3) = muL    * f%storage(1)%U_z(3,i,j)
-                UzL(4) = muL    * f%storage(1)%U_z(4,i,j)
-                UzL(5) = 1.0_RP * f%storage(1)%U_z(5,i,j)
-
-                !-----------------------------------
-                ! Right side
-                !-----------------------------------
-                UxR(1) = 1.0_RP * f%storage(2)%U_x(1,i,j)
-                UxR(2) = muR    * f%storage(2)%U_x(2,i,j)
-                UxR(3) = muR    * f%storage(2)%U_x(3,i,j)
-                UxR(4) = muR    * f%storage(2)%U_x(4,i,j)
-                UxR(5) = 1.0_RP * f%storage(2)%U_x(5,i,j)
-
-                UyR(1) = 1.0_RP * f%storage(2)%U_y(1,i,j)
-                UyR(2) = muR    * f%storage(2)%U_y(2,i,j)
-                UyR(3) = muR    * f%storage(2)%U_y(3,i,j)
-                UyR(4) = muR    * f%storage(2)%U_y(4,i,j)
-                UyR(5) = 1.0_RP * f%storage(2)%U_y(5,i,j)
-
-                UzR(1) = 1.0_RP * f%storage(2)%U_z(1,i,j)
-                UzR(2) = muR    * f%storage(2)%U_z(2,i,j)
-                UzR(3) = muR    * f%storage(2)%U_z(3,i,j)
-                UzR(4) = muR    * f%storage(2)%U_z(4,i,j)
-                UzR(5) = 1.0_RP * f%storage(2)%U_z(5,i,j)
-               
-               call mViscousFlux( NCONS, NGRAD, f % storage(1) % Q(:,i,j) , &
-                              UxL, UyL, UzL, 1.0_RP, multiphase % M0_star, &
-                              0.0_RP, f % storage(1) % unStar(:,:,i,j))
-                             
-                              
-               call mViscousFlux( NCONS, NGRAD, f % storage(2) % Q(:,i,j) , &
-                              UxR, UyR, UzR, 1.0_RP, multiphase % M0_star, &
-                              0.0_RP, f % storage(2) % unStar(:,:,i,j))
-         END DO ; END DO
-         
-         call BR1_RiemannSolver_acc(f, NCONS, NGRAD, [multiphase % M0_star, 0.0_RP, 0.0_RP, 0.0_RP, 0.0_RP], &
-                                       ViscousDiscretization % sigma, f % storage(2) % FStar)   
-!            --------------
-!            Invscid fluxes
-!            --------------
-!      
-             call RiemannSolver_Selector_MU(f % Nf(1), &                         
-                                           f % Nf(2), &
-                                           f % storage(1) % Q, &
-                                           f % storage(2) % Q, &
-                                           f % storage(1) % rho, &
-                                           f % storage(2) % rho, &
-                                           f % storage(1) % mu,&
-                                           f % storage(2) % mu,&
-                                           f % geom % normal, &
-                                           f % geom % t1, &
-                                           f % geom % t2, &
-                                           f % storage(1) % Q_aux,&
-                                           f % storage(2) % Q_aux,&
-                                           f % storage(1) % invMa2, &
-                                           f % storage(2) % invMa2)
-
-!           ------------------------
-!           Multiply by the Jacobian -- Q_aux is the inviscid flux and Viscous Flux is f % storage(2) % FStar
-!           ------------------------
-            !$acc loop vector collapse(3)
-            do j = 0, f % Nf(2) ; do i = 0, f % Nf(1) ; do m = 1, NCONS
-               f % storage(1) % Q_aux(m,i,j) = ( f % storage(1) % Q_aux(m,i,j) - f % storage(2) % FStar(m,i,j)) * f % geom % jacobian(i,j) 
-               f % storage(2) % Q_aux(m,i,j) = ( f % storage(2) % Q_aux(m,i,j) - f % storage(2) % FStar(m,i,j)) * f % geom % jacobian(i,j)
-            end do ; end do ;  end do
-            
+!        ---------------
+!        Local variables
+!        ---------------
 !
-!           ---------------------------
-!           Return the flux to elements  
-!           ---------------------------
-            maxId=maxval(f % elementIDs)
-            do i=1, size(f % elementIDs)
-                if(f % elementIDs(i)==maxId)THEN
-                   Sidearray=i
-                   exit
-                endif
-            end do
-         
-            call Face_ProjectFluxToElements(f, NCONS, f % storage(Sidearray) % Q_aux, Sidearray)
+	     integer       :: i, j, Sidearray, maxId, m, k
+	     real(kind=RP) :: muL, muR, flux(2)
+	     real(kind=RP) :: UxL(1:NGRAD), UyL(1:NGRAD), UzL(1:NGRAD)
+	     real(kind=RP) :: UxR(1:NGRAD), UyR(1:NGRAD), UzR(1:NGRAD)
+	     real(kind=RP) :: scaleMu(1:NGRAD)
 
-      end subroutine computeMPIFaceFlux_MU
+		 associate(s1 => f%storage(1), s2 => f%storage(2))
+	   
+	     !$acc loop vector collapse(2) private(flux, UxL, UyL, UzL, UxR, UyR, UzR, muL, muR, scaleMu, k)
+	     DO j = 0, f % Nf(2) ; DO i = 0, f % Nf(1)
+
+			  ! compute viscosity on each side and add subgrid term
+			  call GetmTwoFluidsViscosity(s1%Q(IMC,i,j), muL)
+			  call GetmTwoFluidsViscosity(s2%Q(IMC,i,j), muR)
+			  
+              muL = muL +f % storage(1) % mu_NS(1,i,j)   ! Add subgrid viscosity
+              muR = muR +f % storage(2) % mu_NS(1,i,j)   ! Add subgrid viscosity     
+
+              ! Left side
+              !-----------------------------------
+			  ! prepare scaling factors: 1 on first/last components, mu on interior gradient components							
+			  scaleMu = 1.0_RP
+			  scaleMu(2:4) = muL   ! will be overwritten for the right side below
+
+			  ! fill left-side premultiplied gradient arrays
+			  do k = 1, NGRAD
+				 UxL(k) = s1%U_x(k,i,j) * scaleMu(k)
+														 
+				 UyL(k) = s1%U_y(k,i,j) * scaleMu(k)
+				 UzL(k) = s1%U_z(k,i,j) * scaleMu(k)
+			  end do
+
+              ! Right side
+              !-----------------------------------
+			  scaleMu = 1.0_RP
+			  scaleMu(2:NGRAD-1) = muR
+
+			  ! fill right-side premultiplied gradient arrays
+			  do k = 1, NGRAD						 
+				 UxR(k) = s2%U_x(k,i,j) * scaleMu(k)
+				 UyR(k) = s2%U_y(k,i,j) * scaleMu(k)
+				 UzR(k) = s2%U_z(k,i,j) * scaleMu(k)
+			  end do
+
+			  ! compute viscous flux (left and right)
+			  call mViscousFlux( NCONS, NGRAD, s1%Q(:,i,j) , &
+								 UxL, UyL, UzL, 1.0_RP, multiphase % M0_star, &
+														 
+								 0.0_RP, s1%unStar(:,:,i,j))
+
+			  call mViscousFlux( NCONS, NGRAD, s2%Q(:,i,j) , &
+								 UxR, UyR, UzR, 1.0_RP, multiphase % M0_star, &
+								 0.0_RP, s2%unStar(:,:,i,j))
+
+	   END DO ; END DO
+
+	   ! Riemann solver 
+	   call BR1_RiemannSolver_acc(f, NCONS, NGRAD, [multiphase % M0_star, 0.0_RP, 0.0_RP, 0.0_RP, 0.0_RP], &
+								  ViscousDiscretization % sigma, s2%Fstar)
+
+	   ! inviscid fluxes (unchanged). Ensure f%storage(*) arrays used here are present on device.
+	   call RiemannSolver_Selector_MU(f % Nf(1), &                         
+									 f % Nf(2), &
+									 s1%Q, &
+									 s2%Q, &
+									 s1%rho, &
+									 s2%rho, &
+									 s1%mu, &
+									 s2%mu, &
+									 f % geom % normal, &
+									 f % geom % t1, &
+									 f % geom % t2, &
+									 s1%Q_aux, &
+									 s2%Q_aux, &
+									 s1%invMa2, &
+									 s2%invMa2)
+									 
+!      ------------------------
+!      Multiply by the Jacobian -- Q_aux is the inviscid flux and Viscous Flux is f % storage(2) % FStar
+!      ------------------------
+
+	   !$acc loop vector collapse(3)
+	   do j = 0, f % Nf(2) ; do i = 0, f % Nf(1) ; do m = 1, NCONS
+		  s1%Q_aux(m,i,j) = ( s1%Q_aux(m,i,j) - s2%Fstar(m,i,j)) * f % geom % jacobian(i,j)
+		  s2%Q_aux(m,i,j) = ( s2%Q_aux(m,i,j) - s2%Fstar(m,i,j)) * f % geom % jacobian(i,j)
+	   end do ; end do ; end do
+
+	   ! Find the largest element ID and the side array index 
+	   maxId = -1
+	   !$acc loop seq
+	   do i = 1, size(f % elementIDs)
+		  if (f%elementIDs(i) > maxId) maxId = f%elementIDs(i)
+	   end do
+
+	   !$acc loop seq
+	   do i = 1, size(f % elementIDs)
+		  if (f % elementIDs(i) == maxId) then
+			 Sidearray = i
+			 exit
+		  end if
+	   end do
+
+	   call Face_ProjectFluxToElements(f, NCONS, f % storage(Sidearray) % Q_aux, Sidearray)
+
+	   end associate
+	END SUBROUTINE computeMPIFaceFlux_MU
 
       SUBROUTINE computeBoundaryFlux_MU(mesh, time, Level)
       USE ElementClass
@@ -1486,20 +1472,21 @@ module SpatialDiscretization
 
       nZones = size(mesh % zones)
        do zoneID=1, nZones
-         
+         !$acc wait
          call BCs(zoneID) % bc % FlowState(mesh, mesh % zones(zoneID))  
+         !$acc wait
 !$omp do schedule(runtime) private(fID, i, j, m, mu )
-         !$acc parallel loop gang vector_length(128) present(mesh, dimensionless, multiphase) copyin(locLevel) async(1)
+         !$acc parallel loop gang vector_length(128) present(mesh, dimensionless, multiphase) copyin(locLevel,zoneID) private(fID) async(1) 
          do zonefID = 1, mesh % zones(zoneID) % no_of_faces
              fID =  mesh % zones(zoneID) % faces(zonefID)
     
-            !$acc loop vector collapse(2)
+            !$acc loop vector collapse(2) private(i,j)
             do j = 0, mesh % faces(fID) % Nf(2) ;  do i = 0, mesh % faces(fID) % Nf(1)
                mesh % faces(fID) % storage(2) % rho(i,j) = dimensionless % rho(2) + (dimensionless % rho(1)-dimensionless % rho(2))*mesh % faces(fID) % storage(2) % Q(IMC,i,j)
                mesh % faces(fID) % storage(2) % rho(i,j) = min(max(mesh % faces(fID) % storage(2) % rho(i,j), dimensionless % rho_min),dimensionless % rho_max)
             enddo ; enddo
 
-            !$acc loop vector collapse(2)
+            !$acc loop vector collapse(2) private(i,j,m,mu)
             do j = 0, mesh % faces(fID) % Nf(2) ;  do i = 0, mesh % faces(fID) % Nf(1)
                call GetmTwoFluidsViscosity(mesh % faces(fID) % storage(1) % Q(IMC,i,j), mu)
                mu = mu + mesh % faces(fID) % storage(1) % mu_NS(1,i,j)   ! Add subgrid viscosity
@@ -1522,11 +1509,13 @@ module SpatialDiscretization
          end do
          !$acc end parallel loop 
 !$omp end do 
-!$acc wait
+
+         !$acc wait
          CALL BCs(zoneID) % bc % FlowNeumann(mesh, mesh % zones(zoneID))    
-!$acc wait       
+         !$acc wait
+		 
 !$omp do schedule(runtime) private(fID, i, j, m )
-         !$acc parallel loop gang vector_length(128) present(mesh) async(1)
+         !$acc parallel loop gang vector_length(128) present(mesh) copyin(locLevel,zoneID) private(fID, i, j, m) async(1)
          do zonefID = 1, mesh % zones(zoneID) % no_of_faces
             fID =  mesh % zones(zoneID) % faces(zonefID)
 
@@ -1550,6 +1539,7 @@ module SpatialDiscretization
 !           ------------------------
             !$acc loop vector collapse(3)
             do j = 0, mesh % faces(fID) % Nf(2) ; do i = 0, mesh % faces(fID) % Nf(1) ; do m = 1, NCONS               
+																	
                   mesh % faces(fID) % storage(1) % FStar(m,i,j) = (mesh % faces(fID) % storage(1) % Q_aux(m,i,j)  - &
                                                                     mesh % faces(fID) % storage(2) % FStar(m,i,j)) * &
                                                                     mesh % faces(fID) % geom % jacobian(i,j)
@@ -1563,6 +1553,7 @@ module SpatialDiscretization
          enddo
          !$acc end parallel loop 
 !$omp end do 
+!$acc wait
       end do 
 
       END SUBROUTINE computeBoundaryFlux_MU
@@ -1616,7 +1607,7 @@ module SpatialDiscretization
 ! 
 !$acc wait
 !$omp do schedule(runtime) private(i,j,k,eID)
-!$acc parallel loop gang vector_length(128) present(mesh, mesh % MLRK) copyin(locLevel) async(1)
+!$acc parallel loop gang vector_length(128) present(mesh, mesh % MLRK) copyin(locLevel) private(eID) async(1)
          do iEl = 1, mesh % MLRK % MLIter(locLevel,5)
             eID = mesh % MLRK % MLIter_eID_Seq(iEl)
             call Laplacian_FacesContribution(mesh, eID)
@@ -1641,7 +1632,7 @@ module SpatialDiscretization
 !           **************************************
 !
 !$omp do schedule(runtime) private(fID)
-!$acc parallel loop gang vector_length(128) present(mesh, CHDiscretization, mesh % MLRK, mesh % faces) copyin(locLevel) async(1)       
+!$acc parallel loop gang vector_length(128) present(mesh, CHDiscretization, mesh % MLRK, mesh % faces) copyin(locLevel) private(fID) async(1)       
             do iFace = 1, mesh % MLRK % MLIter(locLevel,7)
                fID = mesh % MLRK % MLIter_fID_MPI(iFace)
                CALL Laplacian_computeMPIFaceFlux( mesh % faces(fID) )
@@ -1654,7 +1645,7 @@ module SpatialDiscretization
 !           Surface integrals and scaling of elements with shared faces
 !           ***********************************************************
 !$omp do schedule(runtime) private(eID)  
-!$acc parallel loop gang vector_length(128) present(mesh, mesh % MLRK) copyin(locLevel) async(1) 
+!$acc parallel loop gang vector_length(128) present(mesh, mesh % MLRK) copyin(locLevel) private(eID) async(1) 
             do iEl = 1, mesh % MLRK % MLIter(locLevel,6)
                eID = mesh % MLRK % MLIter_eID_MPI(iEl)
                call Laplacian_FacesContribution(mesh, eID)  
@@ -1766,11 +1757,11 @@ module SpatialDiscretization
 !        Compute contravariant flux
 !        --------------------------
 !$omp do schedule(runtime) private(eID, kappa, beta,mu,i,j,k, cartesianFlux)
-         !$acc parallel loop gang vector_length(128) present(mesh, mesh % elements, mesh % MLRK) copyin(locLevel) async(1)
+         !$acc parallel loop gang vector_length(128) present(mesh, mesh % elements, mesh % MLRK) copyin(locLevel) private(eID) async(1)
          do lID = 1, mesh % MLRK % MLIter(locLevel,1)
             eID = mesh % MLRK % MLIter_eID(lID)
 
-            !$acc loop vector collapse(3) private(cartesianFlux)
+            !$acc loop vector collapse(3) private(cartesianFlux, kappa, beta,mu)
             do k = 0, mesh % elements(eID) % Nxyz(3) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
                
                call GetCHViscosity( mesh % elements(eID) % storage % Q(IMC,i,j,k), mu)      
@@ -1855,17 +1846,20 @@ module SpatialDiscretization
 !
          integer       :: iFace, i, j, side
          real(kind=RP) :: delta, mu_smag, factor, minvalC, maxvalC, minvalC2, maxvalC2
-         
+         real(kind=RP) :: dWall_ij, prod
+
          if ( LESModel % Active ) then
-!$omp do schedule(runtime) private(i,j,delta,mu_smag,side)
-            !$acc parallel loop gang vector_length(128) present(mesh, LESModel, mesh % faces) copyin(no_of_faces,no_of_sides,face_ids) private(i,j,delta,mu_smag,side) async(1)
+		 !$omp do schedule(runtime) private(i,j,delta,mu_smag,side, dWall_ij, prod)
+            !$acc parallel loop gang vector_length(128) present(mesh, LESModel, mesh % faces) private(delta,prod) copyin(no_of_faces,no_of_sides,face_ids) async(1)
             do iFace = 1, no_of_faces
-               delta = sqrt(mesh % faces(face_ids(iFace)) % geom % surface / product(mesh % faces(face_ids(iFace)) % Nf + 1))
-               
-               !$acc loop vector collapse(3)
+			   prod  = (mesh % faces(face_ids(iFace)) % Nf(1) + 1.0_RP)*(mesh % faces(face_ids(iFace)) % Nf(2) + 1.0_RP)
+               delta = sqrt(mesh % faces(face_ids(iFace)) % geom % surface / prod)
+              
+               !$acc loop vector collapse(2) private(mu_smag, dWall_ij, side)
                do j = 0, mesh % faces(face_ids(iFace)) % Nf(2) ; do i = 0, mesh % faces(face_ids(iFace)) % Nf(1)
+			      dWall_ij = mesh % faces(face_ids(iFace)) % geom % dWall(i,j)
                   do side = 1, no_of_sides
-                     call LESModel_Selector(LESModel, delta, mesh % faces(face_ids(iFace)) % geom % dWall(i,j), &
+                     call LESModel_Selector(LESModel, delta, dWall_ij, &
                                                              mesh % faces(face_ids(iFace)) % storage(side) % Q(:,i,j),   &
                                                              mesh % faces(face_ids(iFace)) % storage(side) % U_x(:,i,j), &
                                                              mesh % faces(face_ids(iFace)) % storage(side) % U_y(:,i,j), &
@@ -1876,9 +1870,8 @@ module SpatialDiscretization
                end do              ; end do
             end do
             !$acc end parallel loop
-!$omp end do
+		!$omp end do
          end if
-!$acc wait
 
       end subroutine compute_viscosity_at_faces
 !
@@ -1904,7 +1897,6 @@ module SpatialDiscretization
 !
          integer        :: i, j, iFace, fID, locLevel
          real(kind=RP)  :: mu
-         real(kind=RP)  :: sigma
          
          if (present(Level)) then
             locLevel = Level
@@ -1912,14 +1904,12 @@ module SpatialDiscretization
             locLevel = 1
          end if
          
-         sigma = 1.0_RP
-         
 !$omp do schedule(runtime) private(fID, i, j, mu)
-!$acc parallel loop gang vector_length(128) present(mesh, CHDiscretization, mesh % faces) copyin(locLevel) async(1)
+!$acc parallel loop gang vector_length(128) present(mesh, CHDiscretization, mesh % faces) copyin(locLevel) private(fID) async(1)
          do iFace = 1, mesh % MLRK % MLIter(locLevel,3)
             fID = mesh % MLRK % MLIter_fID_Interior(iFace)
             
-            !$acc loop vector collapse(2)
+            !$acc loop vector collapse(2) private(mu)
             do j = 0, mesh % faces(fID) % Nf(2)  ;  do i = 0, mesh % faces(fID) % Nf(1)
 
                call GetCHViscosity(0.0_RP, mu)
@@ -1952,13 +1942,14 @@ module SpatialDiscretization
          end do
 !$acc end parallel loop
 !$omp end do
-!$acc wait
 
       end subroutine Laplacian_computeElementInterfaceFlux
 
       subroutine Laplacian_computeMPIFaceFlux(f)
-!$acc routine vector
+		 !$acc routine vector
          use FaceClass
+         use Physics
+         use PhysicsStorage
          use EllipticBR1
          IMPLICIT NONE
          TYPE(Face)   , INTENT(inout) :: f   
@@ -1967,7 +1958,7 @@ module SpatialDiscretization
          real(kind=RP) :: mu
          real(kind=RP) :: sigma0
          
-         !$acc loop vector collapse(2) private(i,j)
+         !$acc loop vector collapse(2) private(mu)
          do j = 0, f % Nf(2)  ;  do i = 0, f % Nf(1)
            call GetCHViscosity(0.0_RP, mu)
                                                                                   
@@ -1977,23 +1968,12 @@ module SpatialDiscretization
            call CHDivergenceFlux( NCONS, NCONS, f % storage(2) % Q(1:IMC,i,j) , f % storage(2) % U_x(1:IMC,i,j) , & 
                                   f % storage(2) % U_y(1:IMC,i,j) , f % storage(2) % U_z(1:IMC,i,j), mu, 0.0_RP, 0.0_RP, f % storage(2) % unStar(:,:,i,j))
          end do   ;  end do 
-         
-         ! call BR1_RiemannSolver_acc(f, NCOMP, NCOMP, [1.0_RP], CHDiscretization % sigma, f % storage(1) % FStar)
-!
-!        --------------------------------------------------------------------------------------------
-!        The code below is BR1_RiemannSolver_acc, It couldnt compiled with call BR1_RiemannSolver_acc
-!        --------------------------------------------------------------------------------------------
-!
-         sigma0 = 0.5_RP * CHDiscretization % sigma * (maxval(f % Nf))*(maxval(f % Nf)+1) / f % geom % h
-          
-         !$acc loop vector collapse(3)
-         do j = 0, f % Nf(2) ;  do i = 0, f % Nf(1) ; do m = 1, NCOMP
-               f % storage(1) % FStar(m,i,j) = 0.5_RP * (f % storage(1) % unStar(m,IX,i,j) + f % storage(2) % unStar(m,IX,i,j)) * f % geom % normal(IX,i,j) + &
-                               0.5_RP * (f % storage(1) % unStar(m,IY,i,j) + f % storage(2) % unStar(m,IY,i,j)) * f % geom % normal(IY,i,j) + &
-                               0.5_RP * (f % storage(1) % unStar(m,IZ,i,j) + f % storage(2) % unStar(m,IZ,i,j)) * f % geom % normal(IZ,i,j) 
-
-               f % storage(1) % FStar(m,i,j) = f % storage(1) % FStar(m,i,j) - sigma0 * 1.0_RP * (f % storage(1) % Q(m,i,j) - f % storage(2) % Q(m,i,j))
-         enddo ; enddo ; enddo
+		 
+#ifdef _OPENACC
+		 call BR1_RiemannSolver_acc(f, NCOMP, NCOMP, 1.0_RP, CHDiscretization % sigma, f % storage(1) % FStar)
+#else
+		 call BR1_RiemannSolver_acc(f, NCOMP, NCOMP, [1.0_RP], CHDiscretization % sigma, f % storage(1) % FStar)
+#endif
 
 !        ------------------------
 !        Multiply by the Jacobian
@@ -2003,11 +1983,19 @@ module SpatialDiscretization
            f % storage(1) % FStar(1,i,j) = f % storage(1) % FStar(1,i,j) * f % geom % jacobian(i,j)
          end do ; end do
 !
-!           ---------------------------
-!           Return the flux to elements
-!           ---------------------------
+!        ---------------------------
+!        Return the flux to elements
+!        ---------------------------
 !
-         maxId=maxval(f % elementIDs)
+         maxId=-1
+         !$acc loop seq
+         do i = 1, size(f % elementIDs)
+            if (f%elementIDs(i) > maxId) then
+                maxId = f%elementIDs(i)
+            end if
+         end do
+
+         !$acc loop seq
          do i=1, size(f % elementIDs)
              if(f % elementIDs(i)==maxId)THEN
                Sidearray=i
@@ -2016,7 +2004,6 @@ module SpatialDiscretization
          end do
          
          call Face_ProjectFluxToElements(f, NCOMP, f % storage(1) % FStar, Sidearray)
-
 
       end subroutine Laplacian_ComputeMPIFaceFlux
 
@@ -2052,11 +2039,11 @@ module SpatialDiscretization
          nZones = size(mesh % zones)
          do zoneID=1, nZones
 !$omp do schedule(runtime) private(fID, i, j, mu)         
-            !$acc parallel loop gang vector_length(128) present(mesh, mesh % zones) async(1)
+            !$acc parallel loop gang vector_length(128) present(mesh, mesh % zones) copyin(zoneID) private(fID) async(1)
             do zonefID = 1, mesh % zones(zoneID) % no_of_faces
                fID =  mesh % zones(zoneID) % faces(zonefID)
                
-               !$acc loop vector collapse(2)
+               !$acc loop vector collapse(2) private(mu)
                do j = 0, mesh % faces(fID) % Nf(2) ; do i = 0, mesh % faces(fID) % Nf(1)
                mesh % faces(fID) % storage(2) % Q(IMC,i,j) = mesh % faces(fID) % storage(1) % Q(IMC,i,j)
                call GetCHViscosity(0.0_RP, mu)
@@ -2079,12 +2066,11 @@ module SpatialDiscretization
             enddo
             !$acc end parallel loop 
 !$omp end do 
-!$acc wait
 
-            CALL BCs(zoneID) % bc % NeumannForEqn(mesh, mesh % zones(zoneID))      
-!$acc wait
+            CALL BCs(zoneID) % bc % NeumannForEqn(mesh, mesh % zones(zoneID))   
+            
 !$omp do schedule(runtime) private(fID, i, j)  
-            !$acc parallel loop gang vector_length(128) present(mesh, mesh % zones) async(1)
+            !$acc parallel loop gang vector_length(128) present(mesh, mesh % zones) copyin(zoneID) private(fID) async(1)
             do zonefID = 1, mesh % zones(zoneID) % no_of_faces
                fID =  mesh % zones(zoneID) % faces(zonefID)
 
@@ -2104,6 +2090,7 @@ module SpatialDiscretization
             enddo
             !$acc end parallel loop 
 !$omp end do 
+!$acc wait
          enddo
 
       end subroutine Laplacian_computeBoundaryFlux
@@ -2148,17 +2135,24 @@ module SpatialDiscretization
 !
 !           Source
 !           -------------
-
-!$omp do schedule(runtime) private(i,j,k,m,x,y,r,f)
-!$acc parallel loop gang vector_length(128) present(mesh, mesh % elements) copyin(S,b,x0,freqTerm,time) async(1)
-         do eID = 1, mesh % no_of_elements
-            !$acc loop vector collapse(3)
-            do k = 0, mesh % elements(eID) % Nxyz(3)   ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
-
-            end do   ;  end do   ;  end do 
-         end do
-!$acc end parallel loop
-!$omp end do
+            ! S = 0.0_RP
+            ! b = 0.01_RP
+            ! x0 = -0.55_RP
+            ! freqTerm = 1000.0_RP
+! !$omp do schedule(runtime) private(i,j,k,m,x,y,r,f)
+		 ! !$acc parallel loop gang vector_length(128) present(mesh, mesh % elements) copyin(S,b,x0,freqTerm,time)
+         ! do eID = 1, mesh % no_of_elements
+            ! !$acc loop vector collapse(3) private(x,y)
+            ! do k = 0, mesh % elements(eID) % Nxyz(3)   ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
+                ! x = mesh % elements(eID) % geom % x(1,i,j,k)
+                ! y = mesh % elements(eID) % geom % x(2,i,j,k)
+               
+                ! mesh % elements(eID) % storage % S_NS(5,i,j,k) = 1.0_RP * exp(-log(2.0_RP)/(b*b)*((x-x0)*(x-x0)) ) * cos(2.0_RP*PI*time*freqTerm)      
+               
+            ! end do   ;  end do   ;  end do 
+         ! end do
+		 ! !$acc end parallel loop
+! !$omp end do
 
       end subroutine CompilerDefinedSourceTerm
 
