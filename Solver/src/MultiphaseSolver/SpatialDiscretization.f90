@@ -844,7 +844,7 @@ module SpatialDiscretization
             !$acc parallel loop gang present(mesh, LESModel) copyin(locLevel) private(delta,eID,prod) async(1)
             do lID = 1, mesh % MLRK % MLIter(locLevel,1)
                eID = mesh % MLRK % MLIter_eID(lID)
-			   prod  = (mesh % elements(eID) % Nxyz(1) + 1.0_RP)*(mesh % elements(eID) % Nxyz(2) + 1.0_RP)*(mesh % elements(eID) % Nxyz(3) + 1.0_RP)
+               prod  = (mesh % elements(eID) % Nxyz(1) + 1.0_RP)*(mesh % elements(eID) % Nxyz(2) + 1.0_RP)*(mesh % elements(eID) % Nxyz(3) + 1.0_RP)
                delta = (mesh % elements(eID) % geom % Volume / prod) ** (1.0_RP / 3.0_RP)
                !$acc loop vector collapse(3)
                do k = 0, mesh % elements(eID) % Nxyz(3) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
@@ -1213,49 +1213,49 @@ module SpatialDiscretization
 ! 
 !///////////////////////////////////////////////////////////////////////////////////////////// 
 ! 
-	  subroutine computeElementInterfaceFlux_MUviscous(fc, side)
-		 !$acc routine vector
-		 use FaceClass
-		 use RiemannSolvers_MU
-		 implicit none
-		 type(Face)   , intent(inout) :: fc
-		 integer,       intent(in)    :: side
+      subroutine computeElementInterfaceFlux_MUviscous(fc, side)
+         !$acc routine vector
+         use FaceClass
+         use RiemannSolvers_MU
+         implicit none
+         type(Face)   , intent(inout) :: fc
+         integer,       intent(in)    :: side
 
-		 integer       :: i, j, k
-		 real(kind=RP) :: mu
-		 real(kind=RP) :: U_xS(1:NCONS), U_yS(1:NCONS), U_zS(1:NCONS)
-		 real(kind=RP) :: scaleMu(1:NCONS)
+         integer       :: i, j, k
+         real(kind=RP) :: mu
+         real(kind=RP) :: U_xS(1:NCONS), U_yS(1:NCONS), U_zS(1:NCONS)
+         real(kind=RP) :: scaleMu(1:NCONS)
 
-		 ! alias storage 
-		 associate(s => fc%storage(side))
+         ! alias storage 
+         associate(s => fc%storage(side))
 
-		 !$acc loop vector collapse(2) private(U_xS, U_yS, U_zS, mu, scaleMu, k)
-		 do j = 0, fc%Nf(2)
-			do i = 0, fc%Nf(1)
+         !$acc loop vector collapse(2) private(U_xS, U_yS, U_zS, mu, scaleMu, k)
+         do j = 0, fc%Nf(2)
+            do i = 0, fc%Nf(1)
 
-				! compute local viscosity 
-				call GetmTwoFluidsViscosity(s%Q(IMC,i,j), mu)
-				mu = mu + s%mu_NS(1,i,j)   ! Add subgrid viscosity
+                ! compute local viscosity 
+                call GetmTwoFluidsViscosity(s%Q(IMC,i,j), mu)
+                mu = mu + s%mu_NS(1,i,j)   ! Add subgrid viscosity
 
-				! prepare scaleMu factors: 1 for first and last components, mu for velocity components
-				scaleMu = 1.0_RP
-				scaleMu(2:4) = mu
+                ! prepare scaleMu factors: 1 for first and last components, mu for velocity components
+                scaleMu = 1.0_RP
+                scaleMu(2:4) = mu
 
-				do k = 1, NCONS
-				   U_xS(k) = s%U_x(k,i,j) * scaleMu(k)
-				   U_yS(k) = s%U_y(k,i,j) * scaleMu(k)
-				   U_zS(k) = s%U_z(k,i,j) * scaleMu(k)
-				end do
+                do k = 1, NCONS
+                   U_xS(k) = s%U_x(k,i,j) * scaleMu(k)
+                   U_yS(k) = s%U_y(k,i,j) * scaleMu(k)
+                   U_zS(k) = s%U_z(k,i,j) * scaleMu(k)
+                end do
 
-				call mViscousFlux( NCONS, NGRAD, s%Q(:,i,j) , &
-								   U_xS, U_yS, U_zS, 1.0_RP, multiphase % M0_star, &
-								   0.0_RP, s%unStar(:,:,i,j))
+                call mViscousFlux( NCONS, NGRAD, s%Q(:,i,j) , &
+                                   U_xS, U_yS, U_zS, 1.0_RP, multiphase % M0_star, &
+                                   0.0_RP, s%unStar(:,:,i,j))
 
-			end do
-		 end do
+            end do
+         end do
 
-		 end associate
-	  end subroutine computeElementInterfaceFlux_MUviscous
+         end associate
+      end subroutine computeElementInterfaceFlux_MUviscous
 
       SUBROUTINE computeElementInterfaceFlux_MU(mesh, Level)
          use HexMeshClass
@@ -1335,112 +1335,112 @@ module SpatialDiscretization
 !        Local variables
 !        ---------------
 !
-	     integer       :: i, j, Sidearray, maxId, m, k
-	     real(kind=RP) :: muL, muR, flux(2)
-	     real(kind=RP) :: UxL(1:NGRAD), UyL(1:NGRAD), UzL(1:NGRAD)
-	     real(kind=RP) :: UxR(1:NGRAD), UyR(1:NGRAD), UzR(1:NGRAD)
-	     real(kind=RP) :: scaleMu(1:NGRAD)
+         integer       :: i, j, Sidearray, maxId, m, k
+         real(kind=RP) :: muL, muR, flux(2)
+         real(kind=RP) :: UxL(1:NGRAD), UyL(1:NGRAD), UzL(1:NGRAD)
+         real(kind=RP) :: UxR(1:NGRAD), UyR(1:NGRAD), UzR(1:NGRAD)
+         real(kind=RP) :: scaleMu(1:NGRAD)
 
-		 associate(s1 => f%storage(1), s2 => f%storage(2))
-	   
-	     !$acc loop vector collapse(2) private(flux, UxL, UyL, UzL, UxR, UyR, UzR, muL, muR, scaleMu, k)
-	     DO j = 0, f % Nf(2) ; DO i = 0, f % Nf(1)
+         associate(s1 => f%storage(1), s2 => f%storage(2))
+       
+         !$acc loop vector collapse(2) private(flux, UxL, UyL, UzL, UxR, UyR, UzR, muL, muR, scaleMu, k)
+         DO j = 0, f % Nf(2) ; DO i = 0, f % Nf(1)
 
-			  ! compute viscosity on each side and add subgrid term
-			  call GetmTwoFluidsViscosity(s1%Q(IMC,i,j), muL)
-			  call GetmTwoFluidsViscosity(s2%Q(IMC,i,j), muR)
-			  
+              ! compute viscosity on each side and add subgrid term
+              call GetmTwoFluidsViscosity(s1%Q(IMC,i,j), muL)
+              call GetmTwoFluidsViscosity(s2%Q(IMC,i,j), muR)
+              
               muL = muL +f % storage(1) % mu_NS(1,i,j)   ! Add subgrid viscosity
               muR = muR +f % storage(2) % mu_NS(1,i,j)   ! Add subgrid viscosity     
 
               ! Left side
               !-----------------------------------
-			  ! prepare scaling factors: 1 on first/last components, mu on interior gradient components							
-			  scaleMu = 1.0_RP
-			  scaleMu(2:4) = muL   ! will be overwritten for the right side below
+              ! prepare scaling factors: 1 on first/last components, mu on interior gradient components                         
+              scaleMu = 1.0_RP
+              scaleMu(2:4) = muL   ! will be overwritten for the right side below
 
-			  ! fill left-side premultiplied gradient arrays
-			  do k = 1, NGRAD
-				 UxL(k) = s1%U_x(k,i,j) * scaleMu(k)
-														 
-				 UyL(k) = s1%U_y(k,i,j) * scaleMu(k)
-				 UzL(k) = s1%U_z(k,i,j) * scaleMu(k)
-			  end do
+              ! fill left-side premultiplied gradient arrays
+              do k = 1, NGRAD
+                 UxL(k) = s1%U_x(k,i,j) * scaleMu(k)
+                                                         
+                 UyL(k) = s1%U_y(k,i,j) * scaleMu(k)
+                 UzL(k) = s1%U_z(k,i,j) * scaleMu(k)
+              end do
 
               ! Right side
               !-----------------------------------
-			  scaleMu = 1.0_RP
-			  scaleMu(2:NGRAD-1) = muR
+              scaleMu = 1.0_RP
+              scaleMu(2:NGRAD-1) = muR
 
-			  ! fill right-side premultiplied gradient arrays
-			  do k = 1, NGRAD						 
-				 UxR(k) = s2%U_x(k,i,j) * scaleMu(k)
-				 UyR(k) = s2%U_y(k,i,j) * scaleMu(k)
-				 UzR(k) = s2%U_z(k,i,j) * scaleMu(k)
-			  end do
+              ! fill right-side premultiplied gradient arrays
+              do k = 1, NGRAD                        
+                 UxR(k) = s2%U_x(k,i,j) * scaleMu(k)
+                 UyR(k) = s2%U_y(k,i,j) * scaleMu(k)
+                 UzR(k) = s2%U_z(k,i,j) * scaleMu(k)
+              end do
 
-			  ! compute viscous flux (left and right)
-			  call mViscousFlux( NCONS, NGRAD, s1%Q(:,i,j) , &
-								 UxL, UyL, UzL, 1.0_RP, multiphase % M0_star, &
-														 
-								 0.0_RP, s1%unStar(:,:,i,j))
+              ! compute viscous flux (left and right)
+              call mViscousFlux( NCONS, NGRAD, s1%Q(:,i,j) , &
+                                 UxL, UyL, UzL, 1.0_RP, multiphase % M0_star, &
+                                                         
+                                 0.0_RP, s1%unStar(:,:,i,j))
 
-			  call mViscousFlux( NCONS, NGRAD, s2%Q(:,i,j) , &
-								 UxR, UyR, UzR, 1.0_RP, multiphase % M0_star, &
-								 0.0_RP, s2%unStar(:,:,i,j))
+              call mViscousFlux( NCONS, NGRAD, s2%Q(:,i,j) , &
+                                 UxR, UyR, UzR, 1.0_RP, multiphase % M0_star, &
+                                 0.0_RP, s2%unStar(:,:,i,j))
 
-	   END DO ; END DO
+       END DO ; END DO
 
-	   ! Riemann solver 
-	   call BR1_RiemannSolver_acc(f, NCONS, NGRAD, [multiphase % M0_star, 0.0_RP, 0.0_RP, 0.0_RP, 0.0_RP], &
-								  ViscousDiscretization % sigma, s2%Fstar)
+       ! Riemann solver 
+       call BR1_RiemannSolver_acc(f, NCONS, NGRAD, [multiphase % M0_star, 0.0_RP, 0.0_RP, 0.0_RP, 0.0_RP], &
+                                  ViscousDiscretization % sigma, s2%Fstar)
 
-	   ! inviscid fluxes (unchanged). Ensure f%storage(*) arrays used here are present on device.
-	   call RiemannSolver_Selector_MU(f % Nf(1), &                         
-									 f % Nf(2), &
-									 s1%Q, &
-									 s2%Q, &
-									 s1%rho, &
-									 s2%rho, &
-									 s1%mu, &
-									 s2%mu, &
-									 f % geom % normal, &
-									 f % geom % t1, &
-									 f % geom % t2, &
-									 s1%Q_aux, &
-									 s2%Q_aux, &
-									 s1%invMa2, &
-									 s2%invMa2)
-									 
+       ! inviscid fluxes (unchanged). Ensure f%storage(*) arrays used here are present on device.
+       call RiemannSolver_Selector_MU(f % Nf(1), &                         
+                                     f % Nf(2), &
+                                     s1%Q, &
+                                     s2%Q, &
+                                     s1%rho, &
+                                     s2%rho, &
+                                     s1%mu, &
+                                     s2%mu, &
+                                     f % geom % normal, &
+                                     f % geom % t1, &
+                                     f % geom % t2, &
+                                     s1%Q_aux, &
+                                     s2%Q_aux, &
+                                     s1%invMa2, &
+                                     s2%invMa2)
+                                     
 !      ------------------------
 !      Multiply by the Jacobian -- Q_aux is the inviscid flux and Viscous Flux is f % storage(2) % FStar
 !      ------------------------
 
-	   !$acc loop vector collapse(3)
-	   do j = 0, f % Nf(2) ; do i = 0, f % Nf(1) ; do m = 1, NCONS
-		  s1%Q_aux(m,i,j) = ( s1%Q_aux(m,i,j) - s2%Fstar(m,i,j)) * f % geom % jacobian(i,j)
-		  s2%Q_aux(m,i,j) = ( s2%Q_aux(m,i,j) - s2%Fstar(m,i,j)) * f % geom % jacobian(i,j)
-	   end do ; end do ; end do
+       !$acc loop vector collapse(3)
+       do j = 0, f % Nf(2) ; do i = 0, f % Nf(1) ; do m = 1, NCONS
+          s1%Q_aux(m,i,j) = ( s1%Q_aux(m,i,j) - s2%Fstar(m,i,j)) * f % geom % jacobian(i,j)
+          s2%Q_aux(m,i,j) = ( s2%Q_aux(m,i,j) - s2%Fstar(m,i,j)) * f % geom % jacobian(i,j)
+       end do ; end do ; end do
 
-	   ! Find the largest element ID and the side array index 
-	   maxId = -1
-	   !$acc loop seq
-	   do i = 1, size(f % elementIDs)
-		  if (f%elementIDs(i) > maxId) maxId = f%elementIDs(i)
-	   end do
+       ! Find the largest element ID and the side array index 
+       maxId = -1
+       !$acc loop seq
+       do i = 1, size(f % elementIDs)
+          if (f%elementIDs(i) > maxId) maxId = f%elementIDs(i)
+       end do
 
-	   !$acc loop seq
-	   do i = 1, size(f % elementIDs)
-		  if (f % elementIDs(i) == maxId) then
-			 Sidearray = i
-			 exit
-		  end if
-	   end do
+       !$acc loop seq
+       do i = 1, size(f % elementIDs)
+          if (f % elementIDs(i) == maxId) then
+             Sidearray = i
+             exit
+          end if
+       end do
 
-	   call Face_ProjectFluxToElements(f, NCONS, f % storage(Sidearray) % Q_aux, Sidearray)
+       call Face_ProjectFluxToElements(f, NCONS, f % storage(Sidearray) % Q_aux, Sidearray)
 
-	   end associate
-	END SUBROUTINE computeMPIFaceFlux_MU
+       end associate
+    END SUBROUTINE computeMPIFaceFlux_MU
 
       SUBROUTINE computeBoundaryFlux_MU(mesh, time, Level)
       USE ElementClass
@@ -1513,7 +1513,7 @@ module SpatialDiscretization
          !$acc wait
          CALL BCs(zoneID) % bc % FlowNeumann(mesh, mesh % zones(zoneID))    
          !$acc wait
-		 
+         
 !$omp do schedule(runtime) private(fID, i, j, m )
          !$acc parallel loop gang vector_length(128) present(mesh) copyin(locLevel,zoneID) private(fID, i, j, m) async(1)
          do zonefID = 1, mesh % zones(zoneID) % no_of_faces
@@ -1539,7 +1539,7 @@ module SpatialDiscretization
 !           ------------------------
             !$acc loop vector collapse(3)
             do j = 0, mesh % faces(fID) % Nf(2) ; do i = 0, mesh % faces(fID) % Nf(1) ; do m = 1, NCONS               
-																	
+                                                                    
                   mesh % faces(fID) % storage(1) % FStar(m,i,j) = (mesh % faces(fID) % storage(1) % Q_aux(m,i,j)  - &
                                                                     mesh % faces(fID) % storage(2) % FStar(m,i,j)) * &
                                                                     mesh % faces(fID) % geom % jacobian(i,j)
@@ -1849,15 +1849,15 @@ module SpatialDiscretization
          real(kind=RP) :: dWall_ij, prod
 
          if ( LESModel % Active ) then
-		 !$omp do schedule(runtime) private(i,j,delta,mu_smag,side, dWall_ij, prod)
+         !$omp do schedule(runtime) private(i,j,delta,mu_smag,side, dWall_ij, prod)
             !$acc parallel loop gang vector_length(128) present(mesh, LESModel, mesh % faces) private(delta,prod) copyin(no_of_faces,no_of_sides,face_ids) async(1)
             do iFace = 1, no_of_faces
-			   prod  = (mesh % faces(face_ids(iFace)) % Nf(1) + 1.0_RP)*(mesh % faces(face_ids(iFace)) % Nf(2) + 1.0_RP)
+               prod  = (mesh % faces(face_ids(iFace)) % Nf(1) + 1.0_RP)*(mesh % faces(face_ids(iFace)) % Nf(2) + 1.0_RP)
                delta = sqrt(mesh % faces(face_ids(iFace)) % geom % surface / prod)
               
                !$acc loop vector collapse(2) private(mu_smag, dWall_ij, side)
                do j = 0, mesh % faces(face_ids(iFace)) % Nf(2) ; do i = 0, mesh % faces(face_ids(iFace)) % Nf(1)
-			      dWall_ij = mesh % faces(face_ids(iFace)) % geom % dWall(i,j)
+                  dWall_ij = mesh % faces(face_ids(iFace)) % geom % dWall(i,j)
                   do side = 1, no_of_sides
                      call LESModel_Selector(LESModel, delta, dWall_ij, &
                                                              mesh % faces(face_ids(iFace)) % storage(side) % Q(:,i,j),   &
@@ -1870,7 +1870,7 @@ module SpatialDiscretization
                end do              ; end do
             end do
             !$acc end parallel loop
-		!$omp end do
+        !$omp end do
          end if
 
       end subroutine compute_viscosity_at_faces
@@ -1946,7 +1946,7 @@ module SpatialDiscretization
       end subroutine Laplacian_computeElementInterfaceFlux
 
       subroutine Laplacian_computeMPIFaceFlux(f)
-		 !$acc routine vector
+         !$acc routine vector
          use FaceClass
          use Physics
          use PhysicsStorage
@@ -1968,11 +1968,11 @@ module SpatialDiscretization
            call CHDivergenceFlux( NCONS, NCONS, f % storage(2) % Q(1:IMC,i,j) , f % storage(2) % U_x(1:IMC,i,j) , & 
                                   f % storage(2) % U_y(1:IMC,i,j) , f % storage(2) % U_z(1:IMC,i,j), mu, 0.0_RP, 0.0_RP, f % storage(2) % unStar(:,:,i,j))
          end do   ;  end do 
-		 
+         
 #ifdef _OPENACC
-		 call BR1_RiemannSolver_acc(f, NCOMP, NCOMP, 1.0_RP, CHDiscretization % sigma, f % storage(1) % FStar)
+         call BR1_RiemannSolver_acc(f, NCOMP, NCOMP, 1.0_RP, CHDiscretization % sigma, f % storage(1) % FStar)
 #else
-		 call BR1_RiemannSolver_acc(f, NCOMP, NCOMP, [1.0_RP], CHDiscretization % sigma, f % storage(1) % FStar)
+         call BR1_RiemannSolver_acc(f, NCOMP, NCOMP, [1.0_RP], CHDiscretization % sigma, f % storage(1) % FStar)
 #endif
 
 !        ------------------------
