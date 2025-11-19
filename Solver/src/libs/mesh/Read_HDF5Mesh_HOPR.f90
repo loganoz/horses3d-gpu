@@ -468,7 +468,7 @@ contains
 !  -----------------------------------------------------------------------------------------------------------------------
    subroutine ConstructMeshPartition_FromHDF5File_( self, fileName, nodes, Nx, Ny, Nz, MeshInnerCurves, dir2D, periodRelative, success )
 #ifdef _HAS_MPI_
-   use MPI
+      use MPI
 #endif      
       implicit none
       !-arguments--------------------------------------------------------------
