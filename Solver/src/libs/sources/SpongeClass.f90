@@ -41,9 +41,9 @@ Module SpongeClass  !
         logical                                                  :: readBaseFLowFlag     ! read base flow from file or use instantaneous Q to start
         logical                                                  :: useMovingAverage ! to use Qbase as a moving average
         logical                                                  :: isActive = .false.
-		contains
-			procedure :: CreateDeviceData              => Sponge_CreateDeviceData
-			procedure :: ExitDeviceData                => Sponge_ExitDeviceData
+        contains
+            procedure :: CreateDeviceData              => Sponge_CreateDeviceData
+            procedure :: ExitDeviceData                => Sponge_ExitDeviceData
 
     end type sponge_t
 
@@ -193,7 +193,7 @@ Module SpongeClass  !
         ! create arrays and pre calculate values
         call creatRampSponge(self,mesh)
         call initializeBaseFlow(self,mesh)
-		
+        
 #ifdef _OPENACC
             call self % CreateDeviceData(mesh)
 #endif
@@ -230,12 +230,12 @@ Module SpongeClass  !
     Subroutine DestructSponge(self,mesh)
         Implicit None
         class(sponge_t), intent(inout)   :: self
-		type(HexMesh), intent(inout)     :: mesh
+        type(HexMesh), intent(inout)     :: mesh
 
 !       Check if is activated
 !       ------------------------
         if (.not. self % isActive) return
-		
+        
 #ifdef _OPENACC
             call self % ExitDeviceData(mesh)
 #endif
@@ -259,7 +259,7 @@ Module SpongeClass  !
       implicit none
       !-----------------------------------------------------------
       class(sponge_t)               :: self
-	  type(HexMesh), intent(inout)  :: mesh
+      type(HexMesh), intent(inout)  :: mesh
       !-----------------------------------------------------------
       integer :: eID
       integer     :: i, j, k, iFace, fID, zoneID, nZones
@@ -267,12 +267,12 @@ Module SpongeClass  !
 
 #ifdef _OPENACC
         !$acc enter data copyin(self)
-		!$acc enter data copyin(self % elementIndexMap)
-		!$acc enter data copyin(self % nElements)
-		do eID = 1, mesh % no_of_elements
-			!$acc enter data copyin(mesh % elements(eID) % storage % QbaseSponge)
-			!$acc enter data copyin(mesh % elements(eID) % storage % intensitySponge)
-		end do 
+        !$acc enter data copyin(self % elementIndexMap)
+        !$acc enter data copyin(self % nElements)
+        do eID = 1, mesh % no_of_elements
+            !$acc enter data copyin(mesh % elements(eID) % storage % QbaseSponge)
+            !$acc enter data copyin(mesh % elements(eID) % storage % intensitySponge)
+        end do 
 #endif
 !
    end subroutine Sponge_CreateDeviceData
@@ -285,20 +285,20 @@ Module SpongeClass  !
       implicit none
       !-----------------------------------------------------------
       class(sponge_t)               :: self
-	  type(HexMesh), intent(inout)  :: mesh
+      type(HexMesh), intent(inout)  :: mesh
       !-----------------------------------------------------------
       integer :: eID
       integer     :: i, j, k, iFace, fID, zoneID, nZones
       !-----------------------------------------------------------
 
 #ifdef _OPENACC
-		!$acc exit data delete(self % nElements)
-		!$acc exit data delete(self % elementIndexMap)
+        !$acc exit data delete(self % nElements)
+        !$acc exit data delete(self % elementIndexMap)
         !$acc exit data delete(self)
-		do eID = 1, mesh % no_of_elements
-			!$acc exit data delete(mesh % elements(eID) % storage % QbaseSponge)
-			!$acc exit data delete(mesh % elements(eID) % storage % intensitySponge)
-		end do 
+        do eID = 1, mesh % no_of_elements
+            !$acc exit data delete(mesh % elements(eID) % storage % QbaseSponge)
+            !$acc exit data delete(mesh % elements(eID) % storage % intensitySponge)
+        end do 
 #endif
 !
    end subroutine Sponge_ExitDeviceData
@@ -499,7 +499,7 @@ Module SpongeClass  !
 !$omp do schedule(runtime) private(i,j,k,eq,eID)
 !$acc parallel loop gang vector_length(128) present(mesh,self) private(eID) async(1)
          do spongeEID = 1, self % nElements
-			eID = self % elementIndexMap(spongeEID)
+            eID = self % elementIndexMap(spongeEID)
             !$acc loop vector collapse(4)
             do k = 0, mesh % elements(eID) % Nxyz(3)   ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1) ; do eq = 1, NCONS
                mesh % elements(eID) % storage % S_NS(eq,i,j,k) = mesh % elements(eID) % storage % S_NS(eq,i,j,k) - mesh % elements(eID) % storage % intensitySponge(i,j,k) * (mesh % elements(eID) % storage % Q(eq,i,j,k) - mesh % elements(eID) % storage % QbaseSponge(eq,i,j,k))
@@ -542,7 +542,7 @@ Module SpongeClass  !
 
         !local variables
         integer                                                 :: eID, spongeEID, i, j, k, eq
-		real (kind=RP)                                          :: delta
+        real (kind=RP)                                          :: delta
 
 !       Check if is activated
 !       ------------------------
@@ -551,9 +551,9 @@ Module SpongeClass  !
 !       Only update for moving average
 !       ------------------------
         if (.not. self % useMovingAverage) return
-		
-		delta = self%delta
-		
+        
+        delta = self%delta
+        
 !$omp do schedule(runtime) private(i,j,k,eq)
 !$acc parallel loop gang vector_length(128) present(mesh) copyin(delta,dt) async(1)
          do eID = 1, mesh % no_of_elements

@@ -99,28 +99,13 @@ module VariableConversion_MU
       real(kind=RP), intent(in)  :: Q_x(NGRAD), Q_y(NGRAD), Q_z(NGRAD) 
       real(kind=RP), intent(out) :: U_x(NDIM), U_y(NDIM), U_z(NDIM)
       !-local-variables---------------------------------------------
-      real(kind=RP) :: rho, invRho, invRho2, uDivRho(NDIM)
 	  integer       :: i
       !-------------------------------------------------------------
-
-       ! rho = dimensionless_ % rho(1)*Q(IMC) + dimensionless_ % rho(2)*(1-Q(IMC))
-       ! invRho  = 1._RP / rho
-       ! invRho2 = invRho * invRho
-      
-       ! uDivRho = [Q(IMSQRHOU) , Q(IMSQRHOV) , Q(IMSQRHOW) ] * invRho2
-      
-       ! u_x = invRho * Q_x(IMSQRHOU:IMSQRHOW) - uDivRho * Q_x(IMC)*(dimensionless_ % rho(1) - dimensionless_ % rho(2))
-       ! u_y = invRho * Q_y(IMSQRHOU:IMSQRHOW) - uDivRho * Q_y(IMC)*(dimensionless_ % rho(1) - dimensionless_ % rho(2))
-       ! u_z = invRho * Q_z(IMSQRHOU:IMSQRHOW) - uDivRho * Q_z(IMC)*(dimensionless_ % rho(1) - dimensionless_ % rho(2))
-	   
-	    ! u_x =  Q_x(IMSQRHOU:IMSQRHOW) 
-        ! u_y =  Q_y(IMSQRHOU:IMSQRHOW)
-        ! u_z =  Q_z(IMSQRHOU:IMSQRHOW) 
 		
 		do i = 1, NDIM
-			u_x(i) = Q_x(i+1)
-			u_y(i) = Q_y(i+1)
-			u_z(i) = Q_z(i+1)
+			U_x(i) = Q_x(i+1)
+			U_y(i) = Q_y(i+1)
+			U_z(i) = Q_z(i+1)
 		end do
 
    end subroutine getVelocityGradients
