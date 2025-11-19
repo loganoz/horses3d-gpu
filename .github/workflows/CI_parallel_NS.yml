@@ -41,23 +41,23 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
 
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v3
 
-      - name: Install hdf5 (only gfortran)
+      # Install parallel HDF5 (OpenMPI version)
+      - name: Install HDF5 (parallel, OpenMPI)
         if: (matrix.compiler == 'gfortran')
         run: |
           sudo apt-get update
-          sudo apt install libhdf5-dev
-          dpkg -L libhdf5-dev 
-          echo "HDF5_ROOT="/usr/lib/x86_64-linux-gnu/hdf5/serial/"" >> $GITHUB_ENV  
+          sudo apt-get install -y libhdf5-openmpi-dev
+          dpkg -L libhdf5-openmpi-dev
+          echo "HDF5_ROOT=/usr/lib/x86_64-linux-gnu/hdf5/openmpi/" >> $GITHUB_ENV
 
-      # IF COMPILER = GFORTRAN -> INSTALL OPEN-MPI #
-      - name: install openmpi
+      # Install OpenMPI (gfortran case)
+      - name: Install OpenMPI
         if: (matrix.compiler == 'gfortran')
         run: |
-          sudo apt-get install openmpi-bin libopenmpi-dev
-
+          sudo apt-get install -y openmpi-bin libopenmpi-dev
+          
       # IF COMPILER = IFORT -> INSTALL IFORT #
       # UNCOMMENT TO USE CACHED IFORT 
       #- name: cache-intel-compilers
