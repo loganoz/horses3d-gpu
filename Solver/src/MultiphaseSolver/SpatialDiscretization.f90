@@ -2125,34 +2125,8 @@ module SpatialDiscretization
 !
             type(HexMesh)               :: mesh
             real(kind=RP), intent(in)   :: time
-!
-!           ---------------
-!           Local variables
-!           ---------------
-!
-            integer  :: i, j, k, eID, m
-            real(kind=RP) :: S, b, x0, r(3), freqTerm, x, f, y
-!
-!           Source
-!           -------------
-            ! S = 0.0_RP
-            ! b = 0.01_RP
-            ! x0 = -0.55_RP
-            ! freqTerm = 1000.0_RP
-! !$omp do schedule(runtime) private(i,j,k,m,x,y,r,f)
-		 ! !$acc parallel loop gang vector_length(128) present(mesh, mesh % elements) copyin(S,b,x0,freqTerm,time)
-         ! do eID = 1, mesh % no_of_elements
-            ! !$acc loop vector collapse(3) private(x,y)
-            ! do k = 0, mesh % elements(eID) % Nxyz(3)   ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
-                ! x = mesh % elements(eID) % geom % x(1,i,j,k)
-                ! y = mesh % elements(eID) % geom % x(2,i,j,k)
-               
-                ! mesh % elements(eID) % storage % S_NS(5,i,j,k) = 1.0_RP * exp(-log(2.0_RP)/(b*b)*((x-x0)*(x-x0)) ) * cos(2.0_RP*PI*time*freqTerm)      
-               
-            ! end do   ;  end do   ;  end do 
-         ! end do
-		 ! !$acc end parallel loop
-! !$omp end do
+
+
 
       end subroutine CompilerDefinedSourceTerm
 
