@@ -1483,7 +1483,7 @@ module StorageClass
          self % rho    = 0.0_RP
 #ifndef ACOUSTIC
          self % mu_NS  = 0.0_RP
-         self % u_tau_NS = 0.0_RP
+         self % u_tau_NS = 1.0_RP
          self % wallNodeDistance = 0.0_RP
 #endif
 

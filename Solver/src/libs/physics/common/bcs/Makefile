@@ -16,6 +16,9 @@ LIBOBJS_NS =  ./build_ns/GenericBoundaryConditionClass.o \
 		./build_ns/PeriodicBC.o \
 		./build_ns/UserDefinedBC.o \
 		./build_ns/NoBoundaryBC.o \
+		./build_ns/WallFunctionDefinitions.o \
+		./build_ns/WallFunctionBC.o \
+		./build_ns/WallFunctionConnectivity.o \
 		./build_ns/BoundaryConditions.o
 
 LIBOBJS_NSSA = 	./build_nssa/GenericBoundaryConditionClass.o \
@@ -26,6 +29,9 @@ LIBOBJS_NSSA = 	./build_nssa/GenericBoundaryConditionClass.o \
 		./build_nssa/PeriodicBC.o \
 		./build_nssa/UserDefinedBC.o  \
 		./build_nssa/NoBoundaryBC.o \
+		./build_nssa/WallFunctionDefinitions.o \
+		./build_nssa/WallFunctionBC.o \
+		./build_nssa/WallFunctionConnectivity.o \
 		./build_nssa/BoundaryConditions.o
 		
 LIBOBJS_iNS = 	./build_ins/GenericBoundaryConditionClass.o \

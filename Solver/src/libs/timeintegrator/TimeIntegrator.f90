@@ -458,6 +458,7 @@
       use TripForceClass, only: randomTrip
       use WallFunctionDefinitions, only: useAverageV
       use WallFunctionConnectivity, only: Initialize_WallConnection, WallUpdateMeanV, useWallFunc
+      use ChannelForcing, only: initializeChannel, updateChannel
 #endif
 #if defined(FLOW) 
       use SpongeClass, only: sponge, ConstructSponge, DestructSponge, UpdateBaseFlowSponge, WriteBaseFlowSponge
@@ -535,6 +536,7 @@
 #if defined(NAVIERSTOKES)
       if( .not. sem % mesh % IBM % active ) call Initialize_WallConnection(controlVariables, sem % mesh)
       if (useTrip) call randomTrip % construct(sem % mesh, controlVariables)
+      call initializeChannel(controlVariables)
 #endif
 #if defined(NAVIERSTOKES) || defined(INCNS) || defined(MULTIPHASE)
       if(ActuatorLineFlag) then
@@ -697,6 +699,7 @@
          CALL UserDefinedPeriodicOperation(sem % mesh, t, dt, monitors, FLUID_DATA_VARS)
 #if defined(NAVIERSTOKES)
          if (useTrip) call randomTrip % gTrip % updateInTime(t)
+         call updateChannel(sem % mesh, dt, monitors)
 #endif
 #if defined(NAVIERSTOKES) || defined(INCNS) || defined(MULTIPHASE)
          if(ActuatorLineFlag) call UpdateFarm(farm, t, sem % mesh)
@@ -803,7 +806,9 @@
 !
 !        Update wall avg
 !        ---------------
+         !$acc wait
          if (useAverageV) call WallUpdateMeanV(sem % mesh, dt)
+         !$acc wait
 !
 !        Integration of particles
 !        ------------------------
