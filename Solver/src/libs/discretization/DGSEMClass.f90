@@ -25,7 +25,6 @@ Module DGSEMClass
    use SpallartAlmarasTurbulence , only: Spalart_Almaras_t
 #endif
    use MonitorsClass
-   use Samplings
    use ParticlesClass
    use Physics
    use FluidData
@@ -51,8 +50,7 @@ Module DGSEMClass
       integer                                                 :: totalNDOF                   ! Number of degrees of freedom in the whole domain
       TYPE(HexMesh)                                           :: mesh
       LOGICAL                                                 :: ManufacturedSol = .FALSE.   ! Use manufactured solutions? default .FALSE.
-      type(Monitor_t)                                         :: monitors
-	  type(Sampling_t)										  :: samplings		
+      type(Monitor_t)                                         :: monitors	
 #if defined(NAVIERSTOKES) && (!(SPALARTALMARAS))
       type(FWHClass)                                          :: fwh
 #endif
@@ -433,12 +431,11 @@ Module DGSEMClass
       END IF
 #endif
 !
-!     --------------------------------
-!     Build the monitors and samplings
-!     --------------------------------
+!     ------------------
+!     Build the monitors
+!     ------------------
 !
       call self % monitors % construct (self % mesh, controlVariables)
-	  call self % samplings % construct (self % mesh, controlVariables)
 !
 !     ------------------
 !     Build the FWH general class
@@ -491,7 +488,6 @@ Module DGSEMClass
       call self % mesh % destruct
 
       call self % monitors % destruct
-	  call self % samplings % destruct
 
 #if defined(NAVIERSTOKES) && (!(SPALARTALMARAS))
       IF (flowIsNavierStokes) call self % fwh % destruct
@@ -618,7 +614,6 @@ Module DGSEMClass
          to % ManufacturedSol    = from % ManufacturedSol
 
          to % monitors   = from % monitors
-		 to % samplings  = from % samplings
          to % particles  = from % particles
 
       end subroutine DGSEM_Assign
@@ -653,7 +648,9 @@ Module DGSEMClass
       R5 = 0.0_RP
       R6 = 0.0_RP
       c    = 0.0_RP
+
 !$acc data copy(R1,R2,R3,R4,R5,R6,c)
+
 !$acc parallel loop gang present(mesh) reduction(max:R1,R2,R3,R4,R5,c)
 !$omp parallel shared(maxResidual, R1, R2, R3, R4, R5, R6, c, mesh) default(private)
 !$omp do reduction(max:R1,R2,R3,R4,R5,R6,c) schedule(runtime)
