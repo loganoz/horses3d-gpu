@@ -24,7 +24,8 @@ module ZoneClass
       integer, allocatable        :: faces(:)
       integer                     :: zoneBCType
       character(len=LINE_LENGTH)  :: zoneBCName
-      character(len=LINE_LENGTH)  :: assocPeriodZone   
+      character(len=LINE_LENGTH)  :: assocPeriodZone
+      logical                     :: useWallFunction = .false.   
 
       contains
          procedure   :: Initialize           => Zone_Initialize
