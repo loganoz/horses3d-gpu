@@ -49,15 +49,25 @@ jobs:
         run: |
           sudo apt-get install -y openmpi-bin libopenmpi-dev
 
-      # Install parallel HDF5 (OpenMPI version)
-      - name: Install HDF5 (parallel, OpenMPI)
-        if: (matrix.compiler == 'gfortran')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libhdf5-openmpi-dev
-          dpkg -L libhdf5-openmpi-dev
-          echo "HDF5_ROOT=/usr/lib/x86_64-linux-gnu/hdf5/openmpi/" >> $GITHUB_ENV
+      # # Install parallel HDF5 (OpenMPI version)
+      # - name: Install HDF5 (parallel, OpenMPI)
+      #   if: (matrix.compiler == 'gfortran')
+      #   run: |
+      #     sudo apt-get update
+      #     sudo apt-get install -y libhdf5-openmpi-dev
+      #     dpkg -L libhdf5-openmpi-dev
+      #     echo "HDF5_ROOT=/usr/lib/x86_64-linux-gnu/hdf5/openmpi/" >> $GITHUB_ENV
           
+      - name: Install HDF5 (gnu)
+        if: (matrix.compiler == 'gfortran') 
+        run: |
+          wget "https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.12/hdf5-1.12.0/src/hdf5-1.12.0.tar.gz"
+          tar -cvf hdf5-1.12.0.tar.gz
+          cd hdf5-1.12.0
+          ./configure --enable-parallel --enable-fortran
+          make install
+          echo "HDF5_ROOT=/home/runner/work/horses3d-gpu/horses3d-gpu/hdf5-1.12.0/hdf5/"
+
       # IF COMPILER = IFORT -> INSTALL IFORT #
       # UNCOMMENT TO USE CACHED IFORT 
       #- name: cache-intel-compilers
