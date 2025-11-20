@@ -68,10 +68,9 @@ jobs:
           make -j8 install
           echo "HDF5_ROOT=$PWD/hdf5" >> $GITHUB_ENV
           echo "HDF5_DIR=$PWD/hdf5" >> $GITHUB_ENV
-          echo 'LD_LIBRARY_PATH=${HDF5_ROOT}/lib:${LD_LIBRARY_PATH}' >> $GITHUB_ENV
 
       - name: Check HDF5 PATH
-        run: echo "HDF5_ROOT=$HDF5_ROOT, LD_LIBRARY_PATH=$LD_LIBRARY_PATH" 
+        run: echo "HDF5_ROOT=$HDF5_ROOT
 
       # IF COMPILER = IFORT -> INSTALL IFORT #
       # UNCOMMENT TO USE CACHED IFORT 
@@ -160,6 +159,7 @@ jobs:
          source /opt/intel/oneapi/setvars.sh || true
          make allclean MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+         cp -r $HDF5_ROOT/lib/* lib/
 
 
 # GRC 30/10/2025 - DEACTIVATE EULER TEST CASES - NOT WORKING IN GPU         
