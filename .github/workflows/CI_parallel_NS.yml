@@ -65,9 +65,13 @@ jobs:
           tar -xvf hdf5-1.12.0.tar.gz
           cd hdf5-1.12.0
           ./configure --enable-parallel --enable-fortran
-          make install
-          echo "HDF5_ROOT=/home/runner/work/horses3d-gpu/horses3d-gpu/hdf5-1.12.0/hdf5/"
+          make -j8 install
+          echo "HDF5_ROOT=/home/runner/work/horses3d-gpu/horses3d-gpu/hdf5-1.12.0/hdf5/" >> $GITHUB_ENV
+          echo "HDF5_DIR=/home/runner/work/horses3d-gpu/horses3d-gpu/hdf5-1.12.0/hdf5/" >> $GITHUB_ENV
 
+      - name: Check HDF5 PATH
+        run: echo $HDF5_ROOT
+        run: echo $HDF5_DIR
       # IF COMPILER = IFORT -> INSTALL IFORT #
       # UNCOMMENT TO USE CACHED IFORT 
       #- name: cache-intel-compilers
