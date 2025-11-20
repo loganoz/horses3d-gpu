@@ -70,7 +70,7 @@ jobs:
           echo "HDF5_DIR=$PWD/hdf5" >> $GITHUB_ENV
 
       - name: Check HDF5 PATH
-        run: echo "HDF5_ROOT=$HDF5_ROOT
+        run: echo "HDF5_ROOT=$HDF5_ROOT"
 
       # IF COMPILER = IFORT -> INSTALL IFORT #
       # UNCOMMENT TO USE CACHED IFORT 
