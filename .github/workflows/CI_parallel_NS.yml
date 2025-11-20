@@ -68,10 +68,11 @@ jobs:
           make -j8 install
           echo "HDF5_ROOT=/home/runner/work/horses3d-gpu/horses3d-gpu/hdf5-1.12.0/hdf5/" >> $GITHUB_ENV
           echo "HDF5_DIR=/home/runner/work/horses3d-gpu/horses3d-gpu/hdf5-1.12.0/hdf5/" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$HDF5_ROOT/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
       - name: Check HDF5 PATH
-        run: echo $HDF5_ROOT 
-        
+        run: echo "HDF5_ROOT=$HDF5_ROOT, LD_LIBRARY_PATH=$LD_LIBRARY_PATH" 
+
       # IF COMPILER = IFORT -> INSTALL IFORT #
       # UNCOMMENT TO USE CACHED IFORT 
       #- name: cache-intel-compilers
