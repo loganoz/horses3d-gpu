@@ -1083,7 +1083,14 @@ jobs:
           mpiexec -n 1 ./horses3d.ns Channel.control
         if: '!cancelled()'  
 
-      - name: Run Channel - Parallel
+      - name: Run Channel - Parallel 8
+        working-directory: ./Solver/test/NavierStokes/Channel
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 8 ./horses3d.ns Channel.control
+        if: '!cancelled()'  
+
+      - name: Run Channel - Parallel 64
         working-directory: ./Solver/test/NavierStokes/Channel
         run: |
           source /opt/intel/oneapi/setvars.sh || true
