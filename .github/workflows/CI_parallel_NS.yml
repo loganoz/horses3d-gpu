@@ -1080,5 +1080,5 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/Channel
         run: |
           source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 8 ./horses3d.ns Channel.control
+          mpiexec -n 64 ./horses3d.ns Channel.control
         if: '!cancelled()'  
