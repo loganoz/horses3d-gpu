@@ -1096,3 +1096,24 @@ jobs:
           source /opt/intel/oneapi/setvars.sh || true
           mpiexec -n 64 ./horses3d.ns Channel.control
         if: '!cancelled()'       
+
+      - name: Run Channel-no-source - Serial
+        working-directory: ./Solver/test/NavierStokes/Channel-no-source
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 1 ./horses3d.ns Channel.control
+        if: '!cancelled()'  
+
+      - name: Run Channel-no-source - Parallel 8
+        working-directory: ./Solver/test/NavierStokes/Channel-no-source
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 8 ./horses3d.ns Channel.control
+        if: '!cancelled()'  
+
+      - name: Run Channel-no-source - Parallel 64
+        working-directory: ./Solver/test/NavierStokes/Channel-no-source
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 64 ./horses3d.ns Channel.control
+        if: '!cancelled()'            
