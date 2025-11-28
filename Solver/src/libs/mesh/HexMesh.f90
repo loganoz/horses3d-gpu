@@ -954,7 +954,7 @@ slavecoord:             DO l = 1, 4
       END SUBROUTINE DeletePeriodicminusfaces
 !
 !////////////////////////////////////////////////////////////////////////
-!     This subroutine is inactive and being replaced by HexMesh_ProlongSolToFaces
+!
       subroutine HexMesh_ProlongSolutionToFaces(self, nEqn, HO_Elements)
          implicit none
          class(HexMesh),    intent(inout) :: self
@@ -966,7 +966,7 @@ slavecoord:             DO l = 1, 4
 !        ---------------
 !
          integer  :: fIDs(6)
-         integer  :: eID, i, locLevel, lID
+         integer  :: eID, i
          logical :: HOElements
 
          if (present(HO_Elements)) then
@@ -1023,7 +1023,7 @@ slavecoord:             DO l = 1, 4
              select case ( self %nodeType )
              case(1) !Gauss
 !$omp do schedule(runtime) private(eID, fID)
-!$acc parallel loop gang vector_length(128) collapse(2) present(self, self % MLRK) num_gangs(size(self % elements)) copyin(locLevel) private(eID) async(1)
+!$acc parallel loop gang collapse(2) present(self, self % MLRK) num_gangs(self % MLRK % MLIter(locLevel,8)) vector_length(32) copyin(locLevel) private(eID) async(1)
              do lID = 1, self % MLRK % MLIter(locLevel,8)
                 do fID = 1, 6
                 eID = self % MLRK % MLIter_eIDN(lID)
@@ -1034,7 +1034,7 @@ slavecoord:             DO l = 1, 4
              case(2) !Gauss-Lobatto
 
 !$omp do schedule(runtime) private(eID, fID)
-!$acc parallel loop gang vector_length(128) collapse(2) present(self, self % MLRK) num_gangs(size(self % elements)) copyin(locLevel) private(eID) async(1)  
+!$acc parallel loop gang collapse(2) present(self, self % MLRK) num_gangs(self % MLRK % MLIter(locLevel,8)) vector_length(32) copyin(locLevel) private(eID) async(1)  
              do lID = 1, self % MLRK % MLIter(locLevel,8)
                 do fID = 1, 6
                 eID = self % MLRK % MLIter_eIDN(lID)
@@ -1051,7 +1051,7 @@ slavecoord:             DO l = 1, 4
              case(1) !Gauss
 
 !$omp do schedule(runtime) private(fID)
-!$acc parallel loop gang vector_length(128) collapse(2) present(self) num_gangs(size(self % elements)) async(1)
+!$acc parallel loop gang collapse(2) present(self) num_gangs(size(self % elements)) vector_length(32) async(1)
              do eID = 1, size(self % elements)
                 do fID = 1, 6
                 call HexElement_ProlongSolToFaces(self % elements(eID), nEqn, self % faces(self % elements(eID) % faceIDs(fID)), fID)                        
@@ -1062,7 +1062,7 @@ slavecoord:             DO l = 1, 4
              case(2) !Gauss-Lobatto
 
 !$omp do schedule(runtime) private(fID)
-!$acc parallel loop gang vector_length(128) collapse(2) present(self) num_gangs(size(self % elements)) async(1)  
+!$acc parallel loop gang collapse(2) present(self) num_gangs(size(self % elements)) vector_length(32) async(1)  
              do eID = 1, size(self % elements)
                 do fID = 1, 6
                 call HexElement_ProlongSolToFaces_GL(self % elements(eID), nEqn, self % faces(self % elements(eID) % faceIDs(fID)), fID)                        
@@ -1094,7 +1094,7 @@ slavecoord:             DO l = 1, 4
          case(1) !Gauss
 
 !$omp do schedule(runtime) private(eID, fid, fIDs)
-!$acc parallel loop gang num_gangs(size_element_list) collapse(2) present(self, element_list) private(fIDs) async(1)
+!$acc parallel loop gang num_gangs(size_element_list) collapse(2) present(self) copyin(element_list) private(fIDs) async(1)
          do iEl = 1, size_element_list
             do fid = 1,6
                eID = element_list(iEl)
@@ -1117,7 +1117,7 @@ slavecoord:             DO l = 1, 4
          case(2) !Gauss-Lobatto
 
 !$omp do schedule(runtime) private(fID,eID)
-!$acc parallel loop gang collapse(2) num_gangs(size(self % elements)) present(self,element_list) async(1)
+!$acc parallel loop gang collapse(2) num_gangs(size_element_list) vector_length(32) present(self) copyin(element_list) async(1)
          do iEl = 1, size_element_list
             do fID = 1, 6
                eID = element_list(iEl)
@@ -1129,7 +1129,7 @@ slavecoord:             DO l = 1, 4
 !$omp end do
 
 !$omp do schedule(runtime) private(fID,eID)
-!$acc parallel loop gang collapse(2) num_gangs(size(self % elements)) present(self,element_list) async(1) 
+!$acc parallel loop gang collapse(2) num_gangs(size_element_list) vector_length(32) present(self) copyin(element_list) async(1) 
          do iEl = 1, size_element_list
             do fID = 1, 6
                eID = element_list(iEl)
@@ -1141,7 +1141,7 @@ slavecoord:             DO l = 1, 4
 !$omp end do
          
 !$omp do schedule(runtime) private(fID,eID)
-!$acc parallel loop gang collapse(2) num_gangs(size(self % elements)) present(self,element_list) async(1) 
+!$acc parallel loop gang collapse(2) num_gangs(size_element_list) vector_length(32) present(self) copyin(element_list) async(1) 
          do iEl = 1, size_element_list
             do fID = 1, 6
                eID = element_list(iEl)
@@ -1328,7 +1328,7 @@ slavecoord:             DO l = 1, 4
 !           ---------------
 !
             
-            !$acc parallel loop gang present(self) copyin(nEqn,domain) private(fID,thisSide,faceSize, i, j, m, linear_idx) wait(1)
+            !$acc parallel loop gang present(self) copyin(nEqn,domain) private(fID,thisSide,faceSize, i, j, m) wait(1)
             do mpifID = 1, self % MPIfaces % faces(domain) % no_of_faces
                fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
@@ -1430,7 +1430,7 @@ slavecoord:             DO l = 1, 4
 !           Gather gradients
 !           ---------------
 !
-            !$acc parallel loop gang present(self) copyin(nEqn,domain) private(fID,thisSide,faceSize,linear_idx_x,linear_idx_y,linear_idx_z, m, i, j) wait(1)
+            !$acc parallel loop gang present(self) copyin(nEqn,domain) private(fID,thisSide,faceSize, m, i, j) wait(1)
             do mpifID = 1, self % MPIfaces % faces(domain) % no_of_faces
                fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
@@ -1530,7 +1530,6 @@ slavecoord:             DO l = 1, 4
             domain = MPIfaces % listDomain(k)
             
             if (MPIfaces % faces(domain) % no_of_faces <= 0) then
-                idx_send = idx_send + 1
                 cycle
             end if
 !
@@ -1625,7 +1624,6 @@ slavecoord:             DO l = 1, 4
             domain = MPIfaces % listDomain(k)
             
             if (MPIfaces % faces(domain) % no_of_faces <= 0) then
-                idx_send = idx_send + 1
                 cycle
             end if
 !
@@ -1696,7 +1694,7 @@ slavecoord:             DO l = 1, 4
             
             if (self % MPIfaces % faces(domain) % no_of_faces <= 0) cycle 
             
-            !$acc parallel loop gang present(self) copyin(nEqn,domain,otherSide) private(fID,thisSide,faceSize,linear_idx, m, i, j)
+            !$acc parallel loop gang present(self) copyin(nEqn,domain,otherSide) private(fID,thisSide,faceSize, m, i, j)
             do mpifID = 1, self % MPIfaces % faces(domain) % no_of_faces
                fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
@@ -1742,7 +1740,7 @@ slavecoord:             DO l = 1, 4
 
             if (self % MPIfaces % faces(domain) % no_of_faces <= 0) cycle 
             
-            !$acc parallel loop gang present(self) copyin(nEqn,domain,otherSide) private(fID,thisSide,faceSize,linear_idx_x,linear_idx_y,linear_idx_z, m, i, j)
+            !$acc parallel loop gang present(self) copyin(nEqn,domain,otherSide) private(fID,thisSide,faceSize, m, i, j)
             do mpifID = 1, self % MPIfaces % faces(domain) % no_of_faces
                fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
@@ -6024,7 +6022,7 @@ call elementMPIList % destruct
              eID = self % MLRK % MLIter_eIDN(iEl)
              !$acc loop vector collapse(3) 
              do k = 0, self % elements(eID) % Nxyz(3) ; do j = 0, self % elements(eID) % Nxyz(2) ; do i = 0, self % elements(eID) % Nxyz(1)
-                call chGradientVariables(NCOMP, NCOMP, self % elements(eID) % storage % Q(1:IMC,i,j,k), self % elements(eID) % storage % Q_grad_CH(1:IMC,i,j,k))
+                call chGradientVariables(NCOMP, NCOMP, self % elements(eID) % storage % Q(IMC,i,j,k), self % elements(eID) % storage % Q_grad_CH(IMC,i,j,k))
                 !if ( set_mu ) self % elements(eID) % storage % Q_grad_CH(IGMU,i,j,k) = self % elements(eID) % storage % mu(1,i,j,k)
              end do         ; end do         ; end do
 
@@ -6039,7 +6037,7 @@ call elementMPIList % destruct
 
              !$acc loop vector collapse(3) 
              do k = 0, self % elements(eID) % Nxyz(3) ; do j = 0, self % elements(eID) % Nxyz(2) ; do i = 0, self % elements(eID) % Nxyz(1)
-                call chGradientVariables(NCOMP, NCOMP, self % elements(eID) % storage % Q(1:IMC,i,j,k), self % elements(eID) % storage % Q_grad_CH(1:IMC,i,j,k))
+                call chGradientVariables(NCOMP, NCOMP, self % elements(eID) % storage % Q(IMC,i,j,k), self % elements(eID) % storage % Q_grad_CH(IMC,i,j,k))
                 !if ( set_mu ) self % elements(eID) % storage % Q_grad_CH(IGMU,i,j,k) = self % elements(eID) % storage % mu(1,i,j,k)
              end do         ; end do         ; end do
 

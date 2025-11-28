@@ -2,7 +2,6 @@
 module LESModels
    use SMConstants
    use FTValueDictionaryClass
-!   use Physics_NSKeywordsModule
    use MPI_Process_Info
    use Headers
    use Utilities                 , only: toLower
@@ -28,7 +27,7 @@ module LESModels
 !  Model parameters
 !  ----------------
    real(kind=RP)   , parameter   :: K_VONKARMAN     = 0.4_RP
-   !$acc declare copyin(K_VONKARMAN) 
+   !$acc declare copyin(K_VONKARMAN)
    
 !  Wall models
 !  -----------
@@ -168,6 +167,7 @@ module LESModels
             !model % WallModel = LINEAR_WALLMODEL
             model % WallModel = NO_WALLMODEL
          end if
+         
 !        Describe
 !        --------
          call model % Describe
@@ -577,9 +577,18 @@ module LESModels
 #endif
 
          delta2 = delta*delta 
-         gradV(1,:) = U_x(1:3)
-         gradV(2,:) = U_y(1:3)
-         gradV(3,:) = U_z(1:3)
+         gradV(1,1) = U_x(1)
+		 gradV(1,2) = U_x(2)
+		 gradV(1,3) = U_x(3)
+		 
+         gradV(2,1) = U_y(1)
+		 gradV(2,2) = U_y(2)
+		 gradV(2,3) = U_y(3)
+		 
+         gradV(3,1) = U_z(1)
+		 gradV(3,2) = U_z(2)
+		 gradV(3,3) = U_z(3)
+		 
          G__ij(:,:) = 0.0_RP
 
          do i = 1,3
@@ -642,7 +651,7 @@ module LESModels
 #elif defined (INCNS)
          rho = Q(INSRHO)
 #elif defined (MULTIPHASE)
-         rho = dimensionless_%rho(1) * max(min(Q(IMC),1.0_RP),0.0_RP) + dimensionless_%rho(2) * (1.0 - max(min(Q(IMC),1.0_RP),0.0_RP))
+         rho = dimensionless_%rho(1) * max(min(Q(IMC),1.0_RP),0.0_RP) + dimensionless_%rho(2) * (1.0_RP - max(min(Q(IMC),1.0_RP),0.0_RP))
 ! #else
 !          print *, "Error: rho computation not valid for physics "
 !          stop

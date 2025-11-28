@@ -50,7 +50,7 @@ Module DGSEMClass
       integer                                                 :: totalNDOF                   ! Number of degrees of freedom in the whole domain
       TYPE(HexMesh)                                           :: mesh
       LOGICAL                                                 :: ManufacturedSol = .FALSE.   ! Use manufactured solutions? default .FALSE.
-      type(Monitor_t)                                         :: monitors	
+      type(Monitor_t)                                         :: monitors
 #if defined(NAVIERSTOKES) && (!(SPALARTALMARAS))
       type(FWHClass)                                          :: fwh
 #endif
@@ -649,8 +649,6 @@ Module DGSEMClass
       R6 = 0.0_RP
       c    = 0.0_RP
 
-!$acc data copy(R1,R2,R3,R4,R5,R6,c)
-
 !$acc parallel loop gang present(mesh) reduction(max:R1,R2,R3,R4,R5,c)
 !$omp parallel shared(maxResidual, R1, R2, R3, R4, R5, R6, c, mesh) default(private)
 !$omp do reduction(max:R1,R2,R3,R4,R5,R6,c) schedule(runtime)
@@ -709,9 +707,6 @@ Module DGSEMClass
 !$omp end do
 !$omp end parallel
 !$acc end parallel loop
-!$acc end data
-
-!$acc wait
       
 #if defined FLOW && (!(SPALARTALMARAS))
       maxResidual(1:NCONS) = [R1, R2, R3, R4, R5]

@@ -294,7 +294,7 @@
 !     Local variables
 !     ---------------
 !
-      integer       :: i, j, k, l, m, ii, jj, eq
+      integer       :: i, j, k, l, m, ii, jj
       real(kind=RP) :: Qe_rot(1:nEqn, 0:self % NfRight(1), 0:self % NfRight(2))
       ! real(kind=RP) :: QdotE_rot(1:nEqn, 0:self % NfRight(1), 0:self % NfRight(2))
       logical :: prolongQdot
@@ -312,21 +312,21 @@
          case (0)
             !$acc loop vector collapse(2)
             do j = 0, self % NfRight(2)   ; do i = 0, self % NfRight(1)
-				!$acc loop seq
-               do eq = 1, nEqn
-				self % storage(1) % Q(eq,i,j) = Qe(eq,i,j)
+				  
+							  
+               self % storage(1) % Q(:,i,j) = Qe(:,i,j)
 !               if (prolongQdot) self % storage(1) % Qdot(:,i,j) = QdotE(:,i,j)
-               end do
+					 
             enddo ; enddo
          end select
       case(2)
-         !$acc loop vector collapse(2) private(ii,jj)
+         !$acc loop vector collapse(2)
          do j = 0, self % NfRight(2)   ; do i = 0, self % NfRight(1)
             call leftIndexes2Right(i,j,self % NfRight(1), self % NfRight(2), self % rotation, ii, jj)
-			!$acc loop seq
-            do eq = 1, nEqn
-                self % storage(2) % Q(eq,i,j) = Qe(eq,ii,jj) 
-			end do 
+				 
+						   
+            self % storage(2) % Q(:,i,j) = Qe(:,ii,jj) 
+		  
          end do                        ; end do
 
       end select
@@ -359,7 +359,7 @@
                enddo
             enddo ; enddo
       case(2)
-         !$acc loop vector collapse(2) private(ii,jj)
+         !$acc loop vector collapse(2)
          do j = 0, self % NfRight(2)   ; do i = 0, self % NfRight(1)
             call leftIndexes2Right(i,j,self % NfRight(1), self % NfRight(2), self % rotation, ii, jj)
             !$acc loop seq
@@ -406,7 +406,7 @@
                end select
             end do ; end do ; end do
       case(2)
-         !$acc loop vector collapse(3) private(ii,jj)
+         !$acc loop vector collapse(3)
          do j = 0, self % NfRight(2)   ; do i = 0, self % NfRight(1) ; do eq = 1, nEqn
             call leftIndexes2Right(i,j,self % NfRight(1), self % NfRight(2), self % rotation, ii, jj)
             select case (dir)
@@ -538,7 +538,7 @@
 !           2nd and 3rd stage: Rotation and Inversion
 !           *********
 !      
-            !$acc loop vector collapse(3) private(ii,jj)
+            !$acc loop vector collapse(3)
             do j = 0, self % NfRight(2)   ; do i = 0, self % NfRight(1) ; do eq = 1, nEqn
                call leftIndexes2Right(i,j,self % NfRight(1), self % NfRight(2), self % rotation, ii, jj)
                   self % storage(2) % Fstar(eq,ii,jj) = -flux(eq,i,j) 
@@ -751,7 +751,7 @@
 !           2nd stage: Rotation & 3rd stage: Multiplication by a factor (inversion usually)
 !           *********
 !      
-         !$acc loop vector collapse(2) private(ii,jj)
+         !$acc loop vector collapse(2)
          do j = 0, self % NfRight(2)   ; do i = 0, self % NfRight(1)
             call leftIndexes2Right(i,j,self % NfRight(1), self % NfRight(2), self % rotation, ii, jj)
             !$acc loop seq

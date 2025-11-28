@@ -938,8 +938,7 @@ contains
     
     else ! no projection
 
-		!$acc parallel loop gang collapse(4) present(self,mesh) copyin(locLevel,Non_dimensional) &
-		!$acc& private(invSqrtRho,xlocal,eID,kk,actuator_source_x_iijj,actuator_source_y_iijj,actuator_source_z_iijj)
+        !$acc parallel loop gang collapse(4) present(self,mesh) copyin(locLevel, Non_dimensional) private(xlocal)
         !!$omp do schedule(runtime) private(i,j,k,ii,jj,kk,actuator_source,eID,interp)
         do eIndex = 1, size(elementsActuated) ;  do k = 0, mesh % Nx(1) ;  do j = 0, mesh % Nx(1) ; do i = 0, mesh % Nx(1)
       
@@ -952,9 +951,10 @@ contains
                 actuator_source_y_iijj = 0.0_RP   
                 actuator_source_z_iijj = 0.0_RP   
  
-                xlocal = mesh % elements(eID) % geom % x(:,i,j,k) 
-                !$acc loop vector collapse(2) reduction(+:actuator_source_x_iijj, actuator_source_y_iijj, actuator_source_z_iijj) &
-                !$acc& private(azimuth_angle,local_rotor_force,local_thrust,epsil,interp)
+                xlocal(1) = mesh % elements(eID) % geom % x(1,i,j,k) 
+				xlocal(2) = mesh % elements(eID) % geom % x(2,i,j,k)
+				xlocal(3) = mesh % elements(eID) % geom % x(3,i,j,k)
+                !$acc loop vector collapse(2) reduction(+:actuator_source_x_iijj, actuator_source_y_iijj, actuator_source_z_iijj) 
 				 do jj = 1, self % turbine_t(kk) % num_blades ; do ii = 1, self % turbine_t(kk) % num_blade_sections
 
                     azimuth_angle = self%turbine_t(kk)%blade_t(jj)%azimuth_angle
@@ -969,7 +969,7 @@ contains
 
                     ! minus account action-reaction effect, is the force on the fluid
                     actuator_source_x_iijj = actuator_source_x_iijj -   local_thrust * interp
-                    actuator_source_y_iijj = actuator_source_y_iijj - (-local_rotor_force*sin(azimuth_angle) * interp)
+                    actuator_source_y_iijj = actuator_source_y_iijj + (local_rotor_force*sin(azimuth_angle) * interp)
                     actuator_source_z_iijj = actuator_source_z_iijj -   local_rotor_force*cos(azimuth_angle) * interp 
                 end do                  ; end do 
 

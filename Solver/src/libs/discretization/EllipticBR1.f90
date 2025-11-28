@@ -183,7 +183,7 @@ module EllipticBR1
 		 locLevelm1 = max(locLevel-1,1)
 		 
 !$omp do schedule(runtime) private(fID)
-         !$acc parallel loop gang present(mesh, self) copyin(locLevel,locLevelm1) private(fID) async(1)
+         !$acc parallel loop gang vector_length(32) present(mesh, self) copyin(locLevel,locLevelm1) private(fID) async(1)
          do iFace = 1, mesh % MLRK % MLIter(locLevelm1,3)
             fID = mesh % MLRK % MLIter_fID_Interior(iFace)
             call BR1_ComputeElementInterfaceAverage(self, mesh % faces(fID), nEqn, nGradEqn)
@@ -199,7 +199,7 @@ module EllipticBR1
 !$omp end do 
 
 !$omp do schedule(runtime) private(eID)
-         !$acc parallel loop gang present(mesh) copyin(locLevel,locLevelm1) private(eID) async(1) 
+         !$acc parallel loop gang vector_length(128) present(mesh) copyin(locLevel,locLevelm1) private(eID) async(1) 
          do iEl = 1, mesh % MLRK % MLIter(locLevel,9) 
 			eID = mesh % MLRK % MLIter_eIDN_Seq(iEl)
 !
@@ -220,7 +220,7 @@ module EllipticBR1
 !$omp end single
 
 !$omp do schedule(runtime) private(fID)
-         !$acc parallel loop gang present(mesh, self) copyin(locLevel,locLevelm1) private(fID) async(1) 
+         !$acc parallel loop gang vector_length(32) present(mesh, self) copyin(locLevel,locLevelm1) private(fID) async(1) 
          do iFace = 1, mesh % MLRK % MLIter(locLevelm1,7)
 			fID = mesh % MLRK % MLIter_fID_MPI(iFace)
             call BR1_ComputeMPIFaceAverage(self, mesh % faces(fID), nEqn, nGradEqn)
@@ -251,7 +251,7 @@ module EllipticBR1
 	else
 	
 !$omp do schedule(runtime) private(fID)
-         !$acc parallel loop gang present(mesh, self) private(fID) async(1)
+         !$acc parallel loop gang vector_length(32) present(mesh, self) private(fID) async(1)
          do iFace = 1, size(mesh % faces_interior)
             fID = mesh % faces_interior(iFace)
             call BR1_ComputeElementInterfaceAverage(self, mesh % faces(fID), nEqn, nGradEqn)
@@ -267,7 +267,7 @@ module EllipticBR1
 !$omp end do 
 
 !$omp do schedule(runtime) private(eID)
-         !$acc parallel loop gang present(mesh) private(eID) async(1) 
+         !$acc parallel loop gang vector_length(32) present(mesh) private(eID) async(1) 
          do iEl = 1, size(mesh % elements_sequential)
             eID = mesh % elements_sequential(iEl)
 !
@@ -288,7 +288,7 @@ module EllipticBR1
 !$omp end single
 
 !$omp do schedule(runtime) private(fID)
-         !$acc parallel loop gang present(mesh, self) private(fID) async(1) 
+         !$acc parallel loop gang vector_length(32) present(mesh, self) private(fID) async(1) 
          do iFace = 1, size(mesh % faces_mpi)
             fID = mesh % faces_mpi(iFace)
             call BR1_ComputeMPIFaceAverage(self, mesh % faces(fID), nEqn, nGradEqn)
@@ -381,7 +381,7 @@ module EllipticBR1
 
          integer       :: i,j,eq
 
-         !$acc loop vector collapse(2) private(UL, UR, ustar, jacobian, eq)
+         !$acc loop vector collapse(2) private(UL, UR, ustar, jacobian)
          do j = 0, f % Nf(2)  ; do i = 0, f % Nf(1)
 #ifdef MULTIPHASE
             select case (self % eqName)
@@ -444,7 +444,7 @@ module EllipticBR1
          integer       :: i,j,eq, Sidearray, maxId
          real(kind=RP) :: UL(NCONS), UR(NCONS)
 
-         !$acc loop vector collapse(2) private(UL,UR,uStar,eq)
+         !$acc loop vector collapse(2) private(UL,UR)
          do j = 0, f % Nf(2)  ; do i = 0, f % Nf(1)
 #ifdef MULTIPHASE
             select case (self % eqName)
@@ -480,16 +480,7 @@ module EllipticBR1
          end do               ; end do
 
          !Code to replace maxloc that is not supported 
-        maxId=-1
-        !$acc loop seq
-        do i = 1, size(f % elementIDs)
-            if (f%elementIDs(i) > maxId) then
-                maxId = f%elementIDs(i)
-            end if
-        end do
-		
-        ! maxId=MAXVAL(f % elementIDs)
-		 !$acc loop seq
+         maxId=MAXVAL(f % elementIDs)
          do i=1,SIZE(f % elementIDs)
              if(f % elementIDs(i)==maxId)THEN
                Sidearray=i
@@ -629,7 +620,7 @@ flux )
          flux = flux_vec(:,IX) * nHat(IX) + flux_vec(:,IY) * nHat(IY) + flux_vec(:,IZ) * nHat(IZ) 
 
 #ifdef MULTIPHASE
-         sigma0 = 0.5_RP * self % sigma * (max(f % Nf(1),f % Nf(2)))*(max(f % Nf(1),f % Nf(2))+1) / f % geom % h
+         sigma0 = 0.5_RP * self % sigma * (maxval(f % Nf)+0.0_RP)*(maxval(f % Nf)+1.0_RP) / f % geom % h
          flux = flux - sigma0 * sigma * (QLeft-QRight)
 #endif
 
@@ -663,7 +654,7 @@ flux )
          real(kind=RP)     :: sigma0
 
 #ifdef MULTIPHASE
-         sigma0 = 0.5_RP * BR1_sigma * (max(f % Nf(1)+0.0_RP,f % Nf(2)+0.0_RP))*(max(f % Nf(1)+0.0_RP,f % Nf(2)+0.0_RP)+1.0_RP) / f % geom % h
+         sigma0 = 0.5_RP * BR1_sigma * (maxval(f % Nf)+0.0_RP)*(maxval(f % Nf)+1.0_RP) / f % geom % h
 #endif
           
          !$acc loop vector collapse(3)
@@ -672,7 +663,7 @@ flux )
                                0.5_RP * (f % storage(1) % unStar(eq,IY,i,j) + f % storage(2) % unStar(eq,IY,i,j)) * f % geom % normal(IY,i,j) + &
                                0.5_RP * (f % storage(1) % unStar(eq,IZ,i,j) + f % storage(2) % unStar(eq,IZ,i,j)) * f % geom % normal(IZ,i,j) 
 #ifdef MULTIPHASE
-               flux (eq,i,j) = flux (eq,i,j) - sigma0 * sigma(eq) * (f % storage(1) % Q(eq,i,j) - f % storage(2) % Q(eq,i,j))						 
+               flux (eq,i,j) = flux (eq,i,j) - sigma0 * sigma(eq) * (f % storage(1) % Q(eq,i,j) - f % storage(2) % Q(eq,i,j))
 #endif
          enddo ; enddo ; enddo
          

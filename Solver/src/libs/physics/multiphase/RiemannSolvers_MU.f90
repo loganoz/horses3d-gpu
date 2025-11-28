@@ -293,14 +293,9 @@ module RiemannSolvers_MU
 
          integer :: i,j
 
-        !$acc loop vector collapse(2) &
-        !$acc& private( lambda_mu, flux_rot_R, flux_rot_L, &
-        !$acc&         cL, uL, vL, wL, pL, invRhoL, invSqrtRhoL, lambdaMinusL, lambdaPlusL, &
-        !$acc&         cR, uR, vR, wR, pR, invRhoR, invSqrtRhoR, lambdaMinusR, lambdaPlusR, &
-        !$acc&         rhoStarL, rhoStarR, uStar, pStar, rhoStar, vStar, wStar, cuStar, halfRhouStar )
+         !$acc loop vector collapse(2) private(flux_rot_R, flux_rot_L)
          do j = 0,Ny
             do i = 0,Nx 
-			lambda_mu = 0.0_RP
 !  
 !           Rotate the variables to the face local frame using normal and tangent vectors
 !           -----------------------------------------------------------------------------

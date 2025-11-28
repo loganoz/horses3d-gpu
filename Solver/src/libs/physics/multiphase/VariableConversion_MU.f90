@@ -100,13 +100,22 @@ module VariableConversion_MU
       real(kind=RP), intent(out) :: U_x(NDIM), U_y(NDIM), U_z(NDIM)
       !-local-variables---------------------------------------------
 	  integer       :: i
+	  real(kind=RP) :: buff
       !-------------------------------------------------------------
-		
-		do i = 1, NDIM
-			U_x(i) = Q_x(i+1)
-			U_y(i) = Q_y(i+1)
-			U_z(i) = Q_z(i+1)
-		end do
+		 buff   = Q_x(1)
+		 U_x(1) = Q_x(2)
+		 U_x(2) = Q_x(3)
+		 U_x(3) = Q_x(4)
+		 
+		 buff   = Q_y(1)
+		 U_y(1) = Q_y(2)
+		 U_y(2) = Q_y(3)
+		 U_y(3) = Q_y(4)
+		 
+		 buff   = Q_z(1)
+		 U_z(1) = Q_z(2)
+		 U_z(2) = Q_z(3)
+		 U_z(3) = Q_z(4)
 
    end subroutine getVelocityGradients
 

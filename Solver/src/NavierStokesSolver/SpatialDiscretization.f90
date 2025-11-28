@@ -289,7 +289,7 @@ module SpatialDiscretization
 !        -----------------
 !
          set_mu = .false.
-         call HexMesh_ComputeLocalGradientNS(mesh, set_mu)   ! In CPU version this inside ViscousDiscretization
+         call HexMesh_ComputeLocalGradientNS(mesh, set_mu)
 
          if ( computeGradients ) then
             call ViscousDiscretization % ComputeGradient( NCONS, NGRAD, mesh, time, GetGradients, HO_Elements)
