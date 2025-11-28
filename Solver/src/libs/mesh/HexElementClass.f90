@@ -67,6 +67,10 @@
          INTEGER                         :: nodeIDs(8)
          integer                         :: faceIDs(6)
          integer                         :: faceSide(6)
+		 integer                         :: MLevel            ! RK Level
+		 integer                         :: MLevelwN          ! RK Level with Neighbour
+		 real(kind=RP)                   :: ML_CFL            ! CFL storage for Multi Level RK	
+         real(kind=RP)                   :: ML_error_ratio(2) ! Ratio between temporal and spatial error relative to the global ratio
          INTEGER, DIMENSION(3)           :: Nxyz              ! Polynomial orders in every direction (Nx,Ny,Nz)
          real(kind=RP)                   :: hn                ! Ratio of size and polynomial order
          TYPE(MappedGeometry)            :: geom
@@ -123,6 +127,10 @@
          self % boundaryName        = emptyBCName
          self % hasSharedFaces      = .false.
          self % NumberOfConnections = 0
+		 self % MLevel              = 1
+		 self % MLevelwN			= 1
+		 self % ML_CFL			    = 1.0_RP
+         self % ML_error_ratio      = 1.0_RP
 !
 !        ----------------------------------------
 !        Solution Storage is allocated separately
@@ -799,7 +807,7 @@
          real(kind=RP)  :: U_zeta(NCONS)
          real(kind=RP)  :: inv_jac
 
-         !$acc loop vector collapse(3) private(U_xi, U_eta, U_zeta)
+         !$acc loop vector collapse(3) private(U_xi, U_eta, U_zeta, inv_jac)
          do k = 0, self % Nxyz(3) ; do j = 0, self % Nxyz(2) ; do i = 0, self % Nxyz(1)
             
             !***

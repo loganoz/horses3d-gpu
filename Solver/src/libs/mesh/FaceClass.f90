@@ -312,15 +312,21 @@
          case (0)
             !$acc loop vector collapse(2)
             do j = 0, self % NfRight(2)   ; do i = 0, self % NfRight(1)
+				  
+							  
                self % storage(1) % Q(:,i,j) = Qe(:,i,j)
 !               if (prolongQdot) self % storage(1) % Qdot(:,i,j) = QdotE(:,i,j)
+					 
             enddo ; enddo
          end select
       case(2)
          !$acc loop vector collapse(2)
          do j = 0, self % NfRight(2)   ; do i = 0, self % NfRight(1)
             call leftIndexes2Right(i,j,self % NfRight(1), self % NfRight(2), self % rotation, ii, jj)
+				 
+						   
             self % storage(2) % Q(:,i,j) = Qe(:,ii,jj) 
+		  
          end do                        ; end do
 
       end select
@@ -521,10 +527,10 @@
       select case ( side )
       case (1)    ! Prolong to left element
          
-            !   !$acc loop vector collapse(2)
-            !   do j = 0, self % Nf(2)  ; do i = 0, self % Nf(1)   
-            !      self % storage(1) % fStar(:,i,j) = flux(:,i,j)     
-            !   enddo ; enddo 
+              !$acc loop vector collapse(3)
+              do j = 0, self % Nf(2)  ; do i = 0, self % Nf(1)    ; do eq = 1, nEqn
+                 self % storage(1) % Fstar(eq,i,j) = flux(eq,i,j)     
+              enddo ; enddo ; enddo 
 
       case (2)    ! Prolong to right element
 !      

@@ -65,15 +65,17 @@
             enumerator :: INFLOW_BC = 1 , OUTFLOW_BC
             enumerator :: NOSLIPWALL_BC , FREESLIPWALL_BC
             enumerator :: PERIODIC_BC   , USERDEFINED_BC
+			enumerator :: NOBOUNDARY_BC 
          end enum
    
-         character(len=BC_STRING_LENGTH), dimension(8)  :: implementedBCNames = [&
+         character(len=BC_STRING_LENGTH), dimension(9)  :: implementedBCNames = [&
                    "inflow              ",  &
                    "outflow             ",  &
                    "noslipwall          ",  &
                    "freeslipwall        ",  &
                    "periodic            ",  &
                    "user-defined        ",  &
+				   "noboundary          ",  &
                    "manufacturedsol     ",  &
                    "msoutflowspecifyp   "]
 

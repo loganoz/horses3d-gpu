@@ -710,7 +710,7 @@ contains
 !    ----------------------------------------------------------------
 !
     pointsToFind = 0
-!$omp do schedule(runtime)private(ii,jj,kk,eID,Q,Qtemp,delta_temp,xi,found,allfound)
+!$omp do schedule(runtime)private(ii,jj,kk,eID,delta_temp,xi,found,allfound)
     do kk = 1, self%num_turbines
       do jj = 1, self%turbine_t(kk)%num_blades
 
@@ -750,6 +750,7 @@ contains
          end do
       enddo
     enddo
+!$omp end do
 
 !   update MPI partitions and look for points that have changed
 !   -----------------------------------------------------------
@@ -824,7 +825,6 @@ contains
       enddo
     enddo
 
-!$omp end do
     ! send local forces arrays and angle to device
     do kk=1, self % num_turbines
         do jj=1, self % turbine_t(kk) % num_blades
@@ -842,7 +842,7 @@ contains
 !
 !///////////////////////////////////////////////////////////////////////////////////////
 !
-   subroutine ForcesFarm(self, mesh, time)
+   subroutine ForcesFarm(self, mesh, time, Level)
    use PhysicsStorage
    use HexMeshClass
    use fluiddata
@@ -851,12 +851,13 @@ contains
    type(Farm_t) , intent(inout)      :: self
    type(HexMesh), intent(in)         :: mesh
    real(kind=RP),intent(in)          :: time
+   integer, intent(in), optional     :: Level	
 
 ! local vars
    real(kind=RP)                     :: Non_dimensional, t, interp
    integer                           :: ii,jj, kk
    integer                           :: i,j, k
-   integer                           :: eID, eIndex
+   integer                           :: eID, eIndex, locLevel
    real(kind=RP), dimension(NDIM)    :: actuator_source
    real(kind=RP)                     :: actuator_source_x_iijj
    real(kind=RP)                     :: actuator_source_y_iijj
@@ -869,12 +870,16 @@ contains
    real(kind=RP)                     :: local_rotor_force
    real(kind=RP)                     :: azimuth_angle
    real(kind=RP)                     :: epsil
-#if defined(MULTIPHASE)
    real(kind=RP)                     :: invSqrtRho
-#endif
 
     if (.not. self % active) return
-
+	
+	if (present(Level)) then
+		locLevel = Level
+	else
+		locLevel = 1
+	end if  
+	
     Non_dimensional = POW2(refValues % V) * refValues % rho / Lref
     t = time * Lref / refValues % V
 
@@ -882,6 +887,7 @@ contains
 
         do eIndex = 1, size(elementsActuated)
             eID = elementsActuated(eIndex)
+			if (mesh % elements(eID) % MLevel .eq. locLevel) then
             kk = turbineOfElement(eIndex)
 
             do k = 0, mesh % elements(eID) % Nxyz(3)   ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
@@ -927,25 +933,29 @@ contains
                 mesh % elements(eID) % storage % S_NS(IMSQRHOW,i,j,k) = actuator_source(3)*invSqrtRho
 #endif
             end do                  ; end do                ; end do
+		  end if 
         end do
     
     else ! no projection
 
-        !$acc parallel loop gang collapse(4) present(self,mesh) private(xlocal)
+        !$acc parallel loop gang collapse(4) present(self,mesh) copyin(locLevel, Non_dimensional) private(xlocal)
         !!$omp do schedule(runtime) private(i,j,k,ii,jj,kk,actuator_source,eID,interp)
         do eIndex = 1, size(elementsActuated) ;  do k = 0, mesh % Nx(1) ;  do j = 0, mesh % Nx(1) ; do i = 0, mesh % Nx(1)
       
             eID = elementsActuated(eIndex)
-            ! only one turbine is associated for one element
-            kk = turbineOfElement(eIndex)
+			if (mesh % elements(eID) % MLevel .eq. locLevel) then
+				! only one turbine is associated for one element
+				kk = turbineOfElement(eIndex)
 
                 actuator_source_x_iijj = 0.0_RP  
                 actuator_source_y_iijj = 0.0_RP   
                 actuator_source_z_iijj = 0.0_RP   
  
-                xlocal = mesh % elements(eID) % geom % x(:,i,j,k) 
-                !$acc loop vector collapse(2) reduction(+:actuator_source_x_iijj, actuator_source_y_iijj, actuator_source_z_iijj)
-                 do jj = 1, self % turbine_t(kk) % num_blades ; do ii = 1, self % turbine_t(kk) % num_blade_sections
+                xlocal(1) = mesh % elements(eID) % geom % x(1,i,j,k) 
+				xlocal(2) = mesh % elements(eID) % geom % x(2,i,j,k)
+				xlocal(3) = mesh % elements(eID) % geom % x(3,i,j,k)
+                !$acc loop vector collapse(2) reduction(+:actuator_source_x_iijj, actuator_source_y_iijj, actuator_source_z_iijj) 
+				 do jj = 1, self % turbine_t(kk) % num_blades ; do ii = 1, self % turbine_t(kk) % num_blade_sections
 
                     azimuth_angle = self%turbine_t(kk)%blade_t(jj)%azimuth_angle
                     local_rotor_force = self%turbine_t(kk)%blade_t(jj)%local_rotor_force(ii)
@@ -959,7 +969,7 @@ contains
 
                     ! minus account action-reaction effect, is the force on the fluid
                     actuator_source_x_iijj = actuator_source_x_iijj -   local_thrust * interp
-                    actuator_source_y_iijj = actuator_source_y_iijj - (-local_rotor_force*sin(azimuth_angle) * interp)
+                    actuator_source_y_iijj = actuator_source_y_iijj + (local_rotor_force*sin(azimuth_angle) * interp)
                     actuator_source_z_iijj = actuator_source_z_iijj -   local_rotor_force*cos(azimuth_angle) * interp 
                 end do                  ; end do 
 
@@ -981,6 +991,7 @@ contains
                 mesh % elements(eID) % storage % S_NS(IMSQRHOV,i,j,k) = actuator_source_y_iijj*invSqrtRho
                 mesh % elements(eID) % storage % S_NS(IMSQRHOW,i,j,k) = actuator_source_z_iijj*invSqrtRho
 #endif
+			end if 
             end do                  ; end do                ; end do
         end do
 !!$omp end do

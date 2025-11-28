@@ -79,7 +79,7 @@ module EllipticBR1
 
       end subroutine BR1_CreateDeviceData
 
-      subroutine BR1_ComputeGradient(self, nEqn, nGradEqn, mesh, time, GetGradients, HO_Elements)
+      subroutine BR1_ComputeGradient(self, nEqn, nGradEqn, mesh, time, GetGradients, HO_Elements, Level)
          use HexMeshClass
          use PhysicsStorage
          use Physics
@@ -91,13 +91,14 @@ module EllipticBR1
          real(kind=RP),        intent(in) :: time
          procedure(GetGradientValues_f)   :: GetGradients
          logical, intent(in), optional    :: HO_Elements
+		 integer, intent(in), optional    :: Level
 !
 !        ---------------
 !        Local variables
 !        ---------------
 !
          integer                :: i, j, k
-         integer                :: eID , fID , dimID , eqID, fIDs(6), iFace, iEl
+         integer                :: eID , fID , dimID , eqID, fIDs(6), iFace, iEl, locLevel
          logical                :: set_mu
          logical                :: HOElements
 
@@ -107,6 +108,12 @@ module EllipticBR1
          else
             HOElements = .false.
          end if
+		 
+		 if (present(Level)) then
+			 locLevel=Level
+		 else
+			 locLevel=1
+		 end if 
 !
 !        ************
 !        Volume loops
@@ -131,7 +138,7 @@ module EllipticBR1
          !end do
          !!$acc end parallel loop
 !!$omp end do nowait
-         call self % LiftGradients(nEqn, nGradEqn, mesh, time, GetGradients)
+         call self % LiftGradients(nEqn, nGradEqn, mesh, time, GetGradients, locLevel)
       end if
 
       !$acc end data
@@ -145,7 +152,7 @@ module EllipticBR1
 !
 !///////////////////////////////////////////////////////////////////////////////////////////////
 !
-      subroutine BR1_LiftGradients(self, nEqn, nGradEqn, mesh, time, GetGradients)
+      subroutine BR1_LiftGradients(self, nEqn, nGradEqn, mesh, time, GetGradients, Level)
 !
          use HexMeshClass
          use PhysicsStorage
@@ -157,21 +164,94 @@ module EllipticBR1
          type(HexMesh),        intent(inout) :: mesh
          real(kind=RP),        intent(in) :: time
          procedure(GetGradientValues_f)   :: GetGradients
+		 integer, intent(in), optional    :: Level
 !
 !        ---------------
 !        Local variables
 !        ---------------
 !
          integer                :: i, j, k
-         integer                :: eID , fID , dimID , eqID, fIDs(6), iFace, iEl, nZones, zoneID
+         integer                :: eID , fID , dimID , eqID, fIDs(6), iFace, iEl, nZones, zoneID, locLevel, locLevelm1
 
 !
 !        *******************************************
 !        Compute Riemann solvers of non-shared faces
 !        *******************************************
 !
+	if (present(Level)) then
+		 locLevel = Level
+		 locLevelm1 = max(locLevel-1,1)
+		 
 !$omp do schedule(runtime) private(fID)
-         !$acc parallel loop gang present(mesh, self) async(1)
+         !$acc parallel loop gang vector_length(32) present(mesh, self) copyin(locLevel,locLevelm1) private(fID) async(1)
+         do iFace = 1, mesh % MLRK % MLIter(locLevelm1,3)
+            fID = mesh % MLRK % MLIter_fID_Interior(iFace)
+            call BR1_ComputeElementInterfaceAverage(self, mesh % faces(fID), nEqn, nGradEqn)
+         end do
+         !$acc end parallel loop
+!$omp end do nowait
+
+         nZones = size(mesh % zones)
+!$omp do schedule(runtime) 
+         do zoneID=1, nZones
+            CALL BCs(zoneID) % bc % GradVarsForEqn(mesh, mesh % zones(zoneID)) 
+         enddo
+!$omp end do 
+
+!$omp do schedule(runtime) private(eID)
+         !$acc parallel loop gang vector_length(128) present(mesh) copyin(locLevel,locLevelm1) private(eID) async(1) 
+         do iEl = 1, mesh % MLRK % MLIter(locLevel,9) 
+			eID = mesh % MLRK % MLIter_eIDN_Seq(iEl)
+!
+!           Add the surface integrals
+!           -------------------------
+            call BR1_GradientFaceLoop(nGradEqn, mesh % elements(eID), mesh)
+         end do
+         !$acc end parallel loop
+!$omp end do
+
+         call HexMesh_ProlongGradientsToFaces(mesh, mesh % MLRK % MLIter(locLevel,9) , mesh % MLRK % MLIter_eIDN_Seq(1:mesh % MLRK % MLIter(locLevel,9)), nGradEqn)
+
+#ifdef _HAS_MPI_
+!$omp single
+         if ( MPI_Process % doMPIAction ) then 
+            call HexMesh_GatherMPIFacesSolution(mesh, nEqn)
+         end if
+!$omp end single
+
+!$omp do schedule(runtime) private(fID)
+         !$acc parallel loop gang vector_length(32) present(mesh, self) copyin(locLevel,locLevelm1) private(fID) async(1) 
+         do iFace = 1, mesh % MLRK % MLIter(locLevelm1,7)
+			fID = mesh % MLRK % MLIter_fID_MPI(iFace)
+            call BR1_ComputeMPIFaceAverage(self, mesh % faces(fID), nEqn, nGradEqn)
+         end do
+         !$acc end parallel loop
+!$omp end do 
+!
+
+!$omp do schedule(runtime) private(eID)
+!$acc parallel loop gang vector_length(128) present(mesh) copyin(locLevel,locLevelm1) private(eID) async(1)
+         do iEl = 1, mesh % MLRK % MLIter(locLevel,10)
+			eID = mesh % MLRK % MLIter_eIDN_MPI(iEl)
+!
+!           Add the surface integrals
+!           -------------------------
+            call BR1_GradientFaceLoop(nGradEqn, mesh % elements(eID), mesh)
+         end do
+!$acc end parallel loop
+!$omp end do
+!
+!           Prolong gradients
+!           -----------------
+!
+         call HexMesh_ProlongGradientsToFaces(mesh, mesh % MLRK % MLIter(locLevel,10), mesh % MLRK % MLIter_eIDN_MPI(1:mesh % MLRK % MLIter(locLevel,10)), nGradEqn)
+
+#endif
+
+	else
+	
+!$omp do schedule(runtime) private(fID)
+         !$acc parallel loop gang vector_length(32) present(mesh, self) private(fID) async(1)
          do iFace = 1, size(mesh % faces_interior)
             fID = mesh % faces_interior(iFace)
             call BR1_ComputeElementInterfaceAverage(self, mesh % faces(fID), nEqn, nGradEqn)
@@ -180,14 +260,14 @@ module EllipticBR1
 !$omp end do nowait
 
          nZones = size(mesh % zones)
-!$omp do schedule(runtime) private(zoneID)
+!$omp do schedule(runtime) 
          do zoneID=1, nZones
             CALL BCs(zoneID) % bc % GradVarsForEqn(mesh, mesh % zones(zoneID)) 
          enddo
 !$omp end do 
 
 !$omp do schedule(runtime) private(eID)
-         !$acc parallel loop gang present(mesh) async(1) 
+         !$acc parallel loop gang vector_length(32) present(mesh) private(eID) async(1) 
          do iEl = 1, size(mesh % elements_sequential)
             eID = mesh % elements_sequential(iEl)
 !
@@ -208,7 +288,7 @@ module EllipticBR1
 !$omp end single
 
 !$omp do schedule(runtime) private(fID)
-         !$acc parallel loop gang present(mesh, self) async(1) 
+         !$acc parallel loop gang vector_length(32) present(mesh, self) private(fID) async(1) 
          do iFace = 1, size(mesh % faces_mpi)
             fID = mesh % faces_mpi(iFace)
             call BR1_ComputeMPIFaceAverage(self, mesh % faces(fID), nEqn, nGradEqn)
@@ -218,7 +298,7 @@ module EllipticBR1
 !
 
 !$omp do schedule(runtime) private(eID)
-!$acc parallel loop gang vector_length(128) present(mesh, self) async(1)
+!$acc parallel loop gang vector_length(128) present(mesh, self) private(eID) async(1)
          do iEl = 1, size(mesh % elements_mpi)
             eID = mesh % elements_mpi(iEl)
 !
@@ -226,8 +306,8 @@ module EllipticBR1
 !           -------------------------
             call BR1_GradientFaceLoop(nGradEqn, mesh % elements(eID), mesh)
          end do
-!$omp end do
 !$acc end parallel loop
+!$omp end do
 !
 !           Prolong gradients
 !           -----------------
@@ -235,10 +315,11 @@ module EllipticBR1
          call HexMesh_ProlongGradientsToFaces(mesh, size(mesh % elements_mpi), mesh % elements_mpi, nGradEqn)
 
 #endif
+	end if 
 
       end subroutine BR1_LiftGradients
 
-      subroutine BR1_LiftGradientsHO(self, nEqn, nGradEqn, mesh, time, GetGradients)
+      subroutine BR1_LiftGradientsHO(self, nEqn, nGradEqn, mesh, time, GetGradients, Level)
          use HexMeshClass
          use PhysicsStorage
          use Physics
@@ -248,6 +329,7 @@ module EllipticBR1
          type(HexMesh),        intent(inout) :: mesh
          real(kind=RP),        intent(in) :: time
          procedure(GetGradientValues_f)   :: GetGradients
+		 integer, intent(in), optional        :: Level
       end subroutine BR1_LiftGradientsHO
 !
 !//////////////////////////////////////////////////////////////////////////////////////////
@@ -538,7 +620,7 @@ flux )
          flux = flux_vec(:,IX) * nHat(IX) + flux_vec(:,IY) * nHat(IY) + flux_vec(:,IZ) * nHat(IZ) 
 
 #ifdef MULTIPHASE
-         sigma0 = 0.5_RP * self % sigma * (maxval(f % Nf))*(maxval(f % Nf)+1) / f % geom % h
+         sigma0 = 0.5_RP * self % sigma * (maxval(f % Nf)+0.0_RP)*(maxval(f % Nf)+1.0_RP) / f % geom % h
          flux = flux - sigma0 * sigma * (QLeft-QRight)
 #endif
 
@@ -572,7 +654,7 @@ flux )
          real(kind=RP)     :: sigma0
 
 #ifdef MULTIPHASE
-         sigma0 = 0.5_RP * BR1_sigma * (maxval(f % Nf))*(maxval(f % Nf)+1) / f % geom % h
+         sigma0 = 0.5_RP * BR1_sigma * (maxval(f % Nf)+0.0_RP)*(maxval(f % Nf)+1.0_RP) / f % geom % h
 #endif
           
          !$acc loop vector collapse(3)

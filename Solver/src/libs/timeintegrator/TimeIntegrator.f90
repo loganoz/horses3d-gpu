@@ -53,6 +53,9 @@
          type(MultiTauEstim_t)                  :: TauEstimator
          character(len=LINE_LENGTH)             :: integration_method
          integer                                :: RKStep_key
+         REAL(KIND=RP)                          :: ML_CFL_CutOff
+         INTEGER                                :: ML_ReLevel_Iteration, ML_iteration_counter, ML_nLevel
+         logical                                :: ML_ReLevel   
          PROCEDURE(TimeStep_FCN), NOPASS , POINTER :: RKStep
 !
 !        ========
@@ -187,6 +190,31 @@
                !Create the array of High-Order elements and faces for the Euler-RK3 method
                call sem % mesh % UpdateHOArrays()
 
+            case(ML_RK3_NAME)
+                if ( controlVariables % ContainsKey("cfl cut-off") ) then
+                     self % ML_CFL_CutOff = controlVariables % doublePrecisionValueForKey("cfl cut-off")
+                     self % ML_CFL_CutOff = min(max(self % ML_CFL_CutOff,0.0001_RP),10.0_RP)
+                else 
+                     self % ML_CFL_CutOff = 0.5_RP
+                end if 
+                if ( controlVariables % ContainsKey("relevel iteration") ) then
+                     self % ML_ReLevel_Iteration = controlVariables % integerValueForKey ("relevel iteration")
+                else 
+                     self % ML_ReLevel_Iteration = 1000000000
+                end if
+                if ( controlVariables % ContainsKey("number of level") ) then
+                     self % ML_nLevel = controlVariables % integerValueForKey ("number of level")
+                else 
+                     self % ML_nLevel = 3
+                end if
+                self % ML_ReLevel = .true. 
+                
+                !self % RKStep => TakeMLRK3Step
+                self % RKStep_key = ML_RK3_KEY
+                self % ML_iteration_counter = 0
+                
+                ! call sem % mesh % MLRK % construct(sem % mesh, self % ML_nLevel) ! construct nlevel  
+
             case default
                print*, "Explicit time integration method not implemented"
                error stop
@@ -281,6 +309,13 @@
                write(STD_OUT,'(A)') "SSPRK43"
             case (EULER_RK3_KEY)
                write(STD_OUT,'(A)') "Euler-RK3"
+            case (ML_RK3_KEY)
+               write(STD_OUT,'(A)') "Multi-Level RK3"
+               write(STD_OUT,'(35X,A,A23,I14)')   "->" , "Number of Level: ", self % ML_nLevel
+               write(STD_OUT,'(35X,A,A23,F7.4)') "->" , "CFL Cut-Off: ", self % ML_CFL_CutOff
+               write(STD_OUT,'(35X,A,A23,I14)')   "->" , "Update Iteration: ", self % ML_ReLevel_Iteration
+               write(STD_OUT,'(35X,A,A23,A)')  "->" , "Cut-Off Level 1: ","CFL Cut-Off"
+               write(STD_OUT,'(35X,A,A23,A)')  "->" , "Cut-Off Level N: ","CFL Cut-Off x 2.5^(N-1) "
             end select
 
             write(STD_OUT,'(30X,A,A28)',advance='no') "->" , "Stage limiter: "
@@ -414,8 +449,10 @@
       use FASMultigridClass
       use AnisFASMultigridClass
       use RosenbrockTimeIntegrator
+      use ExplicitMethods   
       use StopwatchClass
       use FluidData
+      use mainKeywordsModule
 #if defined(NAVIERSTOKES)
       use ShockCapturing
       use TripForceClass, only: randomTrip
@@ -423,8 +460,14 @@
       use WallFunctionConnectivity, only: Initialize_WallConnection, WallUpdateMeanV, useWallFunc
       use ChannelForcing, only: initializeChannel, updateChannel
 #endif
+#if defined(FLOW) 
+      use SpongeClass
+#endif
+
+#if defined(NAVIERSTOKES) || defined(MULTIPHASE)
+      use AcousticSourceClass, only: AcousticSource, ConstructAcousticSource, DestructAcousticSource 
+#endif 
 #if defined(NAVIERSTOKES) || defined(INCNS) || defined(MULTIPHASE)
-      use SpongeClass, only: sponge
       use ActuatorLine, only: farm, ConstructFarm, DestructFarm, UpdateFarm, WriteFarmForces
 #endif
 
@@ -454,8 +497,10 @@
       REAL(KIND=RP)                 :: t
       REAL(KIND=RP)                 :: maxResidual(NCONS)
       REAL(KIND=RP)                 :: dt
+      REAL(KIND=RP)                 :: globalMax, globalMin, maxCFLInterf
       integer                       :: k
       integer                       :: eID
+      logical                       :: updatelevel
       CHARACTER(len=LINE_LENGTH)    :: SolutionFileName
       ! Time-step solvers:
       type(FASMultigrid_t)          :: FASSolver
@@ -498,8 +543,14 @@
           call ConstructFarm(farm, controlVariables, t, sem % mesh)
           call UpdateFarm(farm, t, sem % mesh)
       end if
-      call sponge % construct(sem % mesh,controlVariables)
 #endif
+#if defined(FLOW) 
+      call ConstructSponge(sponge,sem % mesh,controlVariables)
+#endif
+
+#if defined(NAVIERSTOKES) || defined(MULTIPHASE)
+      call ConstructAcousticSource(AcousticSource, controlVariables)
+#endif 
 !
 !     ----------------------------------
 !     Set up mask's coefficient for IBM
@@ -611,7 +662,7 @@
 !     ----------------
 !
       DO k = sem  % numberOfTimeSteps, self % initial_iter + self % numTimeSteps-1
-
+!$acc wait
 !
 !        CFL-bounded time step
 !        ---------------------      
@@ -629,7 +680,6 @@
          if( sem % mesh % IBM % active ) then
             if( sem % mesh % IBM % TimePenal ) sem % mesh % IBM % penalization = dt
             !$acc update device(sem % mesh % IBM % penalization)
-            !$acc wait
          end if
 
 !
@@ -654,6 +704,7 @@
 #if defined(NAVIERSTOKES) || defined(INCNS) || defined(MULTIPHASE)
          if(ActuatorLineFlag) call UpdateFarm(farm, t, sem % mesh)
 #endif
+!$acc wait
 !
 !        Perform time step
 !        -----------------
@@ -666,8 +717,26 @@
 #if defined(NAVIERSTOKES)
             if( sem % mesh % IBM % active ) call sem % mesh % IBM % SemiImplicitCorrection( sem % mesh % elements, dt )
 #endif
-            ! Need to fix this, Nvfortran does not like the pointer here - select function might solve the problem
-            CALL TakeRK3Step( sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
+            ! Need to add more scheme, Nvfortran does not like the pointer here - select function might solve the problem
+            if (self % RKStep_key .eq. RK3_KEY) then
+                CALL TakeRK3Step( sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
+                !$acc wait
+            elseif (self % RKStep_key .eq. ML_RK3_KEY) then
+                self % ML_iteration_counter = self % ML_iteration_counter + 1
+                if ((self % ML_iteration_counter .eq. self % ML_ReLevel_Iteration).or.(self % ML_ReLevel)) THEN
+                    CALL DetermineCFL(sem, self % dt, globalMax, globalMin, maxCFLInterf)
+                    CALL sem % mesh % MLRK % construct(sem % mesh, self % ML_nLevel) ! reconstruct nLevel  
+                    CALL sem % mesh % MLRK % update (sem % mesh, self % ML_CFL_CutOff, globalMax, globalMin, maxCFLInterf)
+                    self % ML_ReLevel = .false. 
+                    self % ML_iteration_counter = 0
+                    CALL sem % mesh % MLRK_UpdateDevice()
+                end if 
+                CALL TakeMLRK3Step( sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
+                !$acc wait
+            else 
+                CALL TakeRK3Step( sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
+                !$acc wait
+            end if 
 #if defined(NAVIERSTOKES)
             if( sem % mesh % IBM % active ) call sem % mesh % IBM % SemiImplicitCorrection( sem % mesh % elements, dt )
 #endif
@@ -687,8 +756,10 @@
          END SELECT
 
 #if defined(NAVIERSTOKES) || defined(INCNS) || defined(MULTIPHASE)
-         if(ActuatorLineFlag)  call WriteFarmForces(farm,t,k)
-         call sponge % updateBaseFlow(sem % mesh,dt)
+         if(ActuatorLineFlag)  call WriteFarmForces(farm, t, k)
+#endif
+#if defined(FLOW) 
+         call UpdateBaseFlowSponge(sponge,sem % mesh,dt)
 #endif
 !
 !        Compute the new time
@@ -815,7 +886,9 @@
 #endif
 #if defined(NAVIERSTOKES) || defined(INCNS) || defined(MULTIPHASE)
          if(ActuatorLineFlag)  call WriteFarmForces(farm, t, k, last=.true.)
-         call sponge % writeBaseFlow(sem % mesh, k, t, last=.true.)
+#endif
+#if defined(FLOW) 
+         call WriteBaseFlowSponge(sponge, sem % mesh, k, t, last=.true.)
 #endif
       end if
 
@@ -845,11 +918,18 @@
 #if defined(NAVIERSTOKES)
          if (useTrip) call randomTrip % destruct
 #endif
-#if defined(NAVIERSTOKES) || defined(INCNS) || defined(MULTIPHASE)
-         if(ActuatorLineFlag) call DestructFarm(farm)
-         call sponge % destruct()
+
+#if defined(FLOW) 
+         call DestructSponge(sponge,sem % mesh)
 #endif
 
+#if defined(NAVIERSTOKES) || defined(MULTIPHASE)
+      call DestructAcousticSource(AcousticSource)
+#endif 
+
+#if defined(NAVIERSTOKES) || defined(INCNS) || defined(MULTIPHASE)
+         if(ActuatorLineFlag) call DestructFarm(farm)
+#endif
       if (saveOrders) call sem % mesh % ExportOrders(SolutionFileName)
 
    end subroutine IntegrateInTime
@@ -902,8 +982,8 @@
 !/////////////////////////////////////////////////////////////////////////////////////////////////
 !
    SUBROUTINE SaveRestart(sem,k,t,RestFileName, saveGradients, saveSensor, saveLES)
-#if defined(NAVIERSTOKES) || defined(INCNS)
-      use SpongeClass, only: sponge
+#if defined(FLOW) 
+      use SpongeClass, only: sponge, WriteBaseFlowSponge
 #endif
       IMPLICIT NONE
 !
@@ -927,8 +1007,8 @@
       WRITE(FinalName,'(2A,I10.10,A)')  TRIM(RestFileName),'_',k,'.hsol'
       if ( MPI_Process % isRoot ) write(STD_OUT,'(A,A,A,ES10.3,A)') '*** Writing file "',trim(FinalName),'", with t = ',t,'.'
       call sem % mesh % SaveSolution(k,t,trim(finalName),saveGradients,saveSensor, saveLES)
-#if defined(NAVIERSTOKES) || defined(INCNS)
-      call sponge % writeBaseFlow(sem % mesh, k, t)
+#if defined(FLOW) 
+      call WriteBaseFlowSponge(sponge, sem % mesh, k, t)
 #endif
    END SUBROUTINE SaveRestart
 !

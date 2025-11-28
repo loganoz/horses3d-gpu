@@ -12,6 +12,7 @@ submodule (BoundaryConditions) constructbcs
    use FreeSlipWallBCClass,           only: FreeSlipWallBC_t
    use PeriodicBCClass,               only: PeriodicBC_t
    use UserDefinedBCClass,            only: UserDefinedBC_t
+   use NoBoundaryBCClass,             only: NoBoundaryBC_t
    use Utilities, only: toLower, almostEqual
    use ZoneClass
    implicit none
@@ -84,6 +85,12 @@ submodule (BoundaryConditions) constructbcs
                select type(bc => BCs(zID) % bc)
                type is (UserDefinedBC_t)
                   bc = UserDefinedBC_t(trim(zoneNames(zID)))
+               end select
+			case(NOBOUNDARY_BC)
+               allocate(NoBoundaryBC_t   :: BCs(zID) % bc)
+               select type(bc => BCs(zID) % bc)
+               type is (NoBoundaryBC_t)
+                  bc = NoBoundaryBC_t(trim(zoneNames(zID)))
                end select
             case default
                print*, "Unrecognized BC option"

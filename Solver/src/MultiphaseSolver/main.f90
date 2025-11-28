@@ -176,6 +176,14 @@
 !     Finish up
 !     ---------
 !
+!
+!     ----------------------------
+!     Delete the data from the GPU
+!     ----------------------------
+!
+#ifdef _OPENACC
+      call sem % mesh % ExitDeviceData()
+#endif
       call Stopwatch % destruct
       CALL timeIntegrator % destruct()
       CALL sem % destruct()

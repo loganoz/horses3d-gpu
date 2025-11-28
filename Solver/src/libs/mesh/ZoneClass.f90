@@ -279,6 +279,8 @@ module ZoneClass
                call self % getPeriodicPairZone()
             case(USERDEFINED_BC)
                self % zoneBCName = "user-defined"
+            case(NOBOUNDARY_BC)
+               self % zoneBCName = "noboundary"
             case default
                print*, "Unrecognized BC option"
                errorMessage(STD_OUT)
@@ -364,6 +366,7 @@ module ZoneClass
          print*, "   * Outflow"
          print*, "   * NoSlipWall"
          print*, "   * FreeSlipWall"
+		 print*, "   * NoBoundary"
          print*, "   * Periodic"
          print*, "   * User-defined"
          errorMessage(STD_OUT)

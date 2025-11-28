@@ -1,6 +1,6 @@
 #include "Includes.h"
 MODULE HexMeshClass
-      use Utilities                       , only: toLower, almostEqual, AlmostEqualRelax
+      use Utilities                       , only: toLower, almostEqual, AlmostEqualRelax, sortDescendInt, sortAscendInt
       use SMConstants
       USE MeshTypes
       USE NodeClass
@@ -36,6 +36,7 @@ MODULE HexMeshClass
       private
       public      HexMesh
       public      Neighbor_t, NUM_OF_NEIGHBORS
+      public      MultiLevel_RK
 
       public      GetOriginalNumberOfFaces
       public      ConstructFaces, ConstructPeriodicFaces
@@ -52,6 +53,29 @@ MODULE HexMeshClass
 !     Mesh definition
 !     ---------------
 !
+      type MultiLevel_RK
+         integer               :: nLevel 
+         integer               :: maxLevel
+         real(kind=RP)         :: CFL_CutOff
+         integer, allocatable  :: ML_GlobalLevel(:)        ! Number of Multi-Level Timestep Element - Global - in TimeIntegrator.f90 and DGSEMClass.f90
+         integer, allocatable  :: ML_Level(:)              ! Number of Multi-Level Timestep Element - Partition 
+         integer, allocatable  :: MLIter(:,:)              ! Number of ML Iteration - partition (L1 include L2 & L3, etc); size(nLevel, 6(eID, fID, fID_Inter, fID Bound, eID Seq, eID MPI)) 
+         integer, allocatable  :: MLIter_eID(:)            ! Sorted Element ID from nLevel to Level 1 (eID) size is (mesh%element)
+         integer, allocatable  :: MLIter_fID(:)            ! Element ID for each level iteration (fID) size is (mesh% faces)
+         integer, allocatable  :: MLIter_fID_Interior(:)   ! Interior Face ID for each level iteration (fID) size is (mesh%faces_interior)
+         integer, allocatable  :: MLIter_fID_Boundary(:)   ! Boundary Face ID for each level 1 iteration (fID) size is (mesh%faces_boundary)
+         integer, allocatable  :: MLIter_fID_MPI(:)        ! MPI Face ID for each level 1 iteration (fID) size is (mesh%faces_mpi)
+         integer, allocatable  :: MLIter_eID_Seq(:)        ! Element ID for each level 1 iteration (eID,levelIteration) size is (mesh%element,nLevel)
+         integer, allocatable  :: MLIter_eID_MPI(:)        ! Element ID for each level 1 iteration (eID,levelIteration) size is (mesh%element,nLevel)
+         integer, allocatable  :: MLIter_eIDN(:)            ! Sorted Element ID from nLevel to Level 1 (eID) size is (mesh%element)
+         integer, allocatable  :: MLIter_eIDN_Seq(:)        ! Element ID for each level 1 iteration (eID,levelIteration) size is (mesh%element,nLevel)
+         integer, allocatable  :: MLIter_eIDN_MPI(:)        ! Element ID for each level 1 iteration (eID,levelIteration) size is (mesh%element,nLevel)
+         contains
+            procedure :: construct      => MultiLevel_RK_Construct
+            procedure :: update         => MultiLevel_RK_Update
+            procedure :: sendGlobalID   => MultiLevel_RK_SendGlobID
+            procedure :: destruct       => MultiLevel_RK_Destruct
+      end type MultiLevel_RK
       type HexMesh
          integer                                   :: numberOfFaces
          integer                                   :: nodeType
@@ -75,6 +99,7 @@ MODULE HexMeshClass
          type(MPI_FacesSet_t)                      :: MPIfaces
          type(IBM_type)                            :: IBM
          type(Zone_t), dimension(:), allocatable   :: zones
+         type(MultiLevel_RK)                       :: MLRK
          logical                                   :: child       = .FALSE.         ! Is this a (multigrid) child mesh? default .FALSE.
          logical                                   :: meshIs2D    = .FALSE.         ! Is this a 2D mesh? default .FALSE.
          integer                                   :: dir2D       = 0               ! If it is in fact a 2D mesh, dir 2D stores the global direction IX, IY or IZ
@@ -96,6 +121,7 @@ MODULE HexMeshClass
             procedure :: ExitDeviceData                => HexMesh_ExitDeviceData
             procedure :: UpdateHostData                => HexMesh_UpdateHostData
             procedure :: UpdateFacesHostData           => HexMesh_UpdateFacesHostData
+            procedure :: MLRK_UpdateDevice             => HexMesh_MLRK_UpdateDevice
             procedure :: UpdateHostStatistics          => HexMesh_UpdateHostStatistics
             procedure :: ConstructZones                => HexMesh_ConstructZones
             procedure :: DefineAsBoundaryFaces         => HexMesh_DefineAsBoundaryFaces
@@ -218,7 +244,17 @@ MODULE HexMeshClass
 !        ----------------
 !
          call self % storage % destruct
-
+!
+!        --------
+!        MPIfaces
+!        --------
+!        
+#ifdef _HAS_MPI_
+         if ( MPI_Process % doMPIAction  ) then 
+            call DestructMPIFaces( self % MPIfaces)
+         end if 
+#endif
+        
          safedeallocate(self % elements_sequential)
          safedeallocate(self % elements_mpi)
          safedeallocate(self % faces_interior)
@@ -244,6 +280,13 @@ MODULE HexMeshClass
                call self% IBM% destruct( .false. )
             end if
          end if
+         
+!
+!        ----------------
+!        MLRK Library 
+!        ----------------
+! 
+        call self % MLRK % destruct 
          
       END SUBROUTINE HexMesh_Destruct
 !
@@ -962,41 +1005,73 @@ slavecoord:             DO l = 1, 4
          end if
       end subroutine HexMesh_ProlongSolutionToFaces
 
-      subroutine HexMesh_ProlongSolToFaces(self, nEqn)
+      subroutine HexMesh_ProlongSolToFaces(self, nEqn, Level)
          implicit none
-         type(HexMesh),   intent(inout)  :: self
-         integer,          intent(in)     :: nEqn
+         type(HexMesh),     intent(inout)  :: self
+         integer,           intent(in)     :: nEqn
+         integer, optional, intent(in)     :: Level
 !
 !        ---------------
 !        Local variables
 !        ---------------
 !
-         integer  :: eID, fID, fids(6)
+         integer  :: eID, fID, locLevel, lID
 
-         select case ( self %nodeType )
-         case(1) !Gauss
-
-!$omp do schedule(runtime)
-!$acc parallel loop gang collapse(2) present(self) num_gangs(size(self % elements)) vector_length(32) async(1)
-         do eID = 1, size(self % elements)
-            do fID = 1, 6
-            call HexElement_ProlongSolToFaces(self % elements(eID), nEqn, self % faces(self % elements(eID) % faceIDs(fID)), fID)                        
-         end do ; end do
+         if (present(Level)) then
+             locLevel = Level
+             
+             select case ( self %nodeType )
+             case(1) !Gauss
+!$omp do schedule(runtime) private(eID, fID)
+!$acc parallel loop gang collapse(2) present(self, self % MLRK) num_gangs(self % MLRK % MLIter(locLevel,8)) vector_length(32) copyin(locLevel) private(eID) async(1)
+             do lID = 1, self % MLRK % MLIter(locLevel,8)
+                do fID = 1, 6
+                eID = self % MLRK % MLIter_eIDN(lID)
+                call HexElement_ProlongSolToFaces(self % elements(eID), nEqn, self % faces(self % elements(eID) % faceIDs(fID)), fID)                        
+             end do ; end do
 !$acc end parallel loop
 !$omp end do
+             case(2) !Gauss-Lobatto
 
-         case(2) !Gauss-Lobatto
-
-!$omp do schedule(runtime)
-!$acc parallel loop gang collapse(2) present(self) num_gangs(size(self % elements)) vector_length(32) async(1)  
-         do eID = 1, size(self % elements)
-            do fID = 1, 6
-            call HexElement_ProlongSolToFaces_GL(self % elements(eID), nEqn, self % faces(self % elements(eID) % faceIDs(fID)), fID)                        
-         end do ; end do
+!$omp do schedule(runtime) private(eID, fID)
+!$acc parallel loop gang collapse(2) present(self, self % MLRK) num_gangs(self % MLRK % MLIter(locLevel,8)) vector_length(32) copyin(locLevel) private(eID) async(1)  
+             do lID = 1, self % MLRK % MLIter(locLevel,8)
+                do fID = 1, 6
+                eID = self % MLRK % MLIter_eIDN(lID)
+                call HexElement_ProlongSolToFaces_GL(self % elements(eID), nEqn, self % faces(self % elements(eID) % faceIDs(fID)), fID)                        
+             end do ; end do
 !$acc end parallel loop
 !$omp end do
 
          end select
+         
+         else
+         
+             select case ( self %nodeType )
+             case(1) !Gauss
+
+!$omp do schedule(runtime) private(fID)
+!$acc parallel loop gang collapse(2) present(self) num_gangs(size(self % elements)) vector_length(32) async(1)
+             do eID = 1, size(self % elements)
+                do fID = 1, 6
+                call HexElement_ProlongSolToFaces(self % elements(eID), nEqn, self % faces(self % elements(eID) % faceIDs(fID)), fID)                        
+             end do ; end do
+!$acc end parallel loop
+!$omp end do
+
+             case(2) !Gauss-Lobatto
+
+!$omp do schedule(runtime) private(fID)
+!$acc parallel loop gang collapse(2) present(self) num_gangs(size(self % elements)) vector_length(32) async(1)  
+             do eID = 1, size(self % elements)
+                do fID = 1, 6
+                call HexElement_ProlongSolToFaces_GL(self % elements(eID), nEqn, self % faces(self % elements(eID) % faceIDs(fID)), fID)                        
+             end do ; end do
+!$acc end parallel loop
+!$omp end do
+
+             end select
+         end if
 
       end subroutine HexMesh_ProlongSolToFaces
 !
@@ -1018,8 +1093,8 @@ slavecoord:             DO l = 1, 4
          select case ( self %nodeType )
          case(1) !Gauss
 
-!$acc parallel loop gang num_gangs(size_element_list) collapse(2) present(self, element_list) private(fIDs) async(1)
-!$omp do schedule(runtime) private(eID)
+!$omp do schedule(runtime) private(eID, fid, fIDs)
+!$acc parallel loop gang num_gangs(size_element_list) collapse(2) present(self) copyin(element_list) private(fIDs) async(1)
          do iEl = 1, size_element_list
             do fid = 1,6
                eID = element_list(iEl)
@@ -1037,12 +1112,12 @@ slavecoord:             DO l = 1, 4
                                                        self % elements(eID) % storage % U_z,fid, 3)
          end do ; enddo 
 !$acc end parallel loop
-!$omp end do
+!$omp end do 
 
          case(2) !Gauss-Lobatto
 
-!$omp do schedule(runtime)
-!$acc parallel loop gang collapse(2) num_gangs(size(self % elements)) vector_length(32) present(self,element_list) async(1)
+!$omp do schedule(runtime) private(fID,eID)
+!$acc parallel loop gang collapse(2) num_gangs(size_element_list) vector_length(32) present(self) copyin(element_list) async(1)
          do iEl = 1, size_element_list
             do fID = 1, 6
                eID = element_list(iEl)
@@ -1053,8 +1128,8 @@ slavecoord:             DO l = 1, 4
 !$acc end parallel loop
 !$omp end do
 
-!$omp do schedule(runtime)
-!$acc parallel loop gang collapse(2) num_gangs(size(self % elements)) vector_length(32) present(self,element_list) async(1) 
+!$omp do schedule(runtime) private(fID,eID)
+!$acc parallel loop gang collapse(2) num_gangs(size_element_list) vector_length(32) present(self) copyin(element_list) async(1) 
          do iEl = 1, size_element_list
             do fID = 1, 6
                eID = element_list(iEl)
@@ -1065,8 +1140,8 @@ slavecoord:             DO l = 1, 4
 !$acc end parallel loop
 !$omp end do
          
-!$omp do schedule(runtime)
-!$acc parallel loop gang collapse(2) num_gangs(size(self % elements)) vector_length(32) present(self,element_list) async(1) 
+!$omp do schedule(runtime) private(fID,eID)
+!$acc parallel loop gang collapse(2) num_gangs(size_element_list) vector_length(32) present(self) copyin(element_list) async(1) 
          do iEl = 1, size_element_list
             do fID = 1, 6
                eID = element_list(iEl)
@@ -1102,103 +1177,167 @@ slavecoord:             DO l = 1, 4
          class(HexMesh)         :: self
 #ifdef _HAS_MPI_
          !-local-variables----------------------------------------------------
-         integer            :: mpifID, fID, thisSide, domain
-         integer            :: i, j, counter
+         integer            :: mpifID, fID, thisSide, domain, ierr
+         integer            :: i, j, k, counter
+         integer            :: nShared, nreqs, idx_send
+         integer, allocatable :: all_reqs(:)
          !--------------------------------------------------------------------
 
-         if ( .not. MPI_Process % doMPIAction ) return
+         if ( .not. MPI_Process % doMPIAction  ) return
+
+         nShared = self % MPIfaces % nDomainShared
+         ! Return when no faces are shared
+         if (nShared <= 0) return
+
+        associate (MPIfaces => self % MPIfaces)
+        
+         ! Allocate and initialize combined request array (recv slots first, then send slots)
+         nreqs = 2 * nShared
+         allocate(all_reqs(nreqs))
+         all_reqs = MPI_REQUEST_NULL
 !
 !        ***************************
 !        Perform the receive request
 !        ***************************
 !
-         do domain = 1, MPI_Process % nProcs
-            call self % MPIfaces % faces(domain) % RecvN(domain)
+         do k = 1, nShared
+            domain = MPIfaces % listDomain(k)
+            if (MPIfaces % faces(domain) % no_of_faces > 0) then
+                call MPIfaces % faces(domain) % RecvN(domain, all_reqs(k))
+            end if 
          end do
 !
-!        *************
-!        Send solution
-!        *************
+!        *********************
+!        Send faces polynomial
+!        *********************
 !
-         do domain = 1, MPI_Process % nProcs
+         idx_send = nShared + 1
+         do k = 1, nShared
+            domain = MPIfaces % listDomain(k)
+            
+            if (MPIfaces % faces(domain) % no_of_faces <= 0) then
+                idx_send = idx_send + 1
+                cycle
+            end if
 !
-!           ---------------
-!           Gather solution
-!           ---------------
+!           -----------------------
+!           Gather faces polynomial
+!           -----------------------
 !
             counter = 1
-            if ( self % MPIfaces % faces(domain) % no_of_faces .eq. 0 ) cycle
-            do mpifID = 1, self % MPIfaces % faces(domain) % no_of_faces
-               fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
-               thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
+            
+            do mpifID = 1, MPIfaces % faces(domain) % no_of_faces
+               fID = MPIfaces % faces(domain) % faceIDs(mpifID)
+               thisSide = MPIfaces % faces(domain) % elementSide(mpifID)
+               
                associate( f => self % faces(fID))
                associate( e => self % elements(maxval(f % elementIDs)) )
-
-
-               self % MPIfaces % faces(domain) % Nsend(counter:counter+1  ) = e % Nxyz(axisMap(:,f % elementSide(thisSide)))
-               self % MPIfaces % faces(domain) % Nsend(counter+2:counter+4) = e % Nxyz
-               self % MPIfaces % faces(domain) % Nsend(counter+5)           = e % globID
+               MPIfaces % faces(domain) % Nsend(counter:counter+1  ) = e % Nxyz(axisMap(:,f % elementSide(thisSide)))
+               MPIfaces % faces(domain) % Nsend(counter+2:counter+4) = e % Nxyz
+               MPIfaces % faces(domain) % Nsend(counter+5)           = e % globID
 
                counter = counter + 6
-
                end associate
                end associate
             end do
 !
-!           -------------
-!           Send solution
-!           -------------
+!           ---------------------
+!           Send faces polynomial
+!           ---------------------
 !
-            call self % MPIfaces % faces(domain) % SendN(domain)
+            call self % MPIfaces % faces(domain) % SendN(domain, all_reqs(idx_send))
+            idx_send = idx_send + 1
          end do
+!
+!        ********************************************
+!        Wait for all posted operations (recv + send)
+!        ********************************************
+!
+         call MPI_Waitall(nreqs, all_reqs, MPI_STATUSES_IGNORE, ierr)
+         
+         deallocate(all_reqs)
+        end associate
 #endif
       end subroutine HexMesh_UpdateMPIFacesPolynomial
 !
 !////////////////////////////////////////////////////////////////////////
 !
+!     -----------------------------------------------------------------------
+!     Subroutine to update the MPIFaces solution Q (MPI Receive and MPI Send)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!     WARNING: This GPU version does not work for anisotropic polynomial order
+!     -----------------------------------------------------------------------
       subroutine HexMesh_UpdateMPIFacesSolution(self, nEqn)
          use MPI_Face_Class
          implicit none
-         type(HexMesh), intent(inout)  :: self
-         integer,       intent(in)     :: nEqn
+         !-arguments----------------------------------------------------------
+         class(HexMesh)         :: self
+         integer,    intent(in) :: nEqn
 #ifdef _HAS_MPI_
-!
-!        ---------------
-!        Local variables
-!        ---------------
-!
-         integer            :: mpifID, fID, thisSide, domain
-         integer            :: i, j, counter, linear_idx, faceSize
-         integer  :: ierr, dummyreq
+         !-local-variables----------------------------------------------------
+         integer :: k, domain, mpifID, fID, thisSide
+         integer :: i, j, ierr, linear_idx, faceSize, m
+         integer, parameter :: otherSide(2) = (/2,1/)
+         integer :: nShared, nreqs, idx_send, token
+         integer, allocatable :: all_reqs(:)
+         real     :: Q_Buff(nEqn)
+         !--------------------------------------------------------------------
 
          if ( .not. MPI_Process % doMPIAction ) return
+         
+         nShared = self % MPIfaces % nDomainShared
+         ! Return when no faces are shared
+         if (nShared <= 0) then
+            ! Add token to sync
+            !call MPI_Allreduce(1, token, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD, ierr)
+            return
+         end if
+
+        associate (MPIfaces => self % MPIfaces)
+        
+         ! Allocate and initialize combined request array (recv slots first, then send slots)
+         nreqs = 2 * nShared
+         allocate(all_reqs(nreqs))
+         all_reqs = MPI_REQUEST_NULL
 !
 !        ***************************
 !        Perform the receive request
 !        ***************************
 !
+         do k = 1, nShared
+            domain = MPIfaces % listDomain(k)
+            if (MPIfaces % faces(domain) % no_of_faces > 0) then
+                call MPIfaces % faces(domain) % RecvQ(domain, nEqn, all_reqs(k))
+            end if 
+         end do
 !
 !        *************
 !        Send solution
 !        *************
 !
-         do domain = 1, MPI_Process % nProcs
+         idx_send = nShared + 1
+         do k = 1, nShared
+            domain = MPIfaces % listDomain(k)
+            
+            if (MPIfaces % faces(domain) % no_of_faces <= 0) then
+                cycle
+            end if
 !
 !           ---------------
 !           Gather solution
 !           ---------------
 !
-            if ( self % MPIfaces % faces(domain) % no_of_faces .eq. 0 ) cycle
-            !$acc parallel loop gang present(self) copyin(nEqn) private(fID,thisSide,faceSize) wait(1)
+            
+            !$acc parallel loop gang present(self) copyin(nEqn,domain) private(fID,thisSide,faceSize, i, j, m) wait(1)
             do mpifID = 1, self % MPIfaces % faces(domain) % no_of_faces
                fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
                faceSize = (self % faces(fID) % Nf(2) + 1) * (self % faces(fID) % Nf(1) + 1) * nEqn  ! Total size of the face data block
-               !$acc loop vector collapse(2)
-               do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)
-                  linear_idx = ((mpifID - 1) * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + 1
-                  self % MPIfaces % faces(domain) % Qsend(linear_idx:linear_idx+nEqn-1) = self % faces(fID) % storage(thisSide) % Q(1:nEqn,i,j)
-               end do               ; end do
+               !$acc loop vector collapse(3) private(linear_idx)
+               do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1) ; do m = 1, nEqn 
+                  linear_idx = ((mpifID - 1) * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
+                  self % MPIfaces % faces(domain) % Qsend(linear_idx) = self % faces(fID) % storage(thisSide) % Q(m,i,j)
+               end do               ; end do        ; end do 
             end do
             !$acc end parallel loop
 !
@@ -1206,123 +1345,206 @@ slavecoord:             DO l = 1, 4
 !           Send solution
 !           -------------
 !
-            call self % MPIfaces % faces(domain) % RecvQ(domain, nEqn)
-            call self % MPIfaces % faces(domain) % SendQ(domain, nEqn)
+            call MPIfaces % faces(domain) % SendQ(domain, nEqn, all_reqs(idx_send))
 
+            idx_send = idx_send + 1
          end do
-
+!
+!        ********************************************
+!        Wait for all posted operations (recv + send)
+!        ********************************************
+!
+         call MPI_Waitall(nreqs, all_reqs, MPI_STATUSES_IGNORE, ierr)
+         
+         deallocate(all_reqs)
+         ! Add token to sync (this can be commented out for performance)
+         !call MPI_Allreduce(1, token, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD, ierr)
+        end associate
 #endif
       end subroutine HexMesh_UpdateMPIFacesSolution
-
+!
+!////////////////////////////////////////////////////////////////////////
+!
+!     ---------------------------------------------------------------------------
+!     Subroutine to update the MPIFaces solution gradQ (MPI Receive and MPI Send)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!     WARNING: This GPU version does not work for anisotropic polynomial order
+!     ---------------------------------------------------------------------------
       subroutine HexMesh_UpdateMPIFacesGradients(self, nEqn)
          use MPI_Face_Class
          implicit none
-         type(HexMesh), intent(inout)  :: self
+         !-arguments----------------------------------------------------------
+         class(HexMesh)      :: self
          integer, intent(in) :: nEqn
 #ifdef _HAS_MPI_
-!
-!        ---------------
-!        Local variables
-!        ---------------
-!
-         integer            :: mpifID, fID, thisSide, domain
-         integer            :: i, j, counter, linear_idx_x, linear_idx_y, linear_idx_z, faceSize
+         !-local-variables----------------------------------------------------
+         integer :: k, domain, mpifID, fID, thisSide, m
+         integer :: i, j, ierr, linear_idx_x, linear_idx_y, linear_idx_z, faceSize
          integer, parameter :: otherSide(2) = (/2,1/)
-         integer  :: ierr, dummyreq
+         integer :: nShared, nreqs, idx_send, token
+         integer, allocatable :: all_reqs(:)
+         real(kind=RP) :: U_x(nEqn), U_y(nEqn),U_z(nEqn)
+         !--------------------------------------------------------------------
 
          if ( .not. MPI_Process % doMPIAction ) return
+         
+         nShared = self % MPIfaces % nDomainShared
+         ! Return when no faces are shared
+         if (nShared <= 0) then
+            ! Add token to sync (necessary for MU with MLRK and very big case)
+            call MPI_Allreduce(1, token, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD, ierr)
+            return
+         end if
+
+        associate (MPIfaces => self % MPIfaces)
+         
+         ! Allocate and initialize combined request array (recv slots first, then send slots)
+         nreqs = 2 * nShared
+         allocate(all_reqs(nreqs))
+         all_reqs = MPI_REQUEST_NULL
 !
 !        ***************************
 !        Perform the receive request
 !        ***************************
 !
+         do k = 1, nShared
+            domain = MPIfaces % listDomain(k)
+            if (MPIfaces % faces(domain) % no_of_faces > 0) then
+                call MPIfaces % faces(domain) % RecvU_xyz(domain, nEqn, all_reqs(k))
+            end if
+         end do
 !
 !        ***************
-!        Gather gradients
+!        Send gradients
 !        ***************
 !
-         do domain = 1, MPI_Process % nProcs
-            if ( self % MPIfaces % faces(domain) % no_of_faces .eq. 0 ) cycle
-
-            !$acc parallel loop gang present(self) copyin(nEqn) wait(1)
+         idx_send = nShared + 1
+         do k = 1, nShared
+            domain = MPIfaces % listDomain(k)
+            
+            if (MPIfaces % faces(domain) % no_of_faces <= 0) then
+                cycle
+            end if
+!
+!           ---------------
+!           Gather gradients
+!           ---------------
+!
+            !$acc parallel loop gang present(self) copyin(nEqn,domain) private(fID,thisSide,faceSize, m, i, j) wait(1)
             do mpifID = 1, self % MPIfaces % faces(domain) % no_of_faces
                fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
                faceSize = (self % faces(fID) % Nf(2) + 1) * (self % faces(fID) % Nf(1) + 1) * nEqn  ! Total size of the face data block
 
-               !$acc loop vector collapse(2)
-               do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)      
-                  linear_idx_x = ((mpifID - 1) * 3 * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + 1
-                  self % MPIfaces % faces(domain) % U_xyzsend(linear_idx_x:linear_idx_x+nEqn-1) = self % faces(fID) % storage(thisSide) % U_x(1:nEqn,i,j)
-               end do               ; end do
+               !$acc loop vector collapse(3) private(linear_idx_x)
+               do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1) ; do m = 1, nEqn     
+                  linear_idx_x = ((mpifID - 1) * 3 * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
+                  self % MPIfaces % faces(domain) % U_xyzsend(linear_idx_x) = self % faces(fID) % storage(thisSide) % U_x(m,i,j)
+               end do               ; end do               ; end do
 
-               !$acc loop vector collapse(2)
-               do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)
-                  linear_idx_y = ((mpifID - 1) * 3 * faceSize) + faceSize + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + 1
-                  self % MPIfaces % faces(domain) % U_xyzsend(linear_idx_y:linear_idx_y+nEqn-1) = self % faces(fID) % storage(thisSide) % U_y(1:nEqn,i,j)
-               end do               ; end do
+               !$acc loop vector collapse(3) private(linear_idx_y)
+               do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1) ; do m = 1, nEqn 
+                  linear_idx_y = ((mpifID - 1) * 3 * faceSize) + faceSize + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
+                  self % MPIfaces % faces(domain) % U_xyzsend(linear_idx_y) = self % faces(fID) % storage(thisSide) % U_y(m,i,j)
+               end do               ; end do               ; end do
 
-               !$acc loop vector collapse(2)
-               do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)
-                  linear_idx_z = ((mpifID - 1) * 3 * faceSize) + 2 * faceSize + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + 1
-                  self % MPIfaces % faces(domain) % U_xyzsend(linear_idx_z:linear_idx_z+nEqn-1) = self % faces(fID) % storage(thisSide) % U_z(1:nEqn,i,j)
-               end do               ; end do
+               !$acc loop vector collapse(3) private(linear_idx_z)
+               do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1) ; do m = 1, nEqn 
+                  linear_idx_z = ((mpifID - 1) * 3 * faceSize) + 2 * faceSize + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
+                  self % MPIfaces % faces(domain) % U_xyzsend(linear_idx_z) = self % faces(fID) % storage(thisSide) % U_z(m,i,j)
+               end do               ; end do               ; end do
             end do
             !$acc end parallel loop
-
-            call self % MPIfaces % faces(domain) % RecvU_xyz(domain, nEqn)
-            call self % MPIfaces % faces(domain) % SendU_xyz(domain, nEqn)
+!
+!           -------------
+!           Send gradients
+!           -------------
+!
+            call MPIfaces % faces(domain) % SendU_xyz(domain, nEqn, all_reqs(idx_send))
+            idx_send = idx_send + 1
          end do
-
+!
+!        ********************************************
+!        Wait for all posted operations (recv + send)
+!        ********************************************
+!
+         call MPI_Waitall(nreqs, all_reqs, MPI_STATUSES_IGNORE, ierr)
+         
+         deallocate(all_reqs)
+         ! Add token to sync (necessary for MU with MLRK and very big case)
+         call MPI_Allreduce(1, token, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD, ierr)
+        end associate
 #endif
       end subroutine HexMesh_UpdateMPIFacesGradients
 !
 !////////////////////////////////////////////////////////////////////////
 !
+!     -------------------------------------------------------------------------------
+!     Subroutine to update the MPIFaces solution AviscFlux (MPI Receive and MPI Send)
+!     -------------------------------------------------------------------------------
       subroutine HexMesh_UpdateMPIFacesAviscFlux(self, nEqn)
          use MPI_Face_Class
          implicit none
+         !-arguments----------------------------------------------------------
          class(HexMesh)         :: self
          integer,    intent(in) :: nEqn
 #ifdef _HAS_MPI_
-!
-!        ---------------
-!        Local variables
-!        ---------------
-!
-         integer            :: mpifID, fID, thisSide, domain
-         integer            :: i, j, counter
+         !-local-variables----------------------------------------------------
+         integer :: k, domain, mpifID, fID, thisSide
+         integer :: i, j, counter, ierr
          integer, parameter :: otherSide(2) = (/2,1/)
+         integer :: nShared, nreqs, idx_send
+         integer, allocatable :: all_reqs(:)
+         !--------------------------------------------------------------------
 
          if ( .not. MPI_Process % doMPIAction ) return
+         
+         nShared = self % MPIfaces % nDomainShared
+         ! Return when no faces are shared
+         if (nShared <= 0) return
+
+        associate (MPIfaces => self % MPIfaces)
+        
+         ! Allocate and initialize combined request array (recv slots first, then send slots)
+         nreqs = 2 * nShared
+         allocate(all_reqs(nreqs))
+         all_reqs = MPI_REQUEST_NULL
 !
 !        ***************************
 !        Perform the receive request
 !        ***************************
 !
-         do domain = 1, MPI_Process % nProcs
-            call self % MPIfaces % faces(domain) % RecvAviscFlux(domain, nEqn)
+         do k = 1, nShared
+            domain = MPIfaces % listDomain(k)
+            if (MPIfaces % faces(domain) % no_of_faces > 0) then
+                call MPIfaces % faces(domain) % RecvAviscFlux(domain, nEqn, all_reqs(k))
+            end if 
          end do
 !
 !        ***********
 !        Send H flux
 !        ***********
 !
-         do domain = 1, MPI_Process % nProcs
+         idx_send = nShared + 1
+         do k = 1, nShared
+            domain = MPIfaces % listDomain(k)
+            
+            if (MPIfaces % faces(domain) % no_of_faces <= 0) then
+                cycle
+            end if
 !
 !           ---------------
 !           Gather solution
 !           ---------------
 !
             counter = 1
-            if ( self % MPIfaces % faces(domain) % no_of_faces .eq. 0 ) cycle
 
-            do mpifID = 1, self % MPIfaces % faces(domain) % no_of_faces
-               fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
-               thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
+            do mpifID = 1, MPIfaces % faces(domain) % no_of_faces
+               fID = MPIfaces % faces(domain) % faceIDs(mpifID)
+               thisSide = MPIfaces % faces(domain) % elementSide(mpifID)
                associate(f => self % faces(fID))
                do j = 0, f % Nf(2)  ; do i = 0, f % Nf(1)
-                  self % MPIfaces % faces(domain) % AviscFluxSend(counter:counter+nEqn-1) = &
+                  MPIfaces % faces(domain) % AviscFluxSend(counter:counter+nEqn-1) = &
                      f % storage(thisSide) % AviscFlux(:,i,j)
                   counter = counter + nEqn
                end do               ; end do
@@ -1333,51 +1555,83 @@ slavecoord:             DO l = 1, 4
 !           Send solution
 !           -------------
 !
-            call self % MPIfaces % faces(domain) % SendAviscFlux(domain, nEqn)
+            call MPIfaces % faces(domain) % SendAviscFlux(domain, nEqn, all_reqs(idx_send))
+            idx_send = idx_send + 1
          end do
+!
+!        ********************************************
+!        Wait for all posted operations (recv + send)
+!        ********************************************
+!
+         call MPI_Waitall(nreqs, all_reqs, MPI_STATUSES_IGNORE, ierr)
+         
+         deallocate(all_reqs)
+        end associate
 #endif
       end subroutine HexMesh_UpdateMPIFacesAviscFlux
 !
 !////////////////////////////////////////////////////////////////////////
 !
+!     ----------------------------------------------------------------------------
+!     Subroutine to update the MPIFaces base solution Q (MPI Receive and MPI Send)
+!     ----------------------------------------------------------------------------
 #if defined(ACOUSTIC)
       subroutine HexMesh_UpdateMPIFacesBaseSolution(self, nEqn)
          use MPI_Face_Class
          implicit none
+         !-arguments----------------------------------------------------------
          class(HexMesh)         :: self
          integer,    intent(in) :: nEqn
 #ifdef _HAS_MPI_
-!
-!        ---------------
-!        Local variables
-!        ---------------
-!
-         integer            :: mpifID, fID, thisSide, domain
-         integer            :: i, j, counter
+         !-local-variables----------------------------------------------------
+         integer :: k, domain, mpifID, fID, thisSide
+         integer :: i, j, counter, ierr
          integer, parameter :: otherSide(2) = (/2,1/)
+         integer :: nShared, nreqs, idx_send
+         integer, allocatable :: all_reqs(:)
+         !--------------------------------------------------------------------
 
          if ( .not. MPI_Process % doMPIAction ) return
+         
+         nShared = self % MPIfaces % nDomainShared
+         ! Return when no faces are shared
+         if (nShared <= 0) return
+
+        associate (MPIfaces => self % MPIfaces)
+        
+         ! Allocate and initialize combined request array (recv slots first, then send slots)
+         nreqs = 2 * nShared
+         allocate(all_reqs(nreqs))
+         all_reqs = MPI_REQUEST_NULL
 !
 !        ***************************
 !        Perform the receive request
 !        ***************************
-!
-         do domain = 1, MPI_Process % nProcs
-            call self % MPIfaces % faces(domain) % RecvQ(domain, nEqn)
+!        
+         do k = 1, nShared
+            domain = MPIfaces % listDomain(k)
+            if (MPIfaces % faces(domain) % no_of_faces > 0) then
+                call MPIfaces % faces(domain) % RecvQ(domain, nEqn, all_reqs(k))
+            end if 
          end do
 !
 !        *************
 !        Send solution
 !        *************
 !
-         do domain = 1, MPI_Process % nProcs
+         idx_send = nShared + 1
+         do k = 1, nShared
+            domain = MPIfaces % listDomain(k)
+            
+            if (MPIfaces % faces(domain) % no_of_faces <= 0) then
+                cycle
+            end if
 !
 !           ---------------
 !           Gather solution
 !           ---------------
 !
             counter = 1
-            if ( self % MPIfaces % faces(domain) % no_of_faces .eq. 0 ) cycle
 
             do mpifID = 1, self % MPIfaces % faces(domain) % no_of_faces
                fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
@@ -1394,27 +1648,40 @@ slavecoord:             DO l = 1, 4
 !           Send solution
 !           -------------
 !
-            call self % MPIfaces % faces(domain) % SendQ(domain, nEqn)
+            call MPIfaces % faces(domain) % SendQ(domain, nEqn, all_reqs(idx_send))
+            idx_send = idx_send + 1
          end do
+!
+!        ********************************************
+!        Wait for all posted operations (recv + send)
+!        ********************************************
+!
+         call MPI_Waitall(nreqs, all_reqs, MPI_STATUSES_IGNORE, ierr)
+         
+         deallocate(all_reqs)
+        end associate
 #endif
       end subroutine HexMesh_UpdateMPIFacesBaseSolution
 #endif
 !
 !////////////////////////////////////////////////////////////////////////
 !
+!     --------------------------------------------------------------------------------
+!     Subroutine to gather the MPIFaces solution Q (From MPI Storage to Faces Storage)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!     WARNING: This GPU version does not work for anisotropic polynomial order
+!     --------------------------------------------------------------------------------
       subroutine HexMesh_GatherMPIFacesSolution(self, nEqn)
          implicit none
-         type(HexMesh), intent(inout)  :: self
+         !-arguments----------------------------------------------------------
+         class(HexMesh)    :: self
          integer, intent(in) :: nEqn
 #ifdef _HAS_MPI_
-!
-!        ---------------
-!        Local variables
-!        ---------------
-!
+         !-local-variables----------------------------------------------------
          integer            :: mpifID, fID, thisSide, domain
-         integer            :: i, j, counter, linear_idx, faceSize
+         integer            :: i, j, k, linear_idx, faceSize, m
          integer, parameter :: otherSide(2) = (/2,1/)
+         !--------------------------------------------------------------------
 
          if ( .not. MPI_Process % doMPIAction ) return
 !
@@ -1422,45 +1689,45 @@ slavecoord:             DO l = 1, 4
 !        Gather solution
 !        ***************
 !
-         do domain = 1, MPI_Process % nProcs
-!
-!           **************************************
-!           Wait until messages have been received
-!           **************************************
-!
-            if ( self % MPIfaces % faces(domain) % no_of_faces .eq. 0 ) cycle
-
-            call self % MPIfaces % faces(domain) % WaitForSolution
-
-            !$acc parallel loop gang present(self) copyin(nEqn)
+         do k = 1, self % MPIfaces % nDomainShared
+            domain = self % MPIfaces % listDomain(k)
+            
+            if (self % MPIfaces % faces(domain) % no_of_faces <= 0) cycle 
+            
+            !$acc parallel loop gang present(self) copyin(nEqn,domain,otherSide) private(fID,thisSide,faceSize, m, i, j)
             do mpifID = 1, self % MPIfaces % faces(domain) % no_of_faces
                fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
                faceSize = (self % faces(fID) % Nf(2) + 1) * (self % faces(fID) % Nf(1) + 1) * nEqn  ! Total size of the face data block
-               !$acc loop vector collapse(2)
-               do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)
-                  linear_idx = ((mpifID - 1) * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + 1
-                  self % faces(fID) % storage(otherSide(thisSide)) % Q(1:nEqn,i,j) = self % MPIfaces % faces(domain) % Qrecv(linear_idx:linear_idx+nEqn-1)
-               end do               ; end do
+               !$acc loop vector collapse(3) private(linear_idx)
+               do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)  ; do m = 1, nEqn
+                  linear_idx = ((mpifID - 1) * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
+                  self % faces(fID) % storage(otherSide(thisSide)) % Q(m,i,j) = self % MPIfaces % faces(domain) % Qrecv(linear_idx)
+               end do               ; end do               ; end do
             end do
             !$acc end parallel loop
          end do
 #endif
       end subroutine HexMesh_GatherMPIFacesSolution
-
+!
+!////////////////////////////////////////////////////////////////////////
+!
+!     ---------------------------------------------------------------------------
+!     Subroutine to gather the MPIFaces gradQ (From MPI Storage to Faces Storage)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!     WARNING: This GPU version does not work for anisotropic polynomial order
+!     ---------------------------------------------------------------------------
       subroutine HexMesh_GatherMPIFacesGradients(self, nEqn)
          implicit none
-         type(HexMesh), intent(inout)  :: self
-         integer, intent(in)           :: nEqn
+         !-arguments----------------------------------------------------------
+         class(HexMesh)      :: self
+         integer, intent(in) :: nEqn
 #ifdef _HAS_MPI_
-!
-!        ---------------
-!        Local variables
-!        ---------------
-!
-         integer            :: mpifID, fID, thisSide, domain
-         integer            :: i, j, counter, linear_idx_x, linear_idx_y, linear_idx_z, faceSize
+         !-local-variables----------------------------------------------------
+         integer            :: mpifID, fID, thisSide, domain, m
+         integer            :: i, j, k, linear_idx_x, linear_idx_y, linear_idx_z, faceSize
          integer, parameter :: otherSide(2) = (/2,1/)
+         !--------------------------------------------------------------------
 
          if ( .not. MPI_Process % doMPIAction ) return
 !
@@ -1468,71 +1735,55 @@ slavecoord:             DO l = 1, 4
 !        Gather solution
 !        ***************
 !
+         do k = 1, self % MPIfaces % nDomainShared
+            domain = self % MPIfaces % listDomain(k)
 
-         do domain = 1, MPI_Process % nProcs
-
-            if ( self % MPIfaces % faces(domain) % no_of_faces .eq. 0 ) cycle
-!
-!           **************************************
-!           Wait until messages have been received
-!           **************************************
-!
-            call self % MPIfaces % faces(domain) % WaitForGradients
-         end do
-
-         do domain = 1, MPI_Process % nProcs
-
-            if ( self % MPIfaces % faces(domain) % no_of_faces .eq. 0 ) cycle
-
-!
-!           **************************************
-!           Wait until messages have been received
-!           **************************************
-!
-!            call self % MPIfaces % faces(domain) % WaitForGradients
-
-            !$acc parallel loop gang present(self)
+            if (self % MPIfaces % faces(domain) % no_of_faces <= 0) cycle 
+            
+            !$acc parallel loop gang present(self) copyin(nEqn,domain,otherSide) private(fID,thisSide,faceSize, m, i, j)
             do mpifID = 1, self % MPIfaces % faces(domain) % no_of_faces
                fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
                faceSize = (self % faces(fID) % Nf(2) + 1) * (self % faces(fID) % Nf(1) + 1) * nEqn  ! Total size of the face data block
 
-               !$acc loop vector collapse(2)
-               do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)
-                  linear_idx_x = ((mpifID - 1) * 3 * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + 1
-                  self % faces(fID) % storage(otherSide(thisSide)) % U_x(1:nEqn,i,j) = self % MPIfaces % faces(domain) % U_xyzrecv(linear_idx_x:linear_idx_x+nEqn-1)
-               end do               ; end do
-               !$acc loop vector collapse(2)
-               do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)
-                  linear_idx_y = ((mpifID - 1) * 3 * faceSize) + faceSize + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + 1
-                  self % faces(fID) % storage(otherSide(thisSide)) % U_y(1:nEqn,i,j) = self % MPIfaces % faces(domain) % U_xyzrecv(linear_idx_y:linear_idx_y+nEqn-1)
-               end do               ; end do
-               !$acc loop vector collapse(2)
-               do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)
-                  linear_idx_z = ((mpifID - 1) * 3 * faceSize) + 2 * faceSize + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + 1
-                  self % faces(fID) % storage(otherSide(thisSide)) % U_z(1:nEqn,i,j) = self % MPIfaces % faces(domain) % U_xyzrecv(linear_idx_z:linear_idx_z+nEqn-1)
-               end do               ; end do
+               !$acc loop vector collapse(3) private(linear_idx_x)
+               do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)  ; do m = 1, nEqn
+                  linear_idx_x = ((mpifID - 1) * 3 * faceSize) + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
+                  self % faces(fID) % storage(otherSide(thisSide)) % U_x(m,i,j) = self % MPIfaces % faces(domain) % U_xyzrecv(linear_idx_x)
+               end do               ; end do               ; end do
+               !$acc loop vector collapse(3) private(linear_idx_y)
+               do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)  ; do m = 1, nEqn
+                  linear_idx_y = ((mpifID - 1) * 3 * faceSize) + faceSize + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
+                  self % faces(fID) % storage(otherSide(thisSide)) % U_y(m,i,j) = self % MPIfaces % faces(domain) % U_xyzrecv(linear_idx_y)
+               end do               ; end do               ; end do
+               !$acc loop vector collapse(3) private(linear_idx_z)
+               do j = 0, self % faces(fID) % Nf(2)  ; do i = 0, self % faces(fID) % Nf(1)  ; do m = 1, nEqn
+                  linear_idx_z = ((mpifID - 1) * 3 * faceSize) + 2 * faceSize + (j * (self % faces(fID) % Nf(1) + 1) + i) * nEqn + m
+                  self % faces(fID) % storage(otherSide(thisSide)) % U_z(m,i,j) = self % MPIfaces % faces(domain) % U_xyzrecv(linear_idx_z)
+               end do               ; end do               ; end do
             end do
             !$acc end parallel loop
+            
          end do
 #endif
       end subroutine HexMesh_GatherMPIFacesGradients
 !
 !////////////////////////////////////////////////////////////////////////
 !
+!     -------------------------------------------------------------------------------
+!     Subroutine to gather the MPIFaces Aviscflux (From MPI Storage to Faces Storage)
+!     -------------------------------------------------------------------------------
       subroutine HexMesh_GatherMPIFacesAviscflux(self, nEqn)
          implicit none
+         !-arguments----------------------------------------------------------
          class(HexMesh)      :: self
          integer, intent(in) :: nEqn
 #ifdef _HAS_MPI_
-!
-!        ---------------
-!        Local variables
-!        ---------------
-!
+         !-local-variables----------------------------------------------------
          integer            :: mpifID, fID, thisSide, domain
-         integer            :: i, j, counter
-         integer, parameter :: otherSide(2) = [2, 1]
+         integer            :: i, j, k, counter
+         integer, parameter :: otherSide(2) = (/2,1/)
+         !--------------------------------------------------------------------
 
          if ( .not. MPI_Process % doMPIAction ) return
 !
@@ -1540,18 +1791,12 @@ slavecoord:             DO l = 1, 4
 !        Gather solution
 !        ***************
 !
-         do domain = 1, MPI_Process % nProcs
-            
-            if ( self % MPIfaces % faces(domain) % no_of_faces .eq. 0 ) cycle
-
-!
-!           **************************************
-!           Wait until messages have been received
-!           **************************************
-!
-            call self % MPIfaces % faces(domain) % WaitForAviscflux
-
+         do k = 1, self % MPIfaces % nDomainShared
+            domain = self % MPIfaces % listDomain(k)
             counter = 1
+            
+            if (self % MPIfaces % faces(domain) % no_of_faces <= 0) cycle 
+            
             do mpifID = 1, self % MPIfaces % faces(domain) % no_of_faces
                fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
@@ -1569,20 +1814,21 @@ slavecoord:             DO l = 1, 4
 !
 !////////////////////////////////////////////////////////////////////////
 !
+!     -------------------------------------------------------------------------------------
+!     Subroutine to gather the MPIFaces solution base Q (From MPI Storage to Faces Storage)
+!     -------------------------------------------------------------------------------------
 #if defined(ACOUSTIC)
       subroutine HexMesh_GatherMPIFacesBaseSolution(self, nEqn)
          implicit none
+         !-arguments----------------------------------------------------------
          class(HexMesh)    :: self
          integer, intent(in) :: nEqn
 #ifdef _HAS_MPI_
-!
-!        ---------------
-!        Local variables
-!        ---------------
-!
+         !-local-variables----------------------------------------------------
          integer            :: mpifID, fID, thisSide, domain
-         integer            :: i, j, counter
+         integer            :: i, j, k, counter
          integer, parameter :: otherSide(2) = (/2,1/)
+         !--------------------------------------------------------------------
 
          if ( .not. MPI_Process % doMPIAction ) return
 !
@@ -1590,18 +1836,12 @@ slavecoord:             DO l = 1, 4
 !        Gather solution
 !        ***************
 !
-         do domain = 1, MPI_Process % nProcs
-
-            if ( self % MPIfaces % faces(domain) % no_of_faces .eq. 0 ) cycle
-
-!
-!           **************************************
-!           Wait until messages have been received
-!           **************************************
-!
-            call self % MPIfaces % faces(domain) % WaitForSolution
-
+         do k = 1, self % MPIfaces % nDomainShared
+            domain = self % MPIfaces % listDomain(k)
             counter = 1
+
+            if (self % MPIfaces % faces(domain) % no_of_faces <= 0) cycle 
+            
             do mpifID = 1, self % MPIfaces % faces(domain) % no_of_faces
                fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                thisSide = self % MPIfaces % faces(domain) % elementSide(mpifID)
@@ -1744,6 +1984,23 @@ slavecoord:             DO l = 1, 4
       write(STD_OUT,'(30X,A,A28,I10)') "->" , "Order of curved faces: " , bFaceOrder
       write(STD_OUT,'(30X,A,A28,L10)') "->" , "2D extruded mesh: " , self % meshIs2D
 
+!     Describe the zones
+!     ------------------
+      write(STD_OUT,'(/)')
+      call Section_Header("Creating zones")
+      write(STD_OUT,'(/)')
+
+      do zoneID = 1, size(self % zones)
+         write(str,'(A,I0,A,A)') "Zone ", zoneID, " for boundary: ",trim(self % zones(zoneID) % Name)
+         call SubSection_Header(trim(str))
+         write(STD_OUT,'(30X,A,A28,I0)') "->", ' Number of faces: ', facesPerZone(zoneID)
+         write(STD_OUT,'(/)')
+      end do
+
+!     Finish up
+!     ---------
+      deallocate ( facesPerZone )
+
       END SUBROUTINE HexMesh_Describe
 !
 !////////////////////////////////////////////////////////////////////////
@@ -1775,8 +2032,8 @@ slavecoord:             DO l = 1, 4
       integer           :: no_of_facesP(MPI_Process % nProcs)
       integer           :: no_of_bfacesP(MPI_Process % nProcs)
       integer           :: no_of_mpifacesP(MPI_Process % nProcs)
-	  integer           :: no_of_mpiSuggest(2)
-	  real(KIND=RP)     :: maxRatio_mpifacesShared
+      integer           :: no_of_mpiSuggest(2)
+      real(KIND=RP)     :: maxRatio_mpifacesShared
       character(len=64) :: partitionID
 
       if ( .not. MPI_Process % doMPIAction ) return
@@ -1826,22 +2083,22 @@ slavecoord:             DO l = 1, 4
          write(STD_OUT,'(30X,A,A28,I10)') "->" , "Number of mpi faces: " , no_of_mpifacesP(rank)
 
       end do
-	  
-	  maxRatio_mpifacesShared = maxval(REAL(no_of_mpifacesP)/REAL(no_of_facesP))
-	  no_of_mpiSuggest(1) = FLOOR(0.4*MPI_Process % nProcs/(maxRatio_mpifacesShared))
-	  no_of_mpiSuggest(2) = CEILING(0.6*MPI_Process % nProcs/(maxRatio_mpifacesShared))
-	  
-	  write(STD_OUT,'(/)')
-	  call SubSection_Header("MPI Suggestion: ")
-	  
-	  if (self % NDOF.gt.5000000) then
-		  write(STD_OUT,'(30X,A,A28,F4.2)') "->" , "Max mpi faces ratio: " ,maxRatio_mpifacesShared
-		  write(STD_OUT,'(30X,A,A28,A10)')  "->" , "Optimum mpi faces ratio: " ,"0.4-0.6"
-		  write(STD_OUT,'(30X,A,A28,I4,A3,I4)')"->" , "Suggested number of mpi: ",no_of_mpiSuggest(1)," - ", no_of_mpiSuggest(2)
+      
+      maxRatio_mpifacesShared = maxval(REAL(no_of_mpifacesP)/REAL(no_of_facesP))
+      no_of_mpiSuggest(1) = FLOOR(0.4*MPI_Process % nProcs/(maxRatio_mpifacesShared))
+      no_of_mpiSuggest(2) = CEILING(0.6*MPI_Process % nProcs/(maxRatio_mpifacesShared))
+      
+      write(STD_OUT,'(/)')
+      call SubSection_Header("MPI Suggestion: ")
+      
+      if (self % NDOF.gt.5000000) then
+          write(STD_OUT,'(30X,A,A28,F4.2)') "->" , "Max mpi faces ratio: " ,maxRatio_mpifacesShared
+          write(STD_OUT,'(30X,A,A28,A10)')  "->" , "Optimum mpi faces ratio: " ,"0.4-0.6"
+          write(STD_OUT,'(30X,A,A28,I4,A3,I4)')"->" , "Suggested number of mpi: ",no_of_mpiSuggest(1)," - ", no_of_mpiSuggest(2)
       else 
-	      write(STD_OUT,'(30X,A,A28,A28)') "->" , "NDOF < 5000000 : " ,"Maximize number of OpenMP"
-	  end if 
-	  
+          write(STD_OUT,'(30X,A,A28,A28)') "->" , "NDOF < 5000000 : " ,"Maximize number of OpenMP"
+      end if 
+      
 #endif
 
       END SUBROUTINE DescribeMeshPartition
@@ -2225,7 +2482,7 @@ slavecoord:             DO l = 1, 4
          integer  :: globID
          integer  :: Nxyz(NDIM)
          integer  :: domain, MPI_NDOFS(MPI_Process % nProcs), mpifID
-         integer  :: num_of_Faces, ii
+         integer  :: num_of_Faces, ii, k
          integer, parameter :: other(2) = [2, 1]
          !--------------------------------------------------------------
 
@@ -2309,15 +2566,13 @@ slavecoord:             DO l = 1, 4
 !
 #ifdef _HAS_MPI_
          if ( MPI_Process % doMPIAction .and. mpi_partition % Constructed  )  then
-
-            do domain = 1, MPI_Process % nProcs
-!
-!              Wait until messages have been received
-!              --------------------------------------
-!
-               call self % MPIfaces % faces(domain) % WaitForN
-
+         
+            do k = 1, self % MPIfaces % nDomainShared
+               domain = self % MPIfaces % listDomain(k)
                counter = 1
+               
+               if (self % MPIfaces % faces(domain) % no_of_faces <= 0) cycle 
+               
                do mpifID = 1, self % MPIfaces % faces(domain) % no_of_faces
                   fID  = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                   side = self % MPIfaces % faces(domain) % elementSide(mpifID)   ! face side 1/2
@@ -2357,6 +2612,8 @@ slavecoord:             DO l = 1, 4
             MPI_NDOFS = 0
 
             do domain = 1, MPI_Process % nProcs
+               if (self % MPIfaces % faces(domain) % no_of_faces <= 0) cycle 
+               
                do mpifID = 1, self % MPIfaces % faces(domain) % no_of_faces
                   fID = self % MPIfaces % faces(domain) % faceIDs(mpifID)
                   associate( fc => self % faces(fID) )
@@ -2369,11 +2626,14 @@ slavecoord:             DO l = 1, 4
             call ConstructMPIFacesStorage(self % MPIfaces, NCONS, NGRAD, MPI_NDOFS)
 #elif defined(INCNS)
             call ConstructMPIFacesStorage(self % MPIfaces, NCONS, NCONS, MPI_NDOFS)
-#elif defined(CAHNHILLIARD)
+#elif defined(CAHNHILLIARD) && !defined(MULTIPHASE)
             call ConstructMPIFacesStorage(self % MPIfaces, NCOMP, NCOMP, MPI_NDOFS)
+#elif defined(MULTIPHASE)
+            call ConstructMPIFacesStorage(self % MPIfaces, NCONS, NCONS, MPI_NDOFS)
 #elif defined(ACOUSTIC)
             call ConstructMPIFacesStorage(self % MPIfaces, NCONS, NCONS, MPI_NDOFS)
 #endif
+
 #endif
          end if
 
@@ -2399,8 +2659,9 @@ slavecoord:             DO l = 1, 4
 !        Local variables
 !        ---------------
 !
-         integer  :: k, eID, bFace, side, eSide, fID, domain, counter
+         integer  :: k, eID, bFace, side, eSide, fID, domain
          integer  :: no_of_mpifaces(MPI_Process % nProcs)
+         integer  :: sharedDomain(MPI_Process % nProcs)
          integer, parameter  :: otherSide(2) = (/2,1/)
          integer, parameter  :: invRot(1:4,0:7) = reshape( (/ 1, 2, 3, 4, &
                                                               4, 1, 2, 3, &
@@ -2419,15 +2680,24 @@ slavecoord:             DO l = 1, 4
             no_of_mpifaces(domain) = no_of_mpifaces(domain) + 1
          end do
 !
-!        ---------------
-!        Allocate memory
-!        ---------------
+!        -------------------------------------------------------------------
+!        Allocate memory MPIfaces and update the domain with shared mpifaces
+!        -------------------------------------------------------------------
 !
+         self % MPIfaces % nDomainShared =  0
+         sharedDomain = 0
          do domain = 1, MPI_Process % nProcs
             if ( no_of_mpifaces(domain) .ne. 0 ) then
                call self % MPIfaces % faces(domain) % Construct(no_of_mpifaces(domain))
+               
+               self % MPIfaces % nDomainShared = self % MPIfaces % nDomainShared+1
+               sharedDomain(self % MPIfaces % nDomainShared) = domain
             end if
          end do
+         ! Reallocate listDomain
+         safedeallocate(self % MPIfaces % listDomain)
+         allocate(self % MPIfaces % listDomain(self % MPIfaces % nDomainShared))
+         self % MPIfaces % listDomain    = sharedDomain(1:self % MPIfaces % nDomainShared)
 !
 !        -------------
 !        Assign values
@@ -2859,6 +3129,7 @@ slavecoord:             DO l = 1, 4
          DEALLOCATE(hex8Map)
          CALL genHexMap % destruct()
          DEALLOCATE(genHexMap)
+         nullify(hexMap)
 
       end subroutine HexMesh_ConstructGeometry
 
@@ -3659,7 +3930,8 @@ slavecoord:             DO l = 1, 4
 !        ---------------
 !
          INTEGER                        :: fID, eID, fileType, no_of_elements, flag, nodetype
-         integer                        :: padding, pos
+         integer                        :: padding
+         integer(kind=AddrInt)          :: pos
          integer                        :: Nxp1, Nyp1, Nzp1, no_of_eqs, array_rank, expectedNoEqs
          real(kind=RP), allocatable     :: Q(:,:,:,:)
          character(len=SOLFILE_STR_LEN) :: rstName
@@ -3766,7 +4038,7 @@ slavecoord:             DO l = 1, 4
          fID = putSolutionFileInReadDataMode(trim(fileName))
          do eID = 1, size(self % elements)
             associate( e => self % elements(eID) )
-            pos = POS_INIT_DATA + (e % globID-1)*5*SIZEOF_INT + 1_AddrInt*padding*e % offsetIO*SIZEOF_RP
+            pos = POS_INIT_DATA + (e % globID-1)*5_AddrInt*SIZEOF_INT + 1_AddrInt*padding*e % offsetIO*SIZEOF_RP
             if (has_sensor) pos = pos + (e % globID - 1) * SIZEOF_RP
             read(fID, pos=pos) array_rank
             read(fID) no_of_eqs, Nxp1, Nyp1, Nzp1
@@ -4394,8 +4666,6 @@ slavecoord:             DO l = 1, 4
       istat = cudaDeviceGetLimit(val,cudaLimitMallocHeapSize)
       istat = cudaDeviceSetLimit(cudaLimitMallocHeapSize , heapsize)
 #endif
- 
-      print*, "I allocate the device data"
 
       !!$acc enter data copyin(self)
       !$acc update device(self)
@@ -4411,23 +4681,34 @@ slavecoord:             DO l = 1, 4
             !$acc enter data copyin(self % elements(eID) % storage % stats)
             !$acc enter data copyin(self % elements(eID) % storage % stats % data)
          end if
+         
+#ifdef FLOW
+         ! These are the actual memory
+         !$acc enter data copyin(self % elements(eID) % storage % QNS)
+         !$acc enter data copyin(self % elements(eID) % storage % QDotNS)
+         !$acc enter data copyin(self % elements(eID) % storage % U_xNS)
+         !$acc enter data copyin(self % elements(eID) % storage % U_yNS)
+         !$acc enter data copyin(self % elements(eID) % storage % U_zNS)
+         !$acc enter data copyin(self % elements(eID) % storage % rho)
+         !$acc enter data copyin(self % elements(eID) % storage % G_NS)
+         !$acc enter data copyin(self % elements(eID) % storage % S_NS)
+         !$acc enter data copyin(self % elements(eID) % storage % FluxF)
+         !$acc enter data copyin(self % elements(eID) % storage % FluxG)
+         !$acc enter data copyin(self % elements(eID) % storage % FluxH)
+         !$acc enter data copyin(self % elements(eID) % storage % contravariantFlux)
+#endif
 
+#ifndef ACOUSTIC
+         !$acc enter data copyin(self % elements(eID) % storage % mu_NS)
+         !$acc enter data copyin(self % elements(eID) % storage % mu_turb_NS)
+#endif
+         ! These are the pointer
          !$acc enter data copyin(self % elements(eID) % storage % Q)
          !$acc enter data copyin(self % elements(eID) % storage % QDot)
          !$acc enter data copyin(self % elements(eID) % storage % U_x)
          !$acc enter data copyin(self % elements(eID) % storage % U_y)
          !$acc enter data copyin(self % elements(eID) % storage % U_z)
 
-         !$acc enter data copyin(self % elements(eID) % storage % rho)
-         !$acc enter data copyin(self % elements(eID) % storage % G_NS)
-         !$acc enter data copyin(self % elements(eID) % storage % FluxF)
-         !$acc enter data copyin(self % elements(eID) % storage % FluxG)
-         !$acc enter data copyin(self % elements(eID) % storage % FluxH)
-         !$acc enter data copyin(self % elements(eID) % storage % contravariantFlux)
-
-         !$acc enter data copyin(self % elements(eID) % storage % S_NS)
-         !$acc enter data copyin(self % elements(eID) % storage % mu_ns)
-         !$acc enter data copyin(self % elements(eID) % storage % mu_turb_NS)
          !$acc enter data copyin(self % elements(eID) % geom)
          !$acc enter data copyin(self % elements(eID) % geom % x)
          !$acc enter data copyin(self % elements(eID) % geom % jGradXi)
@@ -4445,6 +4726,11 @@ slavecoord:             DO l = 1, 4
 
          !$acc enter data copyin(self % elements(eID) % isInsideBody)
          !$acc enter data copyin(self % elements(eID) % STL)
+         
+         !$acc enter data copyin(self % elements(eID) % MLevel)
+         !$acc enter data copyin(self % elements(eID) % MLevelwN)
+         !$acc enter data copyin(self % elements(eID) % ML_CFL)
+         !$acc enter data copyin(self % elements(eID) % ML_error_ratio)
 
 #ifdef CAHNHILLIARD
          !$acc enter data copyin(self % elements(eID) % storage % c)     ! CHE concentration
@@ -4481,7 +4767,34 @@ slavecoord:             DO l = 1, 4
          !$acc enter data copyin(self % faces(iFace) % rotation)
          !$acc enter data copyin(self % faces(iFace) % projectionType)
          !$acc enter data copyin(self % faces(iFace) % storage)
+         
+         ! !$acc enter data copyin(self % faces(iFace) % storage(1) % genericInterfaceFluxMemory)
+         ! !$acc enter data copyin(self % faces(iFace) % storage(2) % genericInterfaceFluxMemory)
+         ! !$acc enter data copyin(self % faces(iFace) % storage(1) % flux)
+         ! !$acc enter data copyin(self % faces(iFace) % storage(2) % flux)
+         
+#ifdef FLOW
+         ! These are the actual memory
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % QNS)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % QNS)
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % U_xNS)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % U_xNS)
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % U_yNS)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % U_yNS)
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % U_zNS)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % U_zNS)
+         
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % Q_aux)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % Q_aux)
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % mu_NS)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % mu_NS)
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % u_tau_NS)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % u_tau_NS)
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % rho)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % rho)
+#endif   
 
+         ! These are the pointer
          !$acc enter data copyin(self % faces(iFace) % storage(1) % Q)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % Q)
          !$acc enter data copyin(self % faces(iFace) % storage(1) % U_x)
@@ -4499,11 +4812,10 @@ slavecoord:             DO l = 1, 4
          !$acc enter data copyin(self % faces(iFace) % storage(1) % u_tau_NS)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % u_tau_NS)
          !$acc enter data copyin(self % faces(iFace) % storage(1) % fStar)
-         !$acc enter data copyin(self % faces(iFace) % storage(1) % unStar)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % fStar)
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % unStar)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % unStar)
-         !$acc enter data copyin(self % faces(iFace) % storage(1) % rho)
-         !$acc enter data copyin(self % faces(iFace) % storage(2) % rho)
+
          !$acc enter data copyin(self % faces(iFace) % geom)
          !$acc enter data copyin(self % faces(iFace) % geom % x)
          !$acc enter data copyin(self % faces(iFace) % geom % h)
@@ -4565,13 +4877,28 @@ slavecoord:             DO l = 1, 4
          !$acc enter data copyin(NodalStorage(i) % w)
          !$acc enter data copyin(NodalStorage(i) % x)
       END DO
+      
+      ! Copy MLRK Library 
+      !$acc enter data copyin(self % MLRK)
+      !$acc enter data copyin(self % MLRK % ML_GlobalLevel)
+      !$acc enter data copyin(self % MLRK % ML_Level)
+      !$acc enter data copyin(self % MLRK % MLIter)
+      !$acc enter data copyin(self % MLRK % MLIter_eID)
+      !$acc enter data copyin(self % MLRK % MLIter_fID)
+      !$acc enter data copyin(self % MLRK % MLIter_fID_Interior)
+      !$acc enter data copyin(self % MLRK % MLIter_fID_Boundary)
+      !$acc enter data copyin(self % MLRK % MLIter_eID_Seq)
+      !$acc enter data copyin(self % MLRK % MLIter_eIDN)
+      !$acc enter data copyin(self % MLRK % MLIter_eIDN_Seq)
 
 #ifdef _HAS_MPI_
       !$acc enter data copyin(self % faces_mpi)
       !$acc enter data copyin(self % elements_mpi)
+      !$acc enter data copyin(self % MLRK % MLIter_fID_MPI)
+      !$acc enter data copyin(self % MLRK % MLIter_eID_MPI)
+      !$acc enter data copyin(self % MLRK % MLIter_eIDN_MPI)    
       call MPIFaces_CreateMPIFacesStorage(self % MPIfaces)
 #endif
-      print*, "I am done allocating the device data"
  
    end subroutine HexMesh_CreateDeviceData
 
@@ -4585,23 +4912,37 @@ slavecoord:             DO l = 1, 4
       integer     :: i, j, k, iFace, fID, zoneID, nZones
       !-----------------------------------------------------------
 
-      print*, "I de-allocate the device data"
-
       DO eID = 1, SIZE(self % elements)
-         !$acc exit data delete(self % elements(eID) % Nxyz)
+      
+         ! These are the pointer
          !$acc exit data delete(self % elements(eID) % storage % Q)
-         !$acc exit data delete(self % elements(eID) % storage % rho)
          !$acc exit data delete(self % elements(eID) % storage % QDot)
+         !$acc exit data delete(self % elements(eID) % storage % U_x)
+         !$acc exit data delete(self % elements(eID) % storage % U_y)
+         !$acc exit data delete(self % elements(eID) % storage % U_z)
+         
+#ifdef FLOW
+         ! These are the actual memory
+         !$acc exit data delete(self % elements(eID) % storage % QNS)
+         !$acc exit data delete(self % elements(eID) % storage % QDotNS)
+         !$acc exit data delete(self % elements(eID) % storage % U_xNS)
+         !$acc exit data delete(self % elements(eID) % storage % U_yNS)
+         !$acc exit data delete(self % elements(eID) % storage % U_zNS)
+         !$acc exit data delete(self % elements(eID) % storage % rho)
          !$acc exit data delete(self % elements(eID) % storage % G_NS)
+         !$acc exit data delete(self % elements(eID) % storage % S_NS)
          !$acc exit data delete(self % elements(eID) % storage % FluxF)
          !$acc exit data delete(self % elements(eID) % storage % FluxG)
          !$acc exit data delete(self % elements(eID) % storage % FluxH)
          !$acc exit data delete(self % elements(eID) % storage % contravariantFlux)
-         !$acc exit data delete(self % elements(eID) % storage % U_x)
-         !$acc exit data delete(self % elements(eID) % storage % U_y)
-         !$acc exit data delete(self % elements(eID) % storage % U_z)
-         !$acc exit data delete(self % elements(eID) % storage % mu_ns)
+#endif
+#ifndef ACOUSTIC
+         !$acc exit data delete(self % elements(eID) % storage % mu_NS)
          !$acc exit data delete(self % elements(eID) % storage % mu_turb_NS)
+#endif
+         
+         !$acc exit data delete(self % elements(eID) % Nxyz)
+         
          !$acc exit data delete(self % elements(eID) % geom % jGradXi)
          !$acc exit data delete(self % elements(eID) % geom % jGradEta)
          !$acc exit data delete(self % elements(eID) % geom % jGradZeta)
@@ -4613,6 +4954,10 @@ slavecoord:             DO l = 1, 4
          !$acc exit data delete(self % elements(eID) % faceSide)
          !$acc exit data delete(self % elements(eID) % storage)
          !$acc exit data delete(self % elements(eID) % geom)
+         !$acc exit data delete(self % elements(eID) % MLevel)
+         !$acc exit data delete(self % elements(eID) % MLevelwN)
+         !$acc exit data delete(self % elements(eID) % ML_CFL)
+         !$acc exit data delete(self % elements(eID) % ML_error_ratio)
 #ifdef CAHNHILLIARD
          !$acc exit data delete(self % elements(eID) % storage % c)     ! CHE concentration
          !$acc exit data delete(self % elements(eID) % storage % cDot)  ! CHE concentration time derivative
@@ -4637,29 +4982,49 @@ slavecoord:             DO l = 1, 4
       ENDDO
 
       do iFace = 1, size(self % faces)
-         !$acc exit data delete(self % faces(iFace) % Nf)
-         !$acc exit data delete(self % faces(iFace) % NfRight)
-         !$acc exit data delete(self % faces(iFace) % rotation)
-         !$acc exit data delete(self % faces(iFace) % projectionType)
+      
+         ! These are the pointer
          !$acc exit data delete(self % faces(iFace) % storage(1) % Q)
          !$acc exit data delete(self % faces(iFace) % storage(2) % Q)
-         !$acc exit data delete(self % faces(iFace) % storage(1) % Q_aux)
-         !$acc exit data delete(self % faces(iFace) % storage(2) % Q_aux)
          !$acc exit data delete(self % faces(iFace) % storage(1) % U_x)
          !$acc exit data delete(self % faces(iFace) % storage(1) % U_y)
          !$acc exit data delete(self % faces(iFace) % storage(1) % U_z)
          !$acc exit data delete(self % faces(iFace) % storage(2) % U_x)
          !$acc exit data delete(self % faces(iFace) % storage(2) % U_y)
          !$acc exit data delete(self % faces(iFace) % storage(2) % U_z)
-         !$acc exit data delete(self % faces(iFace) % storage(1) % mu_NS)
-         !$acc exit data delete(self % faces(iFace) % storage(2) % mu_NS)
-         !$acc exit data delete(self % faces(iFace) % storage(1) % u_tau_NS)
-         !$acc exit data delete(self % faces(iFace) % storage(2) % u_tau_NS)
          !$acc exit data delete(self % faces(iFace) % storage(1) % fStar)
          !$acc exit data delete(self % faces(iFace) % storage(1) % unStar)
          !$acc exit data delete(self % faces(iFace) % storage(2) % fStar)
          !$acc exit data delete(self % faces(iFace) % storage(2) % unStar)
+         
+#ifdef FLOW
+         ! These are the actual memory
+         !$acc exit data delete(self % faces(iFace) % storage(1) % QNS)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % QNS)
+         !$acc exit data delete(self % faces(iFace) % storage(1) % U_xNS)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % U_xNS)
+         !$acc exit data delete(self % faces(iFace) % storage(1) % U_yNS)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % U_yNS)
+         !$acc exit data delete(self % faces(iFace) % storage(1) % U_zNS)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % U_zNS)
+         
+         !$acc exit data delete(self % faces(iFace) % storage(1) % Q_aux)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % Q_aux)
+         !$acc exit data delete(self % faces(iFace) % storage(1) % mu_NS)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % mu_NS)
+         !$acc exit data delete(self % faces(iFace) % storage(1) % u_tau_NS)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % u_tau_NS)
+         !$acc exit data delete(self % faces(iFace) % storage(1) % rho)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % rho)
+#endif   
+
+         !$acc exit data delete(self % faces(iFace) % Nf)
+         !$acc exit data delete(self % faces(iFace) % NfRight)
+         !$acc exit data delete(self % faces(iFace) % rotation)
+         !$acc exit data delete(self % faces(iFace) % projectionType)
+         
          !$acc exit data delete(self % faces(iFace) % storage)
+         
          !$acc exit data delete(self % faces(iFace) % geom % normal)
          !$acc exit data delete(self % faces(iFace) % geom % t1)
          !$acc exit data delete(self % faces(iFace) % geom % t2)
@@ -4723,6 +5088,25 @@ slavecoord:             DO l = 1, 4
       !$acc exit data delete(self % faces_interior ) 
       !$acc exit data delete(self % faces_boundary )
       !$acc exit data delete (self % elements_sequential )
+      
+      
+      !$acc exit data delete(self % MLRK % ML_GlobalLevel)
+      !$acc exit data delete(self % MLRK % ML_Level)
+      !$acc exit data delete(self % MLRK % MLIter)
+      !$acc exit data delete(self % MLRK % MLIter_eID)
+      !$acc exit data delete(self % MLRK % MLIter_fID)
+      !$acc exit data delete(self % MLRK % MLIter_fID_Interior)
+      !$acc exit data delete(self % MLRK % MLIter_fID_Boundary)
+      !$acc exit data delete(self % MLRK % MLIter_eID_Seq)
+      !$acc exit data delete(self % MLRK % MLIter_eIDN)
+      !$acc exit data delete(self % MLRK % MLIter_eIDN_Seq)
+
+#ifdef _HAS_MPI_
+      !$acc exit data delete(self % MLRK % MLIter_fID_MPI)
+      !$acc exit data delete(self % MLRK % MLIter_eID_MPI)
+      !$acc exit data delete(self % MLRK % MLIter_eIDN_MPI) 
+#endif
+      !$acc exit data delete(self % MLRK)
 
       !$acc exit data delete(self % nodes)
       !$acc exit data delete(self % faces)
@@ -4730,8 +5114,6 @@ slavecoord:             DO l = 1, 4
       !$acc exit data delete (self % storage)
       !$acc exit data delete (self % elements)
       !$acc exit data delete (self)
-
-      print*, "I am done de-allocating the device data"
  
    end subroutine HexMesh_ExitDeviceData
 
@@ -4841,7 +5223,7 @@ slavecoord:             DO l = 1, 4
 #ifdef FLOW
          self % storage % Q => self % storage % QNS
          self % storage % QDot => self % storage % QDotNS
-         self % storage % PrevQ(1:,1:) => self % storage % PrevQNS(1:,1:)
+         self % storage % PrevQ(1:,1:) => self % storage % PrevQNS(1:,1:) !!!!!!!!!!!!! Remove (1:...
 
          do eID = 1, self % no_of_elements
             call self % elements(eID) % storage % SetStorageToNS
@@ -5106,7 +5488,7 @@ subroutine HexMesh_pAdapt_MPI (self, NNew, controlVariables)
 !     *********************************************
 !     Adapt individual elements (geometry excluded)
 !     *********************************************
-!$omp parallel do schedule(runtime) private(e)
+!$omp parallel do schedule(runtime) private(e,sensor_value)
    do eID=1, self % no_of_elements
       e => self % elements(eID)   ! Associate fails(!) here
       if ( all( e % Nxyz == NNew(:,eID)) ) then
@@ -5591,79 +5973,666 @@ call elementMPIList % destruct
 
    end subroutine HexMesh_UpdateHOArrays
 
-   subroutine HexMesh_ComputeLocalGradientNS(self, set_mu)
+   subroutine HexMesh_ComputeLocalGradientNS(self, set_mu, Level)
       implicit none
       !-arguments-----------------------------------------
       type(HexMesh), intent(inout)    :: self
       logical, intent(in)             :: set_mu
+      integer, intent(in), optional   :: Level
       !-local-variables-----------------------------------
-      integer :: eID
-
+      integer :: eID, locLevel, iEl
       !--------------------------------------------------
-!$omp do schedule(runtime)
-      !$acc parallel loop gang vector_length(128) present(self) async(1)
-         do eID = 1 , size(self % elements)
-            call HexElement_ComputeLocalGradient(self % elements(eID), NCONS, NGRAD, self % elements(eID) % storage % Q)
-         end do
-      !$acc end parallel loop
+      if (present(Level)) then
+         locLevel = Level
+!$omp do schedule(runtime) private(eID)
+          !$acc parallel loop gang vector_length(128) present(self) copyin(locLevel) async(1)
+             do iEl = 1 , self % MLRK % MLIter(locLevel,8)
+                eID = self % MLRK % MLIter_eIDN(iEl)
+                call HexElement_ComputeLocalGradient(self % elements(eID), NCONS, NGRAD, self % elements(eID) % storage % Q)
+             end do
+          !$acc end parallel loop
 !$omp end do nowait
+      else 
+!$omp do schedule(runtime) private(eID)
+          !$acc parallel loop gang vector_length(128) present(self) async(1)
+             do eID = 1 , size(self % elements)
+                call HexElement_ComputeLocalGradient(self % elements(eID), NCONS, NGRAD, self % elements(eID) % storage % Q)
+             end do
+          !$acc end parallel loop
+!$omp end do nowait
+      end if
 
    end subroutine HexMesh_ComputeLocalGradientNS
 
 #ifdef CAHNHILLIARD
-   subroutine HexMesh_ComputeLocalGradientCH(self, set_mu)
+   subroutine HexMesh_ComputeLocalGradientCH(self, set_mu, Level)
       implicit none
       !-arguments-----------------------------------------
       type(HexMesh), intent(inout)   :: self
       logical, intent(in)            :: set_mu
+      integer, intent(in), optional  :: Level
       !-local-variables-----------------------------------
-      integer :: eID, i, j, k
-
+      integer :: eID, i, j, k, locLevel, iEl
       !--------------------------------------------------
-!$omp do schedule(runtime)
-      !$acc parallel loop gang vector_length(128) present(self) copyin(set_mu) async(1)
-      do eID = 1 , size(self % elements)
+      if (present(Level)) then
+          locLevel = Level
+!$omp do schedule(runtime) private(eID, i, j, k)
+          !$acc parallel loop gang vector_length(128) present(self) copyin(set_mu,locLevel) async(1)
+          do iEl = 1 , self % MLRK % MLIter(locLevel,8) 
+             eID = self % MLRK % MLIter_eIDN(iEl)
+             !$acc loop vector collapse(3) 
+             do k = 0, self % elements(eID) % Nxyz(3) ; do j = 0, self % elements(eID) % Nxyz(2) ; do i = 0, self % elements(eID) % Nxyz(1)
+                call chGradientVariables(NCOMP, NCOMP, self % elements(eID) % storage % Q(1:IMC,i,j,k), self % elements(eID) % storage % Q_grad_CH(1:IMC,i,j,k))
+                !if ( set_mu ) self % elements(eID) % storage % Q_grad_CH(IGMU,i,j,k) = self % elements(eID) % storage % mu(1,i,j,k)
+             end do         ; end do         ; end do
 
-         !$acc loop vector collapse(3) 
-         do k = 0, self % elements(eID) % Nxyz(3) ; do j = 0, self % elements(eID) % Nxyz(2) ; do i = 0, self % elements(eID) % Nxyz(1)
-            call chGradientVariables(NCOMP, NCOMP, self % elements(eID) % storage % Q(1:IMC,i,j,k), self % elements(eID) % storage % Q_grad_CH(1:IMC,i,j,k))
-            !if ( set_mu ) self % elements(eID) % storage % Q_grad_CH(IGMU,i,j,k) = self % elements(eID) % storage % mu(1,i,j,k)
-         end do         ; end do         ; end do
-
-         call HexElement_ComputeLocalGradient(self % elements(eID), NCOMP, NCOMP, self % elements(eID) % storage % Q_grad_CH)
-      end do
-   !$acc end parallel loop
+             call HexElement_ComputeLocalGradient(self % elements(eID), NCOMP, NCOMP, self % elements(eID) % storage % Q_grad_CH)
+          end do
+          !$acc end parallel loop
 !$omp end do nowait
+      else
+!$omp do schedule(runtime) private(i, j, k)
+          !$acc parallel loop gang vector_length(128) present(self) copyin(set_mu) async(1)
+          do eID = 1 , size(self % elements)
 
+             !$acc loop vector collapse(3) 
+             do k = 0, self % elements(eID) % Nxyz(3) ; do j = 0, self % elements(eID) % Nxyz(2) ; do i = 0, self % elements(eID) % Nxyz(1)
+                call chGradientVariables(NCOMP, NCOMP, self % elements(eID) % storage % Q(1:IMC,i,j,k), self % elements(eID) % storage % Q_grad_CH(1:IMC,i,j,k))
+                !if ( set_mu ) self % elements(eID) % storage % Q_grad_CH(IGMU,i,j,k) = self % elements(eID) % storage % mu(1,i,j,k)
+             end do         ; end do         ; end do
+
+             call HexElement_ComputeLocalGradient(self % elements(eID), NCOMP, NCOMP, self % elements(eID) % storage % Q_grad_CH)
+          end do
+          !$acc end parallel loop
+!$omp end do nowait
+      end if 
    end subroutine HexMesh_ComputeLocalGradientCH
 
-   subroutine HexMesh_ComputeLocalGradientMU(self, set_mu)
+   subroutine HexMesh_ComputeLocalGradientMU(self, set_mu, Level)
       use VariableConversion
       implicit none
       !-arguments-----------------------------------------
       type(HexMesh), intent(inout)   :: self
       logical, intent(in)            :: set_mu
+      integer, intent(in), optional  :: Level
       !-local-variables-----------------------------------
-      integer :: eID, i, j, k
+      integer :: eID, i, j, k, locLevel, iEl
 
       !--------------------------------------------------
-!$omp do schedule(runtime)
-      !$acc parallel loop gang vector_length(128) present(self) copyin(set_mu) async(1)
-      do eID = 1 , size(self % elements)
+      if (present(Level)) then
+          locLevel = Level
+!$omp do schedule(runtime)  private(eID, i, j, k)
+          !$acc parallel loop gang vector_length(128) present(self) copyin(set_mu,locLevel) async(1)
+          do iEl = 1 , self % MLRK % MLIter(locLevel,8) 
+             eID = self % MLRK % MLIter_eIDN(iEl)
+             !$acc loop vector collapse(3) 
+             do k = 0, self % elements(eID) % Nxyz(3) ; do j = 0, self % elements(eID) % Nxyz(2) ; do i = 0, self % elements(eID) % Nxyz(1)
+                call mGradientVariables(NCONS, NGRAD, self % elements(eID) % storage % Q(:,i,j,k), self % elements(eID) % storage % Q_grad_mu(:,i,j,k), self % elements(eID) % storage % rho(i,j,k))
+                !if ( set_mu == .true.) then ! This is not working - weird - above it works
+                      self % elements(eID) % storage % Q_grad_mu(IGMU,i,j,k) = self % elements(eID) % storage % mu(1,i,j,k)
+                !end if
+             end do         ; end do         ; end do
 
-         !$acc loop vector collapse(3) 
-         do k = 0, self % elements(eID) % Nxyz(3) ; do j = 0, self % elements(eID) % Nxyz(2) ; do i = 0, self % elements(eID) % Nxyz(1)
-            call mGradientVariables(NCONS, NGRAD, self % elements(eID) % storage % Q(:,i,j,k), self % elements(eID) % storage % Q_grad_mu(:,i,j,k), self % elements(eID) % storage % rho(i,j,k))
-            !if ( set_mu == .true.) then ! This is not working - weird - above it works
-                  self % elements(eID) % storage % Q_grad_mu(IGMU,i,j,k) = self % elements(eID) % storage % mu(1,i,j,k)
-            !end if
-         end do         ; end do         ; end do
-
-         call HexElement_ComputeLocalGradient(self % elements(eID), NCONS, NGRAD, self % elements(eID) % storage % Q_grad_mu)
-      end do
-   !$acc end parallel loop
+             call HexElement_ComputeLocalGradient(self % elements(eID), NCONS, NGRAD, self % elements(eID) % storage % Q_grad_mu)
+          end do
+          !$acc end parallel loop
 !$omp end do nowait
+      else
+!$omp do schedule(runtime) private(i, j, k)
+          !$acc parallel loop gang vector_length(128) present(self) copyin(set_mu) async(1)
+          do eID = 1 , size(self % elements)
+
+             !$acc loop vector collapse(3) 
+             do k = 0, self % elements(eID) % Nxyz(3) ; do j = 0, self % elements(eID) % Nxyz(2) ; do i = 0, self % elements(eID) % Nxyz(1)
+                call mGradientVariables(NCONS, NGRAD, self % elements(eID) % storage % Q(:,i,j,k), self % elements(eID) % storage % Q_grad_mu(:,i,j,k), self % elements(eID) % storage % rho(i,j,k))
+                !if ( set_mu == .true.) then ! This is not working - weird - above it works
+                      self % elements(eID) % storage % Q_grad_mu(IGMU,i,j,k) = self % elements(eID) % storage % mu(1,i,j,k)
+                !end if
+             end do         ; end do         ; end do
+
+             call HexElement_ComputeLocalGradient(self % elements(eID), NCONS, NGRAD, self % elements(eID) % storage % Q_grad_mu)
+          end do
+          !$acc end parallel loop
+!$omp end do nowait
+      end if 
+      
    end subroutine HexMesh_ComputeLocalGradientMU
 #endif
+
+!
+!////////////////////////////////////////////////////////////////////////
+!  Multi Level Runge-Kutta Time Integration - Mesh Library
+!////////////////////////////////////////////////////////////////////////
+!  Subroutines for MLRK library in HexMesh, to store the elements level, etc
+!  Procedures are: 1. Construct (Called in TimeIntegration)
+!                  2. Update (Called in TimeIntegration, updating level based on local CFL)
+!                  3. sendGlobalID
+!                  4. Destruct
+!------------------------------------------------------------------------
+!  Construct 
+!------------------------------------------------------------------------
+   subroutine MultiLevel_RK_Construct(self, mesh, nLevel)
+    implicit none
+    !-arguments-----------------------------------------
+    class(MultiLevel_RK), target  , intent(inout)   :: self
+    type (HexMesh)                                  :: mesh 
+    integer                       , intent(in)      :: nLevel
+    
+    !-local variable-----------------------------------------
+    integer     :: i
+    logical     :: isReconstruct, isReconstructMPI
+    
+    isReconstruct    = .false.
+    isReconstructMPI = .false.
+    
+    !-deallocate-----------------------------------------
+    if( allocated(self % ML_GlobalLevel) ) then
+        !$acc exit data delete(self % ML_GlobalLevel)
+        !$acc exit data delete(self % ML_Level)
+        !$acc exit data delete(self % MLIter)
+        !$acc exit data delete(self % MLIter_eID)
+        !$acc exit data delete(self % MLIter_fID)
+        !$acc exit data delete(self % MLIter_fID_Interior)
+        !$acc exit data delete(self % MLIter_fID_Boundary)
+        !$acc exit data delete(self % MLIter_eID_Seq)
+        !$acc exit data delete(self % MLIter_eIDN)
+        !$acc exit data delete(self % MLIter_eIDN_Seq)
+        
+        deallocate(self % ML_GlobalLevel)
+        deallocate(self % ML_Level)
+        deallocate(self % MLIter)
+        deallocate(self % MLIter_eID)
+        deallocate(self % MLIter_fID)
+        deallocate(self % MLIter_fID_Interior)
+        deallocate(self % MLIter_fID_Boundary)
+        deallocate(self % MLIter_eID_Seq)
+        deallocate(self % MLIter_eIDN)
+        deallocate(self % MLIter_eIDN_Seq)
+        isReconstruct = .true.
+    end if 
+
+    !-allocate-----------------------------------------  
+    allocate(self % ML_GlobalLevel(nLevel), self % ML_Level(nLevel), self % MLIter(nLevel,10))
+    allocate(self % MLIter_eID(mesh % no_of_elements))
+    allocate(self % MLIter_fID(mesh % no_of_faces))  ! Each face has 2 sides, except boundaries
+    allocate(self % MLIter_fID_Interior(size(mesh % faces_interior)))
+    allocate(self % MLIter_fID_Boundary(size(mesh % faces_boundary)))  
+    allocate(self % MLIter_eID_Seq(size(mesh % elements_sequential)))
+    allocate(self % MLIter_eIDN(mesh % no_of_elements))
+    allocate(self % MLIter_eIDN_Seq(size(mesh % elements_sequential)))
+    
+    !Initial default value - all Level 1
+    self % nLevel         = nLevel
+    self % maxLevel       = nLevel
+    self % CFL_CutOff     = 0.5_RP
+    self % ML_GlobalLevel = mesh % no_of_allElements
+    self % ML_Level       = mesh % no_of_elements
+    self % MLIter         = 0
+    self % MLIter(1,1)    = mesh % no_of_elements
+    self % MLIter(1,2)    = size(mesh % faces)
+    self % MLIter(1,3)    = size(mesh % faces_interior)
+    self % MLIter(1,4)    = size(mesh % faces_boundary)
+    self % MLIter(1,5)    = size(mesh % elements_sequential)
+    self % MLIter(1,8)    = mesh % no_of_elements
+    self % MLIter(1,9)    = size(mesh % elements_sequential)
+    self % MLIter_eID (:) = [(i, i=1,size(mesh % elements))]
+    self % MLIter_fID (:) = [(i, i=1,size(mesh % faces))]
+    self % MLIter_fID_Interior       = mesh % faces_interior
+    self % MLIter_fID_Boundary       = mesh % faces_boundary
+    self % MLIter_eID_Seq            = mesh % elements_sequential
+    self % MLIter_eIDN (:) = [(i, i=1,size(mesh % elements))]
+    self % MLIter_eIDN_Seq            = mesh % elements_sequential
+    
+#ifdef _HAS_MPI_
+      if ( MPI_Process % doMPIAction ) then
+         if( allocated(self % MLIter_eID_MPI) ) then
+            !$acc exit data delete(self % MLIter_eID_MPI)
+            !$acc exit data delete(self % MLIter_fID_MPI)
+            !$acc exit data delete(self % MLIter_eIDN_MPI)
+            deallocate(self % MLIter_eID_MPI)
+            deallocate(self % MLIter_fID_MPI)
+            deallocate(self % MLIter_eIDN_MPI)
+            isReconstructMPI = .true. 
+         end if 
+         
+         allocate(self % MLIter_eID_MPI(size(mesh % elements_mpi)))
+         allocate(self % MLIter_fID_MPI(size(mesh % faces_mpi)))
+         allocate(self % MLIter_eIDN_MPI(size(mesh % elements_mpi)))
+         self % MLIter(1,6)           = size(mesh % elements_mpi)
+         self % MLIter(1,7)           = size(mesh % faces_mpi)
+         self % MLIter(1,10)          = size(mesh % elements_mpi)
+         self % MLIter_eID_MPI        = mesh % elements_mpi
+         self % MLIter_fID_MPI        = mesh % faces_mpi
+         self % MLIter_eIDN_MPI       = mesh % elements_mpi
+         
+      end if
+#endif
+     if (isReconstruct) then
+         !$acc exit data delete(self)
+     end if 
+        
+   end subroutine MultiLevel_RK_Construct
+!------------------------------------------------------------------------
+!  Update 
+!------------------------------------------------------------------------
+   subroutine MultiLevel_RK_Update(self, mesh, CFL_Cut, globalMax, globalMin, maxCFLInterf)
+    use MPI_Process_Info
+    implicit none
+    !-arguments-----------------------------------------
+    class(MultiLevel_RK), target  , intent(inout)   :: self
+    type (HexMesh)                                  :: mesh 
+    real (kind=RP)                , intent(in)      :: CFL_Cut
+    real (kind=RP)                , intent(in)      :: globalMax
+    real (kind=RP)                , intent(in)      :: globalMin
+    real (kind=RP)                , intent(in)      :: maxCFLInterf
+    
+    !-local variable-----------------------------------------
+    integer          :: eID, level, levelOld, i, j, fID, sideID
+    integer          :: counter(1:self%nLevel), nInterior, nBoundary, nFace, nMPIface
+    integer          :: Level_eID(mesh % no_of_elements), Level_eID_wN(mesh % no_of_elements), Level_eID_wN_BUFF(mesh % no_of_elements)
+    integer          :: faceFlag(size(mesh % faces),2)
+    integer          :: iterations(self%nLevel+1,10), indexN(2*self%nLevel)
+    integer          :: ierr                     ! Error for MPI calls
+    real(kind=RP)    :: perLevel, cflLevel, dtRatio, cfl
+    real(kind=RP)    :: maxc, minc
+    real(kind=RP)    :: cfl_cutoff(self%nLevel-1)
+    integer, allocatable :: neighborID(:,:), neighborIDAll(:,:),counterOMP(:,:), counterOMPN(:,:)
+    
+!
+!     Initialize
+!     ------------------------------------------------------------
+      ! estimated maximum local timestep ratio in RK3 (5/12)
+      dtRatio = 2.5_RP 
+	  
+      self % CFL_CutOff = CFL_Cut
+      self % MLIter = 0
+    
+      allocate(neighborID(self%nLevel-2,mesh % no_of_allElements), neighborIDAll(self%nLevel-2,mesh % no_of_allElements))
+      neighborID   = 0
+      neighborIDAll= 0
+      allocate(counterOMP(self%nLevel,mesh % no_of_elements), counterOMPN (self%nLevel,mesh % no_of_elements))
+      counterOMP   = 0
+      counterOMPN  = 0
+      Level_eID    = 0
+      Level_eID_wN = 0 
+      
+      cfl_cutoff(1) = self % CFL_CutOff   
+      
+      do i = 2, self % nLevel-1
+        cfl_cutoff(i) = cfl_cutoff(i-1)*dtRatio
+      end do
+!
+!     Determine the level of each element
+!     ------------------------------------------------------------
+!$omp parallel shared(self,mesh,neighborID,neighborIDAll,CFL_Cut, dtRatio, counter, counterOMP, counterOMPN, maxCFLInterf, cfl_cutoff, Level_eID, Level_eID_wN) default(private)
+!$omp do schedule(runtime)
+      do eID = 1, SIZE(mesh % elements)
+         ! Determine level from CFL cutoff and CFL percentile. Level <= max Level
+         cfl = mesh % elements(eID) % ML_CFL
+#ifdef MULTIPHASE
+         ! For multiphase, the interface elements have homogenous level, represented by the highest CFL along interface elements
+         maxc = min(maxval(mesh % elements(eID) % storage % Q(1,:,:,:)),1.0_RP)
+         minc = max(minval(mesh % elements(eID) % storage % Q(1,:,:,:)),0.0_RP)
+		 
+		 ! For multiphase assigned maximum cfl for the interface - works in 2 phases only 
+         if ((maxc.gt.0.0001_RP).and.(minc.lt.0.9999_RP)) then 
+            cfl = maxCFLInterf * 100.0_RP
+         end if 
+#endif      
+         ! Determine Level of element based on its cfl
+         level = self % nLevel 
+         do i = 1, self % nLevel-1
+            if (cfl .lt. cfl_cutoff(i)) then 
+                level = i
+                exit
+            end if 
+         end do 
+         
+         counterOMP(level,eID) = 1
+         mesh % elements(eID) % MLevel   = level
+         mesh % elements(eID) % MLevelwN = level
+         Level_eID(eID) = level
+      end do 
+!$omp end do
+!$omp end parallel
+      counterOMPN = counterOMP
+      Level_eID_wN= Level_eID
+      ! Check the neighbours of each element to ensure no rapid jump in level, modify level if required
+      do i=self%nLevel, 2, -1
+        call MultiLevel_RK_CheckNeighbour(self, mesh, i, Level_eID, Level_eID_wN, counterOMP, counterOMPN)
+      end do 
+
+      Level_eID_wN_BUFF = Level_eID_wN
+      Level_eID_wN = Level_eID + Level_eID_wN_BUFF
+      ! Sort decending Level_eID (Large to small level) and Level_eID_wN (neighbour included)
+      call sortDescendInt(Level_eID,self % MLIter_eID) 
+      call sortDescendInt(Level_eID_wN, self % MLIter_eIDN)
+  
+      do i = 1, self % nLevel
+        self % MLIter(i,1) = sum(counterOMP(i:self % nLevel,:))    ! Elements
+        self % ML_Level(i) = sum(counterOMP(i,:))
+        self % MLIter(i,8) = sum(counterOMPN(i:self % nLevel,:))   ! Elements + neighbours   
+      end do
+      
+      deallocate(counterOMP, counterOMPN)
+
+      !All faces of each sorted element
+      nInterior=0
+      nBoundary=0
+      levelOld = self % nLevel
+      faceFlag = 0
+      nFace = 0
+      nMPIface = 0 
+      
+      do i = 1, self % MLIter(1,1)
+        eID   = self % MLIter_eID(i)
+        level = Level_eID (i)
+        
+        if (level .ne. levelOld) then
+            self % MLIter(1:levelOld,2) = nFace
+            self % MLIter(1:levelOld,3) = nInterior
+            self % MLIter(1:levelOld,4) = nBoundary
+            self % MLIter(1:levelOld,7) = nMPIface
+            levelOld = level
+        end if 
+        
+        ! Check for interior or boundary faces
+        do j=1,6
+           fID    = mesh % elements(eID) % faceIDs(j)
+           sideID = mesh % elements(eID) % faceSide(j)
+           
+           ! Order of faceID from highest to lowest level
+           if (faceFlag(fID,1).eq.0) then
+                nFace = nFace+1
+                self % MLIter_fID(nFace) = fID
+                faceFlag(fID,1) = 1
+           end if 
+           ! Order of interiorFace, boundaryFace and MPIFace from highest to lowest level
+           if (mesh % faces(fID) % FaceType .eq. HMESH_INTERIOR) then
+              if (faceFlag(fID,2).eq.0) then
+                nInterior = nInterior+1
+                self % MLIter_fID_Interior(nInterior) = fID
+                faceFlag(fID,2) = 1
+              end if 
+           elseif (mesh % faces(fID) % FaceType .eq. HMESH_BOUNDARY) then
+              nBoundary = nBoundary+1
+              self % MLIter_fID_Boundary(nBoundary) = fID
+           elseif (mesh % faces(fID) % FaceType .eq. HMESH_MPI) then
+              nMPIface = nMPIface + 1
+              self % MLIter_fID_MPI(nMPIface) = fID
+           end if 
+        end do
+      end do
+      self % MLIter(1:level,2) = nFace
+      self % MLIter(1:level,3) = nInterior
+      self % MLIter(1:level,4) = nBoundary
+      self % MLIter(1:level,7) = nMPIface
+      
+      ! ! Sequential elements
+      do i = 1, size(mesh % elements_sequential)
+        eID = mesh % elements_sequential(i) 
+        Level_eID(i) = mesh % elements(eID) % MLevel
+        Level_eID_wN(i) = Level_eID_wN_BUFF(eID)
+        self % MLIter(1:Level_eID(i),5) = self % MLIter(1:Level_eID(i),5)+1
+        self % MLIter(1:Level_eID_wN(i),9) = self % MLIter(1:Level_eID_wN(i),9)+1
+      end do 
+      ! Sort decending Level_eID (Large to small level)
+      call sortDescendInt(Level_eID(1:size(mesh % elements_sequential)),self % MLIter_eID_Seq) 
+      call sortDescendInt(Level_eID_wN(1:size(mesh % elements_sequential)),self % MLIter_eIDN_Seq) 
+     
+      ! Sort eID, fID for better memory access
+      iterations = 0
+      iterations(1:self%nLevel,:)=self % MLIter
+      do i=self % nLevel, 1, -1
+        call sortAscendInt(self % MLIter_eID(iterations(i+1,1)+1:iterations(i,1)))
+        call sortAscendInt(self % MLIter_fID(iterations(i+1,2)+1:iterations(i,2)))
+        call sortAscendInt(self % MLIter_fID_Interior(iterations(i+1,3)+1:iterations(i,3)))
+        call sortAscendInt(self % MLIter_fID_Boundary(iterations(i+1,4)+1:iterations(i,4)))
+        call sortAscendInt(self % MLIter_eID_Seq(iterations(i+1,5)+1:iterations(i,5)))
+        call sortAscendInt(self % MLIter_eIDN_Seq(iterations(i+1,9)+1:iterations(i,9)))
+      end do
+      self % ML_GlobalLevel = self % ML_Level
+      
+      ! Sort MLIter_eIDN
+      indexN (1: self % nLevel) = self % MLIter(1: self % nLevel,1)
+      indexN (self % nLevel+1 : self % nLevel*2) = self % MLIter(1: self % nLevel,8)
+      indexN (1) = 0
+      call sortAscendInt(indexN)
+      
+      do i=1, (2*self % nLevel)-1
+        if (indexN(i).ne.indexN(i+1)) then
+          call sortAscendInt(self % MLIter_eIDN(indexN(i)+1:indexN(i+1)))
+        end if 
+      end do 
+      
+! MPI elements and operation
+#ifdef _HAS_MPI_
+      if ( MPI_Process % doMPIAction ) then
+          counter(1:self % nLevel)=0
+          do i = 1, size(mesh % elements_mpi)
+            eID = mesh % elements_mpi(i) 
+            Level_eID(i) = mesh % elements(eID) % MLevel
+            Level_eID_wN(i) = Level_eID_wN_BUFF(eID)
+            self % MLIter(1:Level_eID(i),6) = self % MLIter(1:Level_eID(i),6)+1
+            self % MLIter(1:Level_eID_wN(i),10) = self % MLIter(1:Level_eID_wN(i),10)+1
+          end do 
+          ! Sort decending Level_eID (Large to small level)
+          call sortDescendInt(Level_eID(1:size(mesh % elements_mpi)),self % MLIter_eID_MPI) 
+          call sortDescendInt(Level_eID_wN(1:size(mesh % elements_mpi)),self % MLIter_eIDN_MPI) 
+          
+          ! Global statistics level       
+          call mpi_allreduce(self % ML_Level(1:self%nLevel), self % ML_GlobalLevel(1:self%nLevel), self%nLevel, MPI_INT, MPI_SUM, &
+                            MPI_COMM_WORLD, ierr)
+      end if
+#endif
+
+!       Max actual level - This is the actual level used should no element exist in nLevel
+        do i = self % nLevel,1,-1
+            self % maxLevel = i
+            if (self % ML_GlobalLevel(i).ne.0) exit
+        end do 
+        
+    if (self % maxLevel.eq.1) then
+        if (MPI_Process % isRoot ) then
+!
+!        Write Error Information 
+!        -----------------------------------------------         
+         write(STD_OUT,'(/)')
+         call SubSection_Header("Update Multi-Level Local Timestepping")
+            write(STD_OUT,'(A)') "Error: All elements are in Level 1. Minimum 2 levels required. Use normal RK method"
+        end if 
+        errorMessage(STD_OUT)
+        error stop
+    end if 
+    if ( .not. MPI_Process % isRoot ) return
+!
+!        Write Information 
+!        -----------------------------------------------         
+         write(STD_OUT,'(/)')
+         call SubSection_Header("Update Multi-Level Local Timestepping")
+            write(STD_OUT,'(30X,A,A27,F10.4)') "->" , "Max. Advective CFL: " , globalMax
+            write(STD_OUT,'(30X,A,A27,F10.4)') "->" , "Min. Advective CFL: " , globalMin
+            write(STD_OUT,'(30X,A,A27,F10.4)') "->" , "Max. Allow. Global CFL: " , 2.5_RP**real(self % maxLevel-1) 
+#if defined(MULTIPHASE)
+            write(STD_OUT,'(30X,A,A27,F10.4)') "->" , "Max. CFL Interface: " , maxCFLInterf
+#endif    
+            write(STD_OUT,'(30X,A,A27)') "->" , "Number of Element: "
+            do i = 1,self % nLevel
+                write(STD_OUT,'(30X,A,A18,I4,A4,I10)') "->" , "Level ", i," : ",self%ML_GlobalLevel(i)
+            end do 
+            write(STD_OUT,'(30X,A,A27,I4)') "->" , "Number of RK3 Level: " , self % maxLevel
+
+   end subroutine MultiLevel_RK_Update
+!------------------------------------------------------------------------
+!  Update 
+!------------------------------------------------------------------------
+   subroutine MultiLevel_RK_CheckNeighbour(self, mesh, level, Level_eID, Level_eID_wN, counterOMP, counterOMPN)
+    implicit none
+    !-arguments-----------------------------------------
+    type(MultiLevel_RK)  , intent(inout)   :: self
+    type (HexMesh)                         :: mesh 
+    integer              , intent(in)      :: level
+    integer              , intent(inout)   :: Level_eID(mesh % no_of_elements)
+    integer              , intent(inout)   :: Level_eID_wN(mesh % no_of_elements)
+    integer              , intent(inout)   :: counterOMP(self % nLevel, mesh % no_of_elements)
+    integer              , intent(inout)   :: counterOMPN(self % nLevel, mesh % no_of_elements)
+    
+    integer              :: eID, i, j
+    integer              :: ierr  
+    integer, allocatable :: neighborID(:), neighborIDAll(:)
+
+    allocate(neighborID(mesh % no_of_allElements), neighborIDAll(mesh % no_of_allElements))
+    neighborID = 0
+    neighborIDAll = 0
+      
+!$omp parallel shared(self,mesh,neighborID,neighborIDAll, counterOMP, counterOMPN, level, Level_eID, Level_eID_wN) default(private)
+!$omp do schedule(runtime)
+     do eID =1, size(mesh % elements)
+         associate(element => mesh % elements(eID))
+         ! Flag neighboring elements of elements with level equal to the level N that being assesed 
+         if (element % MLevel .eq. level) then
+            do i =1, 6
+                if ((element % Connection(i) % globID .gt. 0).and.(element % Connection(i) % globID .lt. mesh % no_of_allElements+1)) then
+                    neighborID(element % Connection(i) % globID) = neighborID(element % Connection(i) % globID) +1
+                end if 
+            end do 
+         end if 
+         end associate
+     end do 
+!$omp end do
+!$omp end parallel
+
+      neighborIDAll = neighborID
+!     Combine information on neighboring elements with other MPI
+#ifdef _HAS_MPI_
+      if ( MPI_Process % doMPIAction ) then
+          ! Gather all the neigboring element of level 3 (globalID)
+          call mpi_allreduce(neighborID, neighborIDAll, mesh % no_of_allElements, MPI_INT, MPI_SUM, &
+                            MPI_COMM_WORLD, ierr)
+      end if
+#endif
+      deallocate(neighborID)
+!$omp parallel shared(self,mesh,neighborIDAll, counterOMP, counterOMPN, Level_eID, Level_eID_wN, level) default(private)
+!$omp do schedule(runtime)    
+     ! Neighbouring elements of elements with level N will have at least level N-1
+      do eID =1, SIZE(mesh % elements)
+        associate(element => mesh % elements(eID))
+        if (element % MLevel.lt.(level)) then
+            if (neighborIDAll(element % globID).gt.0) then
+                element % MLevel = level-1
+                counterOMP (:,eID) = 0
+                counterOMP (level-1,eID) = 1
+                element % MLevelwN = level
+                Level_eID_wN(eID)  = level
+                Level_eID(eID) = element % MLevel
+                counterOMPN (:,eID)= 0
+                counterOMPN (level,eID) = 1
+            end if 
+        end if 
+        end associate
+      end do 
+!$omp end do
+!$omp end parallel
+
+   end subroutine MultiLevel_RK_CheckNeighbour
+!------------------------------------------------------------------------
+!  Send Global Element ID Level
+!------------------------------------------------------------------------
+   subroutine MultiLevel_RK_SendGlobID(self, mesh, globIDLevelPartition, nElementLevelPartition)
+    use MPI_Process_Info
+    implicit none
+    !-arguments-----------------------------------------
+    class(MultiLevel_RK), target  , intent(inout)   :: self
+    type (HexMesh)                                  :: mesh 
+    integer                       , intent(out)     :: globIDLevelPartition(mesh % no_of_allElements)
+    integer                       , intent(out)     :: nElementLevelPartition(self % nLevel)
+    
+    !-local variable-----------------------------------------
+    integer          :: eID
+
+    nElementLevelPartition=0
+    do eID=1,mesh % no_of_elements
+        globIDLevelPartition(mesh % elements (eID) % globID) = mesh % elements (eID) % MLevelwN
+        nElementLevelPartition(mesh % elements (eID) % MLevelwN) = nElementLevelPartition(mesh % elements (eID) % MLevelwN) + 1
+    end do 
+
+   end subroutine MultiLevel_RK_SendGlobID
+!------------------------------------------------------------------------
+!  Update MLRK data in GPU 
+!------------------------------------------------------------------------
+   subroutine HexMesh_MLRK_UpdateDevice(self)
+#ifdef _OPENACC
+      use cudafor
+      use openacc
+#endif
+      implicit none
+      !-----------------------------------------------------------
+      class(HexMesh)                  :: self
+      !-----------------------------------------------------------
+      integer :: eID
+      !-----------------------------------------------------------
+#ifdef _OPENACC 
+      !$acc wait
+!
+!   Update Device Data (GPU)
+!   -----------------------
+    do eID = 1, size(self % elements)
+        !$acc update device(self % elements(eID) % MLevel)
+        !$acc update device(self % elements(eID) % MLevelwN)
+    end do 
+    
+      ! Copy MLRK Library 
+      !$acc enter data copyin(self % MLRK)
+      !$acc enter data copyin(self % MLRK % ML_GlobalLevel)
+      !$acc enter data copyin(self % MLRK % ML_Level)
+      !$acc enter data copyin(self % MLRK % MLIter)
+      !$acc enter data copyin(self % MLRK % MLIter_eID)
+      !$acc enter data copyin(self % MLRK % MLIter_fID)
+      !$acc enter data copyin(self % MLRK % MLIter_fID_Interior)
+      !$acc enter data copyin(self % MLRK % MLIter_fID_Boundary)
+      !$acc enter data copyin(self % MLRK % MLIter_eID_Seq)
+      !$acc enter data copyin(self % MLRK % MLIter_eIDN)
+      !$acc enter data copyin(self % MLRK % MLIter_eIDN_Seq)
+
+#ifdef _HAS_MPI_
+      !$acc enter data copyin(self % MLRK % MLIter_fID_MPI)
+      !$acc enter data copyin(self % MLRK % MLIter_eID_MPI)
+      !$acc enter data copyin(self % MLRK % MLIter_eIDN_MPI)    
+#endif
+    
+
+      !$acc wait
+#endif
+
+   end subroutine HexMesh_MLRK_UpdateDevice
+!------------------------------------------------------------------------
+!  Destruct 
+!------------------------------------------------------------------------
+   subroutine MultiLevel_RK_Destruct(self)
+    implicit none
+    !-arguments-----------------------------------------
+    class(MultiLevel_RK), target  , intent(inout)   :: self
+    
+    if( allocated(self % ML_GlobalLevel) ) deallocate(self % ML_GlobalLevel)
+    if( allocated(self % ML_Level))        deallocate(self % ML_Level)
+    if( allocated(self % MLIter) )         deallocate(self % MLIter)
+    if( allocated(self % MLIter_eID) )     deallocate(self % MLIter_eID)
+    if( allocated(self % MLIter_fID) )     deallocate(self % MLIter_fID)
+    if( allocated(self % MLIter_fID_Interior))  deallocate(self % MLIter_fID_Interior)
+    if( allocated(self % MLIter_fID_Boundary) ) deallocate(self % MLIter_fID_Boundary)
+    if( allocated(self % MLIter_fID_MPI) )  deallocate(self % MLIter_fID_MPI)
+    if( allocated(self % MLIter_eID_Seq) )  deallocate(self % MLIter_eID_Seq)
+    if( allocated(self % MLIter_eIDN) )     deallocate(self % MLIter_eIDN)
+    if( allocated(self % MLIter_eIDN_Seq) ) deallocate(self % MLIter_eIDN_Seq)
+
+    if( allocated(self % MLIter_eID_MPI)  ) deallocate(self % MLIter_eID_MPI)
+    if( allocated(self % MLIter_fID_MPI)  ) deallocate(self % MLIter_fID_MPI)
+    if( allocated(self % MLIter_eIDN_MPI) ) deallocate(self % MLIter_eIDN_MPI)
+    
+   end subroutine MultiLevel_RK_Destruct
+!
+!  End - Multi Level Runge-Kutta Time Integration - Mesh Library
+!////////////////////////////////////////////////////////////////////////
+!   
 
 END MODULE HexMeshClass
