@@ -180,6 +180,7 @@ MODULE HexMeshClass
       SUBROUTINE HexMesh_Destruct( self )
          IMPLICIT NONE
          CLASS(HexMesh) :: self
+         integer :: fID
          
          safedeallocate (self % Nx)
          safedeallocate (self % Ny)
@@ -204,7 +205,9 @@ MODULE HexMeshClass
 !        Faces
 !        -----
 !
-         call self % faces % Destruct
+         do fID=1, size(self % faces)
+            call self % faces(fID) % Destruct
+         end do
          DEALLOCATE( self % faces )
 !
 !        -----
@@ -2784,6 +2787,7 @@ slavecoord:             DO l = 1, 4
             select case(f % faceType)
             case(HMESH_INTERIOR, HMESH_BOUNDARY)
                associate(eL => self % elements(f % elementIDs(1)))
+               allocate(f % geom)
                call f % geom % construct(f % Nf, f % NelLeft, f % NfLeft, eL % Nxyz, &
                                          NodalStorage(f % Nf), NodalStorage(eL % Nxyz), &
                                          eL % geom, eL % hexMap, f % elementSide(1), &
@@ -2807,6 +2811,7 @@ slavecoord:             DO l = 1, 4
                end select
 
                associate(e => self % elements(f % elementIDs(side)))
+               allocate(f % geom)
                call f % geom % construct(f % Nf, Nelf, Nel, e % Nxyz, &
                                          NodalStorage(f % Nf), NodalStorage(e % Nxyz), &
                                          e % geom, e % hexMap, f % elementSide(side), &
@@ -4356,6 +4361,7 @@ slavecoord:             DO l = 1, 4
       if (Face_St) then
          do fID = 1, size(self % faces)
             associate ( f => self % faces(fID) )
+            allocate(f % storage(2))
             call f % storage(1) % Construct(NDIM, f % Nf, f % NelLeft , computeGradients, .FALSE., FaceComputeQdot)
             call f % storage(2) % Construct(NDIM, f % Nf, f % NelRight, computeGradients, .FALSE., FaceComputeQdot)
             end associate
@@ -5132,7 +5138,11 @@ subroutine HexMesh_pAdapt_MPI (self, NNew, controlVariables)
 !     ----------------------
 !$omp parallel do schedule(runtime) 
    do fID=1, self % no_of_faces  !Destruct All faces storage
-      call self % faces(fID) % storage % destruct
+      if (associated(self % faces(fID) % storage)) then
+         call self % faces(fID) % storage % destruct
+         deallocate(self % faces(fID) % storage)
+         nullify(self % faces(fID) % storage)
+      end if
    end do
 !$omp end parallel do
 
@@ -5145,6 +5155,7 @@ subroutine HexMesh_pAdapt_MPI (self, NNew, controlVariables)
 !$omp parallel do schedule(runtime) private(f)
    do fID=1, self % no_of_faces  !Construct All faces storage
       f => self % faces( fID )
+      allocate(f % storage(2))
       call f % storage(1) % Construct(NDIM, f % Nf, f % NelLeft , computeGradients, analyticalJac, FaceComputeQdot)
       call f % storage(2) % Construct(NDIM, f % Nf, f % NelRight, computeGradients, analyticalJac, FaceComputeQdot)
    end do
@@ -5168,7 +5179,11 @@ subroutine HexMesh_pAdapt_MPI (self, NNew, controlVariables)
    do eID=1, self % no_of_elements 
       e => self % elements(eID)
       do fID=1, 6
-         call self % faces( e % faceIDs(fID) ) % geom % destruct
+         if (associated(self % faces( e % faceIDs(fID) ) % geom)) then
+            call self % faces( e % faceIDs(fID) ) % geom % destruct
+            deallocate(self % faces( e % faceIDs(fID) ) % geom)
+            nullify(self % faces( e % faceIDs(fID) ) % geom)
+         end if
       end do
    end do
 
@@ -5300,7 +5315,11 @@ end subroutine HexMesh_pAdapt_MPI
 !     ----------------------
 !$omp parallel do schedule(runtime)
       do fID=1, size(facesArray)
-         call self % faces( facesArray(fID) ) % storage % destruct
+         if (associated(self % faces( facesArray(fID) ) % storage)) then
+            call self % faces( facesArray(fID) ) % storage % destruct
+            deallocate(self % faces( facesArray(fID) ) % storage)
+            nullify(self % faces( facesArray(fID) ) % storage)
+         end if
       end do
 !$omp end parallel do
 
@@ -5313,6 +5332,7 @@ end subroutine HexMesh_pAdapt_MPI
 !$omp parallel do private(f) schedule(runtime)
       do fID=1, size(facesArray)
          f => self % faces( facesArray(fID) )  ! associate fails here in intel compilers
+         allocate(f % storage(2))
          call f % storage(1) % Construct(NDIM, f % Nf, f % NelLeft , computeGradients, analyticalJac, FaceComputeQdot)
          call f % storage(2) % Construct(NDIM, f % Nf, f % NelRight, computeGradients, analyticalJac, FaceComputeQdot)
       end do
@@ -5365,7 +5385,11 @@ end subroutine HexMesh_pAdapt_MPI
          call self % elements (elementArray(eID)) % geom % destruct
       end do
       do fID=1, size (facesArray)
-         call self % faces (facesArray(fID)) % geom % destruct
+         if (associated(self % faces (facesArray(fID)) % geom)) then
+            call self % faces (facesArray(fID)) % geom % destruct
+            deallocate(self % faces (facesArray(fID)) % geom)
+            nullify(self % faces (facesArray(fID)) % geom)
+         end if
       end do
 
       call self % ConstructGeometry(facesArray, elementArray)
