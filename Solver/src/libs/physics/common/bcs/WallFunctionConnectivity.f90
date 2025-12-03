@@ -78,11 +78,14 @@ Module WallFunctionConnectivity  !
         integer                                :: i, j, nz, k, fID, efID
         integer                                :: linkedfID, linkedFaceSide, side, currentElementID, linkedElementglobID, normalIndex, oppositeIndex
         integer                                :: allFaces, ierr, element_index
+        integer                                :: ghostCountLocal, ghostCountGlobal
 
         call Initialize_Wall_Function(controlVariables, useWallFunc)
         if (.not. useWallFunc) then
             return
         end if
+
+        ghostCountLocal = 0
         
         ! get BC where the Wall Function will be applied
         wallBC_str = controlVariables % stringValueForKey("wall function boundaries", LINE_LENGTH)
@@ -158,6 +161,7 @@ Module WallFunctionConnectivity  !
                                 ! if element_index is zero, then the element is in another MPI partition
                                 ! so we accept it as the linked element (Ghost handling)
                                 linkedFaceSide = side
+                                ghostCountLocal = ghostCountLocal + 1
                             end if     
                         end do
                     end associate
@@ -195,6 +199,20 @@ Module WallFunctionConnectivity  !
         end if
 
         !$acc update device(wallFaceID, wallFaceOppositeID, wallSideID)
+
+!
+!       Ghost faces count across all MPI processes
+!       ------------------------------------------
+#ifdef _HAS_MPI_
+        if (MPI_Process % doMPIAction) then
+            call mpi_allreduce(ghostCountLocal, ghostCountGlobal, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD, ierr)
+        else
+            ghostCountGlobal = ghostCountLocal
+        end if
+#else
+        ghostCountGlobal = ghostCountLocal
+#endif
+
        
 !
 !       Describe the Wall function
@@ -211,6 +229,16 @@ Module WallFunctionConnectivity  !
                 write(STD_OUT,'(30X,A,A28,A10)') "->", "Wall Function Law: ", "ABL"
         end select
         if (useAverageV) write(STD_OUT,'(30X,A,A28)') "->", "Wall Function using time averaged values"
+        if (MPI_Process % isRoot .and. ghostCountGlobal > 0) then
+            write(STD_OUT,'(/,30X,A)') "WARNING: Wall Function connectivity crosses MPI partitions"
+            write(STD_OUT,'(32X,A,I8)') "Number of ghost-handled faces: ", ghostCountGlobal
+            write(STD_OUT,'(32X,A)')   "Results may differ slightly from serial execution or from"
+            write(STD_OUT,'(32X,A)')   "different partitionings."
+            write(STD_OUT,'(32X,A)')   "Neighbour-face Q taken via ghost storage from previous step."
+            write(STD_OUT,'(/)') 
+        end if
+
+
 
     End Subroutine Initialize_WallConnection
 
