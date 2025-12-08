@@ -521,10 +521,10 @@
       select case ( side )
       case (1)    ! Prolong to left element
          
-            !   !$acc loop vector collapse(2)
-            !   do j = 0, self % Nf(2)  ; do i = 0, self % Nf(1)   
-            !      self % storage(1) % fStar(:,i,j) = flux(:,i,j)     
-            !   enddo ; enddo 
+            !$acc loop vector collapse(3)
+            do j = 0, self % Nf(2)  ; do i = 0, self % Nf(1)    ; do eq = 1, nEqn
+               self % storage(1) % Fstar(eq,i,j) = flux(eq,i,j)     
+            enddo ; enddo ; enddo 
 
       case (2)    ! Prolong to right element
 !      
