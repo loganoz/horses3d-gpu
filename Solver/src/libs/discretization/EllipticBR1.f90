@@ -233,7 +233,7 @@ module EllipticBR1
 !           -----------------
 !
          call HexMesh_ProlongGradientsToFaces(mesh, size(mesh % elements_mpi), mesh % elements_mpi, nGradEqn)
-
+!
 #endif
 
       end subroutine BR1_LiftGradients

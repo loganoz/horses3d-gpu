@@ -1201,6 +1201,7 @@ slavecoord:             DO l = 1, 4
                end do               ; end do
             end do
             !$acc end parallel loop
+
 !
 !           -------------
 !           Send solution
@@ -1429,7 +1430,6 @@ slavecoord:             DO l = 1, 4
 !           **************************************
 !
             if ( self % MPIfaces % faces(domain) % no_of_faces .eq. 0 ) cycle
-
             call self % MPIfaces % faces(domain) % WaitForSolution
 
             !$acc parallel loop gang present(self) copyin(nEqn)
@@ -2368,6 +2368,8 @@ slavecoord:             DO l = 1, 4
 #if defined(NAVIERSTOKES)
             call ConstructMPIFacesStorage(self % MPIfaces, NCONS, NGRAD, MPI_NDOFS)
 #elif defined(INCNS)
+            call ConstructMPIFacesStorage(self % MPIfaces, NCONS, NCONS, MPI_NDOFS)
+#elif defined(MULTIPHASE)
             call ConstructMPIFacesStorage(self % MPIfaces, NCONS, NCONS, MPI_NDOFS)
 #elif defined(CAHNHILLIARD)
             call ConstructMPIFacesStorage(self % MPIfaces, NCOMP, NCOMP, MPI_NDOFS)
