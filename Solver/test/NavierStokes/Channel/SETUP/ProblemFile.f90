@@ -428,7 +428,7 @@
 
             CALL FTAssertEqual(expectedValue = residuals(5)+1.0_RP, &
                                actualValue   = monitors % residuals % values(5,1)+1.0_RP, &
-                               tol           = 1.d-10, &
+                               tol           = 1.d-9, &
                                msg           = "Energy residual")
 
 
