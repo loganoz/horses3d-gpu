@@ -176,7 +176,8 @@ contains
          rho_min = rho_min_global
          rho_max = rho_max_global
 
-!$acc parallel loop gang present(mesh) num_gangs(9700) reduction(max:rho_max) reduction(min:rho_min)         do eID = 1, mesh % no_of_elements
+!$acc parallel loop gang present(mesh) num_gangs(9700) reduction(max:rho_max) reduction(min:rho_min)         
+         do eID = 1, mesh % no_of_elements
             local_rho_min = huge(1.0_RP)
             local_rho_max = -huge(1.0_RP)
 
