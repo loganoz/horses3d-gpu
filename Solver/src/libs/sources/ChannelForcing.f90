@@ -21,8 +21,6 @@ public initializeChannel, updateChannel, channelSource
       real(kind=RP) :: f_x(2), f_y(2), f_z(2)   ! Correction parameters
       real(kind=RP) :: dpdx, dpdy, dpdz         ! Driving pressure gradient
       
-      real(kind=RP), allocatable :: dp_part(:)  ! MPI buffer for dp
-
       logical :: channelIsActive
 
       ! --- Global rho-extremes accumulated over all RK substeps ---
@@ -68,10 +66,6 @@ contains
        f_y = 0.0_RP
        f_z = 0.0_RP
 
-! --- allocate MPI buffer ---
-       if (MPI_Process % doMPIAction) then
-           allocate(dp_part(MPI_Process % nProcs))
-       end if
 
 ! --- initialize rho extrema ---
        rho_min_global = huge(1.0_RP)
@@ -170,13 +164,19 @@ contains
          type(HexMesh), intent(inout) :: mesh
 
          real(kind=RP) :: rho, Su, Sv, Sw, Se
+         ! Local variables for reduction over all elements
+         real(kind=RP) :: rho_min, rho_max
+         ! Local variables for element min/max
          real(kind=RP) :: local_rho_min, local_rho_max
          integer :: i,j,k,eID
 
          if (.not. channelIsActive) return
+          
+         ! Initialize reduction variables with current global values
+         rho_min = rho_min_global
+         rho_max = rho_max_global
 
-!$acc parallel loop gang present(mesh) reduction(min:local_rho_min) reduction(max:local_rho_max)
-         do eID = 1, mesh % no_of_elements
+!$acc parallel loop gang present(mesh) num_gangs(9700) reduction(max:rho_max) reduction(min:rho_min)         do eID = 1, mesh % no_of_elements
             local_rho_min = huge(1.0_RP)
             local_rho_max = -huge(1.0_RP)
 
@@ -207,11 +207,15 @@ contains
                end do
             end do
 
-            rho_min_global = min(rho_min_global, local_rho_min)
-            rho_max_global = max(rho_max_global, local_rho_max)
+             rho_min = min(rho_min, local_rho_min)
+             rho_max = max(rho_max, local_rho_max)
 
          end do
 !$acc end parallel loop
+
+          ! Update global values
+          rho_min_global = rho_min
+          rho_max_global = rho_max
 
      End Subroutine channelSource
 
