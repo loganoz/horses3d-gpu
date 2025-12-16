@@ -1090,9 +1090,14 @@ jobs:
           mpiexec -n 8 ./horses3d.ns Channel.control
         if: '!cancelled()'  
 
-      - name: Run Channel - Parallel 64
-        working-directory: ./Solver/test/NavierStokes/Channel
+	- name: Build Channel
+        working-directory: ./Solver/test/NavierStokes/Channel64/SETUP
         run: |
           source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 64 ./horses3d.ns Channel.control
-        if: '!cancelled()'          
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=$	{{matrix.hdf5}}
+        if: '!cancelled()'
+
+      - name: Run Channel - Parallel 64
+        working-directory: ./Solver/test/NavierStokes/Channel64
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
