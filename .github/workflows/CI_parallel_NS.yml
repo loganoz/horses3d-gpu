@@ -1090,7 +1090,7 @@ jobs:
           mpiexec -n 8 ./horses3d.ns Channel.control
         if: '!cancelled()'  
 
-	- name: Build Channel
+      - name: Build Channel 64
         working-directory: ./Solver/test/NavierStokes/Channel64/SETUP
         run: |
           source /opt/intel/oneapi/setvars.sh || true
