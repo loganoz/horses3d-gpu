@@ -534,7 +534,9 @@ module EllipticBR2
                   call chGradientVariables(nEqn, nGradEqn, f % storage(1) % Q(:,i,j), UL)
                   call chGradientVariables(nEqn, nGradEqn, f % storage(2) % Q(:,i,j), UR)
             end select
-            
+#elif INCNS
+            call iNSGradientVariables(nEqn, nGradEqn, Q = f % storage(1) % Q(:,i,j), U = UL)
+            call iNSGradientVariables(nEqn, nGradEqn, Q = f % storage(2) % Q(:,i,j), U = UR)           
 #else
             call NSGradientVariables_STATE(nEqn, nGradEqn, f % storage(1) % Q(:,i,j), UL)
             call NSGradientVariables_STATE(nEqn, nGradEqn, f % storage(2) % Q(:,i,j), UR)
@@ -593,7 +595,9 @@ module EllipticBR2
                   call chGradientVariables(nEqn, nGradEqn, f % storage(1) % Q(:,i,j), UL)
                   call chGradientVariables(nEqn, nGradEqn, f % storage(2) % Q(:,i,j), UR)
             end select
-            
+#elif INCNS
+            call iNSGradientVariables(nEqn, nGradEqn, Q = f % storage(1) % Q(:,i,j), U = UL)
+            call iNSGradientVariables(nEqn, nGradEqn, Q = f % storage(2) % Q(:,i,j), U = UR)              
 #else
             call NSGradientVariables_STATE(nEqn, nGradEqn, f % storage(1) % Q(:,i,j), UL)
             call NSGradientVariables_STATE(nEqn, nGradEqn, f % storage(2) % Q(:,i,j), UR)
