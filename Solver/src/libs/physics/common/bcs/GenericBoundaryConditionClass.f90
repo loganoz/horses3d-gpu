@@ -276,6 +276,9 @@ module GenericBoundaryConditionClass
                rho = min(max(rho, dimensionless % rho_min),dimensionless % rho_max)
                call mGradientVariables(NCONS, NGRAD, Q_aux, u_star, rho)
                u_star(IGMU) = u_int(IGMU)           
+#elif INCNS
+               call iNSGradientVariables(NCONS, NGRAD, Q    , u_int)
+               call iNSGradientVariables(NCONS, NGRAD, Q_aux, u_star)
 #else
                call NSGradientVariables_STATE(NCONS, NGRAD, Q    , u_int)
                call NSGradientVariables_STATE(NCONS, NGRAD, Q_aux, u_star)
