@@ -99,7 +99,7 @@ public farm, ConstructFarm, DestructFarm, UpdateFarm, ForcesFarm, WriteFarmForce
     integer, parameter             :: MAX_AIRFOIL_FILES = 10
     integer, dimension(:), allocatable         :: numElementsPerTurbine, elementsActuated, turbineOfElement
     integer, dimension(:,:), allocatable       :: newPointToFind
-    integer, dimension(:,:), allocatable     :: allNewPointToFind
+    integer, dimension(:), allocatable         :: allNewPointToFind_ii, allNewPointToFind_jj, allNewPointToFind_kk
     !$acc declare create(elementsActuated, turbineOfElement)
 
 !  ========
@@ -760,19 +760,23 @@ contains
       displ(1) = 0
       do i = 1, MPI_Process % nProcs - 1
          ! 3 indexes to communicate
-         displ(i+1) = displ(i) + pointsToFind_proc(i) * 3
+         displ(i+1) = displ(i) + pointsToFind_proc(i)
       end do
       allpointsToFind = sum(pointsToFind_proc)
-      safedeallocate(allNewPointToFind)
+      safedeallocate(allNewPointToFind_ii)
+      safedeallocate(allNewPointToFind_jj)
+      safedeallocate(allNewPointToFind_kk)
       if (allpointsToFind .gt. 0) then
-          allocate(allNewPointToFind(allpointsToFind,3))
+          allocate(allNewPointToFind_ii(allpointsToFind),allNewPointToFind_jj(allpointsToFind),allNewPointToFind_kk(allpointsToFind))
 #ifdef _HAS_MPI_
-          call mpi_allgatherv( newPointToFind(1:pointsToFind,1:3), 3*pointsToFind, MPI_INT, allNewPointToFind, 3*pointsToFind_proc, displ, MPI_INT, MPI_COMM_WORLD, ierr)
+          call mpi_allgatherv( newPointToFind(1:pointsToFind,3), pointsToFind, MPI_INT, allNewPointToFind_ii, pointsToFind_proc, displ, MPI_INT, MPI_COMM_WORLD, ierr)
+          call mpi_allgatherv( newPointToFind(1:pointsToFind,2), pointsToFind, MPI_INT, allNewPointToFind_jj, pointsToFind_proc, displ, MPI_INT, MPI_COMM_WORLD, ierr)
+          call mpi_allgatherv( newPointToFind(1:pointsToFind,1), pointsToFind, MPI_INT, allNewPointToFind_kk, pointsToFind_proc, displ, MPI_INT, MPI_COMM_WORLD, ierr)
 #endif
           do i = 1, allpointsToFind
-            kk = allnewPointToFind(i,1)
-            jj = allnewPointToFind(i,2)
-            ii = allnewPointToFind(i,3)
+            kk = allNewPointToFind_kk(i)
+            jj = allNewPointToFind_jj(i)
+            ii = allNewPointToFind_ii(i)
             if (self % turbine_t(kk) %blade_t(jj) % eID(ii) .ne. 0) then
                 self % turbine_t(kk) %blade_t(jj) % eID(ii) = 0
                 found = .false.
