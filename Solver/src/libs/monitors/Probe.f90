@@ -337,29 +337,41 @@ module ProbeClass
 #ifdef INCNS
 
             case("pressure")
+               !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
                do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
-                  self % var(i,j,k) = Q(INSP,i,j,k)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSP,i,j,k)
                end do            ; end do             ; end do
+               !$acc end parallel loop
    
             case("velocity")
+               !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
                do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
-                  self % var(i,j,k) = sqrt(POW2(Q(INSRHOU,i,j,k)) + POW2(Q(INSRHOV,i,j,k)) + POW2(Q(INSRHOW,i,j,k)))/Q(INSRHO,i,j,k)
+                  self % var(i,j,k) = sqrt(POW2(mesh % elements(self % eID) % storage % Q(INSRHOU,i,j,k)) + &
+                                           POW2(mesh % elements(self % eID) % storage % Q(INSRHOV,i,j,k)) + &
+                                           POW2( mesh % elements(self % eID) % storage % Q(INSRHOW,i,j,k)))/mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
                end do         ; end do         ; end do
+               !$acc end parallel loop
    
             case("u")
+               !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
                do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
-                  self % var(i,j,k) = Q(INSRHOU,i,j,k) / Q(INSRHO,i,j,k)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHOU,i,j,k) / mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
                end do            ; end do             ; end do
+               !$acc end parallel loop
    
             case("v")
+               !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
                do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
-                  self % var(i,j,k) = Q(INSRHOV,i,j,k) / Q(INSRHO,i,j,k)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHOV,i,j,k) / mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
                end do            ; end do             ; end do
+               !$acc end parallel loop
    
             case("w")
+               !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
                do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
-                  self % var(i,j,k) = Q(INSRHOW,i,j,k) / Q(INSRHO,i,j,k)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHOW,i,j,k) / mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
                end do            ; end do             ; end do
+               !$acc end parallel loop
 #endif
 #ifdef MULTIPHASE
             case("static-pressure")

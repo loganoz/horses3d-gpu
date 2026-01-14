@@ -16,6 +16,7 @@ module RiemannSolvers_iNSKeywordsModule
      enum, bind(C)
         enumerator :: RIEMANN_CENTRAL = 1, RIEMANN_LXF, RIEMANN_EXACT
      end enum
+     !$acc declare copyin(RIEMANN_CENTRAL,RIEMANN_LXF,RIEMANN_EXACT)
 !
 !    -----------------------------
 !    Available averaging functions
@@ -28,6 +29,7 @@ module RiemannSolvers_iNSKeywordsModule
      enum, bind(C)
         enumerator :: STANDARD_AVG = 1, SKEWSYMMETRIC1_AVG, SKEWSYMMETRIC2_AVG
      end enum
+     !$acc declare copyin(STANDARD_AVG, SKEWSYMMETRIC1_AVG, SKEWSYMMETRIC2_AVG)
 
 end module RiemannSolvers_iNSKeywordsModule
 !
@@ -45,19 +47,20 @@ module RiemannSolvers_iNS
    private
    public whichAverage, whichRiemannSolver
    public SetRiemannSolver, DescribeRiemannSolver
-   public RiemannSolver, AveragedStates, TwoPointFlux, ExactRiemannSolver
+   public AveragedStates, TwoPointFlux, ExactRiemannSolver, TwoPointFlux_Selector
+   public CentralRiemannSolver_acc, RiemannSolver_Selector
 
    abstract interface
-      subroutine RiemannSolverFCN(QLeft, QRight, nHat, t1, t2, flux)
-         use SMConstants
-         use PhysicsStorage_iNS
-         real(kind=RP), intent(in)       :: QLeft(1:NCONS)
-         real(kind=RP), intent(in)       :: QRight(1:NCONS)
-         real(kind=RP), intent(in)       :: nHat(1:NDIM)
-         real(kind=RP), intent(in)       :: t1(1:NDIM)
-         real(kind=RP), intent(in)       :: t2(1:NDIM)
-         real(kind=RP), intent(out)      :: flux(1:NCONS)
-      end subroutine RiemannSolverFCN
+      !subroutine RiemannSolverFCN(QLeft, QRight, nHat, t1, t2, flux)
+         ! use SMConstants
+         ! use PhysicsStorage_iNS
+         ! real(kind=RP), intent(in)       :: QLeft(1:NCONS)
+         ! real(kind=RP), intent(in)       :: QRight(1:NCONS)
+         ! real(kind=RP), intent(in)       :: nHat(1:NDIM)
+         ! real(kind=RP), intent(in)       :: t1(1:NDIM)
+         ! real(kind=RP), intent(in)       :: t2(1:NDIM)
+         ! real(kind=RP), intent(out)      :: flux(1:NCONS)
+      !end subroutine RiemannSolverFCN
 
       subroutine AveragedStatesFCN(QLeft, QRight, f, g, h)
          use SMConstants
@@ -78,13 +81,16 @@ module RiemannSolvers_iNS
       end subroutine TwoPointFluxFCN
    end interface
 
-   procedure(RiemannSolverFCN),  protected, pointer :: RiemannSolver  => NULL()
+   !procedure(RiemannSolverFCN),  protected, pointer :: RiemannSolver  => NULL()
    procedure(AveragedStatesFCN), protected, pointer :: AveragedStates => NULL()
    procedure(TwoPointFluxFCN),   protected, pointer :: TwoPointFlux   => NULL()
 
    integer, protected :: whichRiemannSolver = -1
+   !$acc declare create(whichRiemannSolver)
    integer, protected :: whichAverage = -1
+   !$acc declare create(whichAverage)
    real(RP)           :: lambdaStab = 1.0_RP
+   !$acc declare copyin(lambdaStab)
 !
 !  ========
    contains
@@ -120,15 +126,17 @@ module RiemannSolvers_iNS
 
             select case (keyword)
             case(RIEMANN_CENTRAL_NAME)
-               RiemannSolver => CentralRiemannSolver
+               !RiemannSolver => CentralRiemannSolver
                whichRiemannSolver = RIEMANN_CENTRAL
 
             case(RIEMANN_LXF_NAME)
-               RiemannSolver => LxFRiemannSolver
+               !RiemannSolver => LxFRiemannSolver
                whichRiemannSolver = RIEMANN_LXF
+               print*, "LxF Riemann solver not implemented"
+               error stop
 
             case(RIEMANN_EXACT_NAME)
-               RiemannSolver => ExactRiemannSolver
+               !RiemannSolver => ExactRiemannSolver
                whichRiemannSolver = RIEMANN_EXACT
 
             case default
@@ -141,7 +149,7 @@ module RiemannSolvers_iNS
 !
 !           Select exact by default
 !           -----------------------
-            RiemannSolver => CentralRiemannSolver
+            !RiemannSolver => CentralRiemannSolver
             whichRiemannSolver = RIEMANN_EXACT
 
          end if
@@ -163,6 +171,7 @@ module RiemannSolvers_iNS
 !        If central fluxes are used, set lambdaStab to zero
 !        --------------------------------------------------
          if (whichRiemannSolver .eq. RIEMANN_CENTRAL) lambdaStab = 0.0_RP
+         !$acc update device(lambdaStab)
 !
 !        ----------------------------
 !        Set up an averaging function
@@ -177,11 +186,15 @@ module RiemannSolvers_iNS
                AveragedStates => StandardAverage
                TwoPointFlux => StandardDG_TwoPointFlux
                whichAverage = STANDARD_AVG
+               print*, "Standard average not implemented"
+               error stop
 
             case (SKEWSYMMETRIC1_AVG_NAME)
                AveragedStates => SkewSymmetric1Average
                TwoPointFlux => SkewSymmetric1DG_TwoPointFlux
                whichAverage = SKEWSYMMETRIC1_AVG
+               print*, "SkewSymmetric 1 average not implemented"
+               error stop
 
             case (SKEWSYMMETRIC2_AVG_NAME)
                AveragedStates => SkewSymmetric2Average
@@ -203,6 +216,9 @@ module RiemannSolvers_iNS
             whichAverage = STANDARD_AVG
 
          end if
+
+         !$acc update device(whichAverage)
+         !$acc update device(whichRiemannSolver)
 
       END SUBROUTINE SetRiemannSolver
 
@@ -241,6 +257,73 @@ module RiemannSolvers_iNS
          write(STD_OUT,'(30X,A,A30,F10.3)') "->","Lambda stabilization: ", lambdaStab
 
       end subroutine DescribeRiemannSolver
+
+
+      subroutine AveragedState_Selector(QLeft, QRight, f, g, h)
+         !$acc routine seq
+         use RiemannSolvers_iNSKeywordsModule
+         implicit none 
+
+         real(kind=RP), intent(in)       :: QLeft(1:NCONS)
+         real(kind=RP), intent(in)       :: QRight(1:NCONS)
+         real(kind=RP), intent(out)      :: f(1:NCONS), g(1:NCONS), h(1:NCONS)
+
+         select case (whichAverage)
+         case (STANDARD_AVG)
+            call StandardAverage(QLeft, QRight, f, g, h)
+         case (SKEWSYMMETRIC1_AVG)
+            call SkewSymmetric1Average(QLeft, QRight, f, g, h)
+         case (SKEWSYMMETRIC2_AVG)
+            call SkewSymmetric2Average(QLeft, QRight, f, g, h)
+         
+         end select
+         
+      end subroutine AveragedState_Selector
+
+      subroutine RiemannSolver_Selector(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
+         !$acc routine vector
+         use RiemannSolvers_iNSKeywordsModule
+         implicit none 
+         integer , intent(in)            :: Nx, Ny
+         real(kind=RP), intent(in)       :: QLeft(1:NCONS, 0:Nx, 0:Ny)
+         real(kind=RP), intent(in)       :: QRight(1:NCONS, 0:Nx, 0:Ny)
+         real(kind=RP), intent(in)       :: nHat(1:NDIM, 0:Nx, 0:Ny), t1(NDIM, 0:Nx, 0:Ny), t2(NDIM, 0:Nx, 0:Ny)
+         real(kind=RP), intent(out)      :: flux(1:NCONS, 0:Nx, 0:Ny)
+
+         select case (whichRiemannSolver)
+         case (RIEMANN_CENTRAL)
+          call CentralRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
+         case (RIEMANN_LXF)
+            call LxFRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
+         case (RIEMANN_EXACT)
+            call ExactRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
+
+
+         end select
+         
+      end subroutine RiemannSolver_Selector
+
+      subroutine TwoPointFlux_Selector(QL,QR,JaL,JaR,fSharp)
+         !$acc routine seq
+         use RiemannSolvers_iNSKeywordsModule
+         implicit none 
+
+         real(kind=RP), intent(in)       :: QL(1:NCONS)
+         real(kind=RP), intent(in)       :: QR(1:NCONS)
+         real(kind=RP), intent(in)       :: JaL(1:NDIM)
+         real(kind=RP), intent(in)       :: JaR(1:NDIM)
+         real(kind=RP), intent(out)      :: fSharp(NCONS)
+
+         select case (whichAverage)
+         case (STANDARD_AVG)
+            call StandardDG_TwoPointFlux(QL,QR,JaL,JaR,fSharp)
+         case (SKEWSYMMETRIC1_AVG)
+            call SkewSymmetric1DG_TwoPointFlux(QL, QR, JaL, JaR, fSharp)
+         case (SKEWSYMMETRIC2_AVG)
+            call SkewSymmetric2DG_TwoPointFlux(QL, QR, JaL, JaR, fSharp)
+         end select
+         
+      end subroutine TwoPointFlux_Selector
 !
 !///////////////////////////////////////////////////////////////////////////////////////////
 !
@@ -249,55 +332,43 @@ module RiemannSolvers_iNS
 !
 !///////////////////////////////////////////////////////////////////////////////////////////
 !
-      subroutine CentralRiemannSolver(QLeft, QRight, nHat, t1, t2, flux)
+      subroutine CentralRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
+         !$acc routine vector
          implicit none
-         real(kind=RP), intent(in)       :: QLeft(1:NCONS)
-         real(kind=RP), intent(in)       :: QRight(1:NCONS)
-         real(kind=RP), intent(in)       :: nHat(1:NDIM), t1(NDIM), t2(NDIM)
-         real(kind=RP), intent(out)      :: flux(1:NCONS)
+         integer , intent(in)            :: Nx, Ny
+         real(kind=RP), intent(in)       :: QLeft(1:NCONS, 0:Nx, 0:Ny)
+         real(kind=RP), intent(in)       :: QRight(1:NCONS, 0:Nx, 0:Ny)
+         real(kind=RP), intent(in)       :: nHat(1:NDIM, 0:Nx, 0:Ny), t1(NDIM, 0:Nx, 0:Ny), t2(NDIM, 0:Nx, 0:Ny)
+         real(kind=RP), intent(inout)    :: flux(1:NCONS, 0:Nx, 0:Ny)
 !
 !        ---------------
 !        Local variables
 !        ---------------
 !
          real(kind=RP) :: f(1:NCONS), g(1:NCONS), h(1:NCONS)
-!
-!        Rotate the variables to the face local frame using normal and tangent vectors
-!        -----------------------------------------------------------------------------
-!         rhoL = QLeft(INSRHO)
-!         invRhoL = 1.0_RP / rhoL
-!         uL = invRhoL * (QLeft(INSRHOU) * nHat(1) + QLeft(INSRHOV) * nHat(2) + QLeft(INSRHOW) * nHat(3))
-!         vL = invRhoL * (QLeft(INSRHOU) * t1(1)   + QLeft(INSRHOV) * t1(2)   + QLeft(INSRHOW) * t1(3))
-!         wL = invRhoL * (QLeft(INSRHOU) * t2(1)   + QLeft(INSRHOV) * t2(2)   + QLeft(INSRHOW) * t2(3))
-!         pL = QLeft(INSP)
-!
-!         rhoR = QRight(INSRHO)
-!         invRhoR = 1.0_RP / rhoR
-!         uR = invRhoR * (QRight(INSRHOU) * nHat(1) + QRight(INSRHOV) * nHat(2) + QRight(INSRHOW) * nHat(3))
-!         vR = invRhoR * (QRight(INSRHOU) * t1(1)   + QRight(INSRHOV) * t1(2)   + QRight(INSRHOW) * t1(3))
-!         wR = invRhoR * (QRight(INSRHOU) * t2(1)   + QRight(INSRHOV) * t2(2)   + QRight(INSRHOW) * t2(3))
-!         pR = QRight(INSP)
-!!
-!!        Perform the average using the averaging function
-!!        ------------------------------------------------
-!         QLRot = (/ rhoL, uL, vL, wL, pL /)
-!         QRRot = (/ rhoR, uR, vR, wR, pR /)
-!         call AveragedStates(QLRot, QRRot, pL, pR, rhoL, rhoR, flux)
-!!
-!!        ************************************************
-!!        Return momentum equations to the cartesian frame
-!!        ************************************************
-!!
-!         flux(2:4) = nHat*flux(2) + t1*flux(3) + t2*flux(4)
+         integer       :: i, j
 
-          call AveragedStates(QLeft, QRight, f, g, h)
 
-          flux = f * nHat(1) + g*nHat(2) + h*nHat(3)
+         !$acc loop vector collapse(2) private(f,g,h)
+         do j = 0, Ny ; do i = 0, Nx 
+         
+            f(:) = 0.0_RP
+            g(:) = 0.0_RP
+            h(:) = 0.0_RP
+            
+          call AveragedState_Selector(QLeft(:,i,j), QRight(:,i,j), f, g, h)
+
+          flux(:, i, j) = f(:) * nHat(1, i, j) + g(:) * nHat(2, i, j) + h(:) * nHat(3, i, j)
+ 
+         enddo ; enddo
+
 
       end subroutine CentralRiemannSolver
 
-      subroutine LxFRiemannSolver(QLeft, QRight, nHat, t1, t2, flux)
+      subroutine LxFRiemannSolver(Nx,Ny,QLeft, QRight, nHat, t1, t2, flux)
+         !$acc routine vector
          implicit none
+         integer , intent(in)            :: Nx, Ny
          real(kind=RP), intent(in)       :: QLeft(1:NCONS)
          real(kind=RP), intent(in)       :: QRight(1:NCONS)
          real(kind=RP), intent(in)       :: nHat(1:NDIM), t1(NDIM), t2(NDIM)
@@ -311,55 +382,21 @@ module RiemannSolvers_iNS
          real(kind=RP)  :: rhoR, uR, vR, wR, pR, invRhoR
          real(kind=RP)  :: QLRot(NCONS), QRRot(NCONS)
          real(kind=RP)  :: stab(NCONS), lambdaMax
-!!
-!!        Rotate the variables to the face local frame using normal and tangent vectors
-!!        -----------------------------------------------------------------------------
-!         rhoL = QLeft(INSRHO)
-!         invRhoL = 1.0_RP / rhoL
-!         uL = invRhoL * (QLeft(INSRHOU) * nHat(1) + QLeft(INSRHOV) * nHat(2) + QLeft(INSRHOW) * nHat(3))
-!         vL = invRhoL * (QLeft(INSRHOU) * t1(1)   + QLeft(INSRHOV) * t1(2)   + QLeft(INSRHOW) * t1(3))
-!         wL = invRhoL * (QLeft(INSRHOU) * t2(1)   + QLeft(INSRHOV) * t2(2)   + QLeft(INSRHOW) * t2(3))
-!         pL = QLeft(INSP)
-!
-!         rhoR = QRight(INSRHO)
-!         invRhoR = 1.0_RP / rhoR
-!         uR = invRhoR * (QRight(INSRHOU) * nHat(1) + QRight(INSRHOV) * nHat(2) + QRight(INSRHOW) * nHat(3))
-!         vR = invRhoR * (QRight(INSRHOU) * t1(1)   + QRight(INSRHOV) * t1(2)   + QRight(INSRHOW) * t1(3))
-!         wR = invRhoR * (QRight(INSRHOU) * t2(1)   + QRight(INSRHOV) * t2(2)   + QRight(INSRHOW) * t2(3))
-!         pR = QRight(INSP)
-!!
-!!        Perform the average using the averaging function
-!!        ------------------------------------------------
-!         QLRot = (/ rhoL, uL, vL, wL, pL /)
-!         QRRot = (/ rhoR, uR, vR, wR, pR /)
-!         call AveragedStates(QLRot, QRRot, pL, pR, rhoL, rhoR, flux)
-!!
-!!        Compute the Lax-Friedrichs stabilization
-!!        ----------------------------------------
-!         lambdaMax = max(uL + sqrt(uL**2+4.0_RP*thermodynamics % rho0c02/rhoL), &
-!                      uR + sqrt(uR**2+4.0_RP*thermodynamics % rho0c02/rhoR)    ) 
-!
-!         stab = 0.5_RP * lambdaMax * (QRRot - QLRot)
-!
-!         flux = flux - stab
-!!
-!!        ************************************************
-!!        Return momentum equations to the cartesian frame
-!!        ************************************************
-!!
-!         flux(2:4) = nHat*flux(2) + t1*flux(3) + t2*flux(4)
 
-print*, "LxF Riemann solver not implemented"
-error stop
+         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+         !!!!!!!!! not immplemented !!!!!!!!!!!         
+         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
       end subroutine LxFRiemannSolver
 
-      subroutine ExactRiemannSolver(QLeft, QRight, nHat, t1, t2, flux)
+      subroutine ExactRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
+         !$acc routine vector
          implicit none
-         real(kind=RP), intent(in)       :: QLeft(1:NCONS)
-         real(kind=RP), intent(in)       :: QRight(1:NCONS)
-         real(kind=RP), intent(in)       :: nHat(1:NDIM), t1(NDIM), t2(NDIM)
-         real(kind=RP), intent(out)      :: flux(1:NCONS)
+         integer , intent(in)            :: Nx, Ny
+         real(kind=RP), intent(in)       :: QLeft(1:NCONS, 0:Nx, 0:Ny)
+         real(kind=RP), intent(in)       :: QRight(1:NCONS, 0:Nx, 0:Ny)
+         real(kind=RP), intent(in)       :: nHat(1:NDIM, 0:Nx, 0:Ny), t1(NDIM, 0:Nx, 0:Ny), t2(NDIM, 0:Nx, 0:Ny)
+         real(kind=RP), intent(inout)    :: flux(1:NCONS, 0:Nx, 0:Ny)
 !
 !        ---------------
 !        Local variables
@@ -370,55 +407,66 @@ error stop
          real(kind=RP)  :: rhoStarL, rhoStarR, uStar, pStar, rhoStar, vStar, wStar
          real(kind=RP)  :: QLRot(NCONS), QRRot(NCONS)
          real(kind=RP)  :: stab(NCONS), lambdaMax
+
+         real(kind=RP) :: f, g, h
+         integer       :: i, j
+
+         !$acc loop vector collapse(2) private(f,g,h)
+         do j = 0, Ny ; do i = 0, Nx 
 !
-!        Rotate the variables to the face local frame using normal and tangent vectors
-!        -----------------------------------------------------------------------------
-         rhoL = QLeft(INSRHO)
-         invRhoL = 1.0_RP / rhoL
-         uL = invRhoL * (QLeft(INSRHOU) * nHat(1) + QLeft(INSRHOV) * nHat(2) + QLeft(INSRHOW) * nHat(3))
-         vL = invRhoL * (QLeft(INSRHOU) * t1(1)   + QLeft(INSRHOV) * t1(2)   + QLeft(INSRHOW) * t1(3))
-         wL = invRhoL * (QLeft(INSRHOU) * t2(1)   + QLeft(INSRHOV) * t2(2)   + QLeft(INSRHOW) * t2(3))
-         pL = QLeft(INSP)
+!           Rotate the variables to the face local frame using normal and tangent vectors
+!           -----------------------------------------------------------------------------
+            rhoL = QLeft(INSRHO,i,j)
+            invRhoL = 1.0_RP / rhoL
+            uL = invRhoL * (QLeft(INSRHOU,i,j) * nHat(1,i,j) + QLeft(INSRHOV,i,j) * nHat(2,i,j) + QLeft(INSRHOW,i,j) * nHat(3,i,j))
+            vL = invRhoL * (QLeft(INSRHOU,i,j) * t1(1,i,j)   + QLeft(INSRHOV,i,j) * t1(2,i,j)   + QLeft(INSRHOW,i,j) * t1(3,i,j))
+            wL = invRhoL * (QLeft(INSRHOU,i,j) * t2(1,i,j)   + QLeft(INSRHOV,i,j) * t2(2,i,j)   + QLeft(INSRHOW,i,j) * t2(3,i,j))
+            pL = QLeft(INSP,i,j)
 
-         rhoR = QRight(INSRHO)
-         invRhoR = 1.0_RP / rhoR
-         uR = invRhoR * (QRight(INSRHOU) * nHat(1) + QRight(INSRHOV) * nHat(2) + QRight(INSRHOW) * nHat(3))
-         vR = invRhoR * (QRight(INSRHOU) * t1(1)   + QRight(INSRHOV) * t1(2)   + QRight(INSRHOW) * t1(3))
-         wR = invRhoR * (QRight(INSRHOU) * t2(1)   + QRight(INSRHOV) * t2(2)   + QRight(INSRHOW) * t2(3))
-         pR = QRight(INSP)
-!
-!        Compute the Star Region
-!        -----------------------
-         lambdaMinusR = 0.5_RP * (uR - sqrt(uR*uR + 4.0_RP*thermodynamics % rho0c02/rhoR))
-         lambdaPlusR  = 0.5_RP * (uR + sqrt(uR*uR + 4.0_RP*thermodynamics % rho0c02/rhoR))
+            rhoR = QRight(INSRHO,i,j)
+            invRhoR = 1.0_RP / rhoR
+            uR = invRhoR * (QRight(INSRHOU,i,j) * nHat(1,i,j) + QRight(INSRHOV,i,j) * nHat(2,i,j) + QRight(INSRHOW,i,j) * nHat(3,i,j))
+            vR = invRhoR * (QRight(INSRHOU,i,j) * t1(1,i,j)   + QRight(INSRHOV,i,j) * t1(2,i,j)   + QRight(INSRHOW,i,j) * t1(3,i,j))
+            wR = invRhoR * (QRight(INSRHOU,i,j) * t2(1,i,j)   + QRight(INSRHOV,i,j) * t2(2,i,j)   + QRight(INSRHOW,i,j) * t2(3,i,j))
+            pR = QRight(INSP,i,j)
+!  
+!           Compute the Star Region
+!           -----------------------
+            lambdaMinusR = 0.5_RP * (uR - sqrt(uR*uR + 4.0_RP*thermodynamics % rho0c02/rhoR))
+            lambdaPlusR  = 0.5_RP * (uR + sqrt(uR*uR + 4.0_RP*thermodynamics % rho0c02/rhoR))
 
-         lambdaMinusL = 0.5_RP * (uL - sqrt(uL*uL + 4.0_RP*thermodynamics % rho0c02/rhoL))
-         lambdaPlusL  = 0.5_RP * (uL + sqrt(uL*uL + 4.0_RP*thermodynamics % rho0c02/rhoL))
+            lambdaMinusL = 0.5_RP * (uL - sqrt(uL*uL + 4.0_RP*thermodynamics % rho0c02/rhoL))
+            lambdaPlusL  = 0.5_RP * (uL + sqrt(uL*uL + 4.0_RP*thermodynamics % rho0c02/rhoL))
 
-         uStar = (pR-pL+rhoR*uR*lambdaMinusR-rhoL*uL*lambdaPlusL)/(rhoR*lambdaMinusR - rhoL*lambdaPlusL)
-         pStar = pR + rhoR*lambdaMinusR*(uR-uStar)
-         rhoStarL = (rhoL*lambdaPlusL)/(uStar-lambdaMinusL)
-         rhoStarR = (rhoR*lambdaMinusR)/(uStar - lambdaPlusR)
+            uStar = (pR-pL+rhoR*uR*lambdaMinusR-rhoL*uL*lambdaPlusL)/(rhoR*lambdaMinusR - rhoL*lambdaPlusL)
+            pStar = pR + rhoR*lambdaMinusR*(uR-uStar)
+            rhoStarL = (rhoL*lambdaPlusL)/(uStar-lambdaMinusL)
+            rhoStarR = (rhoR*lambdaMinusR)/(uStar - lambdaPlusR)
 
-         if ( uStar .ge. 0.0_RP ) then
-            rhoStar = rhoStarL
-            vStar   = vL
-            wStar   = wL
+            if ( uStar .ge. 0.0_RP ) then
+               rhoStar = rhoStarL
+               vStar   = vL
+               wStar   = wL
 
-         else
-            rhoStar = rhoStarR
-            vStar   = vR
-            wStar   = wR
+            else
+               rhoStar = rhoStarR
+               vStar   = vR
+               wStar   = wR
 
-         end if
+            end if
 
-         flux = [rhoStar*uStar, rhoStar*uStar*uStar + pStar, rhoStar*uStar*vStar, rhoStar*uStar*wStar, thermodynamics % rho0c02 * uStar]
-!
-!        ************************************************
-!        Return momentum equations to the cartesian frame
-!        ************************************************
-!
-         flux(2:4) = nHat*flux(2) + t1*flux(3) + t2*flux(4)
+            flux(:, i, j) = [rhoStar*uStar, rhoStar*uStar*uStar + pStar, rhoStar*uStar*vStar, rhoStar*uStar*wStar, thermodynamics % rho0c02 * uStar]
+            
+            f = flux(2, i, j)
+            g = flux(3, i, j)
+            h = flux(4, i, j)
+                     
+            ! Transform momentum equations back to Cartesian frame
+            flux(2, i, j) = f * nHat(1, i, j) + g * t1(1, i, j) + h * t2(1, i, j)
+            flux(3, i, j) = f * nHat(2, i, j) + g * t1(2, i, j) + h * t2(2, i, j)
+            flux(4, i, j) = f * nHat(3, i, j) + g * t1(3, i, j) + h * t2(3, i, j)
+
+         enddo ; enddo
 
       end subroutine ExactRiemannSolver
 !
@@ -439,6 +487,7 @@ error stop
 !////////////////////////////////////////////////////////////////////////////////////////////
 !
       subroutine StandardAverage(QLeft, QRight, f, g, h)
+         !$acc routine seq
 !
 !        *********************************************************************
 !           Computes the standard average of the two states:
@@ -458,29 +507,16 @@ error stop
 !        ---------------
 !
          real(kind=RP)  :: fL(NCONS), fR(NCONS)
-!
-!        Compute the flux
-!        ----------------
-!         fL(INSRHO)  = QLeft(INSRHO) * QLeft(INSRHOU)
-!         fL(INSRHOU) = fL(INSRHO) * QLeft(INSRHOU) + QLeft(INSP)
-!         fL(INSRHOV) = fL(INSRHO) * QLeft(INSRHOV)
-!         fL(INSRHOW) = fL(INSRHO) * QLeft(INSRHOW)
-!         fL(INSP)    = thermodynamics % rho0c02 * QLeft(INSP)
-!
-!         fR(INSRHO)  = QRight(INSRHO) * QRight(INSRHOU)
-!         fR(INSRHOU) = fR(INSRHO) * QRight(INSRHOU) + QRight(INSP)
-!         fR(INSRHOV) = fR(INSRHO) * QRight(INSRHOV)
-!         fR(INSRHOW) = fR(INSRHO) * QRight(INSRHOW)
-!         fR(INSP)    = thermodynamics % rho0c02 * QRight(INSP)
-!
-!         flux = 0.5_RP * (fL + fR)
 
-         print*, "Standard average not implemented"
-         error stop
+
+         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+         !!!!!!!!! not immplemented !!!!!!!!!!!         
+         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
       end subroutine StandardAverage
 
       subroutine SkewSymmetric1Average(QLeft, QRight, f, g, h)
+         !$acc routine seq
 !
 !        *********************************************************************
 !        *********************************************************************
@@ -497,22 +533,14 @@ error stop
 !
          real(kind=RP)  :: rhou, u
 
-!         rhou = 0.5_RP * (QLeft(INSRHO) * QLeft(INSRHOU) + QRight(INSRHO) * QRight(INSRHOU))
-!         u    = 0.5_RP * (QLeft(INSRHOU) + QRight(INSRHOU))
-!!
-!!        Compute the flux
-!!        ----------------
-!         flux(INSRHO) = rhou
-!         flux(INSRHOU) = rhou * u + 0.5_RP * (QLeft(INSP) + QRight(INSP))
-!         flux(INSRHOU) = rhou * 0.5_RP * (QLeft(INSRHOV) + QRight(INSRHOV))
-!         flux(INSRHOU) = rhou * 0.5_RP * (QLeft(INSRHOW) + QRight(INSRHOW))
-!         flux(INSP)    = thermodynamics % rho0c02 * u
-!
-         print*, "SkewSymmetric 1 average not implemented"
-         error stop
+         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+         !!!!!!!!! not immplemented !!!!!!!!!!!         
+         !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
       end subroutine SkewSymmetric1Average
 
       subroutine SkewSymmetric2Average(QLeft, QRight, f, g, h)
+         !$acc routine seq
 !
 !        *********************************************************************
 !        *********************************************************************
@@ -557,17 +585,6 @@ error stop
          h(INSP)    = thermodynamics % rho0c02 * w
 
 
-         
-
-!         u    = 0.5_RP * (QLeft(INSRHOU) + QRight(INSRHOU))
-!!
-!!        Compute the flux
-!!        ----------------
-!         flux(INSRHO) = 0.5_RP * (QLeft(INSRHO) + QRight(INSRHO)) * u
-!         flux(INSRHOU) = flux(INSRHOU) * u + 0.5_RP * (QLeft(INSP) + QRight(INSP))
-!         flux(INSRHOU) = flux(INSRHOU) * 0.5_RP * (QLeft(INSRHOV) + QRight(INSRHOV))
-!         flux(INSRHOU) = flux(INSRHOU) * 0.5_RP * (QLeft(INSRHOW) + QRight(INSRHOW))
-!         flux(INSP)    = thermodynamics % rho0c02 * u
 
       end subroutine SkewSymmetric2Average
 !
@@ -578,6 +595,7 @@ error stop
 !///////////////////////////////////////////////////////////////////////
 !
       subroutine StandardDG_TwoPointFlux(QL,QR,JaL,JaR, fSharp)
+         !$acc routine seq
          use SMConstants
          use PhysicsStorage_iNS
          implicit none
@@ -636,6 +654,7 @@ error stop
       end subroutine StandardDG_TwoPointFlux
 
       subroutine SkewSymmetric1DG_TwoPointFlux(QL,QR,JaL,JaR, fSharp)
+         !$acc routine seq
          use SMConstants
          use PhysicsStorage_iNS
          implicit none
@@ -704,6 +723,7 @@ error stop
       end subroutine SkewSymmetric1DG_TwoPointFlux
 
       subroutine SkewSymmetric2DG_TwoPointFlux(QL,QR,JaL,JaR, fSharp)
+         !$acc routine seq
          use SMConstants
          use PhysicsStorage_iNS
          implicit none
@@ -767,5 +787,10 @@ error stop
          fSharp = f*Ja(IX) + g*Ja(IY) + h*Ja(IZ)
 
       end subroutine SkewSymmetric2DG_TwoPointFlux
+
+      subroutine CentralRiemannSolver_acc()
+         !$acc routine vector
+
+      end subroutine CentralRiemannSolver_acc
 
 end module RiemannSolvers_iNS

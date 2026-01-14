@@ -11,7 +11,7 @@
 
       private
       public  iEulerFlux, iViscousFlux, iEulerXFlux
-      public  getStressTensor
+      public  getStressTensor, ComputeEigenvaluesForState
 !
 !     ========
       CONTAINS 
@@ -25,6 +25,7 @@
 !//////////////////////////////////////////////////////////////////////////////
 !
       pure subroutine iEulerFlux(Q, F, rho_, Qbase)
+      !$acc routine seq
          implicit none
          real(kind=RP), intent(in)   :: Q(1:NCONS)
          real(kind=RP), intent(out)  :: F(1:NCONS, 1:NDIM)
@@ -68,6 +69,7 @@
       end subroutine iEulerFlux
 
       pure subroutine iEulerXFlux(Q, F)
+         !$acc routine seq
          implicit none
          real(kind=RP), intent(in)   :: Q(1:NCONS)
          real(kind=RP), intent(out)  :: F(1:NCONS)
@@ -100,6 +102,7 @@
 !//////////////////////////////////////////////////////////////////////////////////////////
 !
       pure subroutine iViscousFlux(nEqn, nGradEqn, Q, U_x, U_y, U_z, mu, beta, kappa, F)
+         !$acc routine seq
          implicit none
          integer,       intent(in)  :: nEqn
          integer,       intent(in)  :: nGradEqn
@@ -136,6 +139,7 @@
 !///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 !
       pure subroutine getStressTensor(Q,Q_x,Q_y,Q_z,tau)
+         !$acc routine seq
          implicit none
          real(kind=RP), intent(in)      :: Q   (1:NCONS         )
          real(kind=RP), intent(in)      :: Q_x (1:NGRAD    )
@@ -187,7 +191,6 @@
 
       end subroutine getStressTensor
 
-   END Module Physics_iNS
 !@mark -
 !
 ! /////////////////////////////////////////////////////////////////////
@@ -199,6 +202,7 @@
 !----------------------------------------------------------------------
 !
       SUBROUTINE ComputeEigenvaluesForState( Q, eigen )
+      !$acc routine seq
       USE SMConstants
       USE PhysicsStorage_iNS
       use FluidData_iNS,          only: Thermodynamics
@@ -227,3 +231,5 @@
       eigen(3) = 0.5_RP * (w + a)
       
       END SUBROUTINE ComputeEigenvaluesForState
+      
+   END Module Physics_iNS
