@@ -285,7 +285,7 @@ module StorageClass
 #endif
          procedure :: copy             => FaceStorage_Assign
          generic   :: assignment(=)    => copy
-         final     :: FaceStorage_Destruct
+         final     :: FaceStorage_Finalize
    end type FaceStorage_t
 !
 !  ========
@@ -1549,6 +1549,12 @@ module StorageClass
 
       elemental subroutine FaceStorage_Destruct(self)
          implicit none
+         class(FaceStorage_t), intent(inout) :: self
+         call FaceStorage_Finalize(self)
+      end subroutine FaceStorage_Destruct
+
+      elemental subroutine FaceStorage_Finalize(self)
+         implicit none
          type(FaceStorage_t), intent(inout) :: self
 
          self % constructed = .FALSE.
@@ -1612,7 +1618,7 @@ module StorageClass
 
          safedeallocate(self % AviscFlux)
 
-      end subroutine FaceStorage_Destruct
+      end subroutine FaceStorage_Finalize
 #ifdef FLOW
       pure subroutine FaceStorage_SetStorageToNS(self)
          implicit none

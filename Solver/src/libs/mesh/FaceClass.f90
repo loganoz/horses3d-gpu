@@ -98,7 +98,7 @@
 #endif
             procedure   :: copy           => Face_Assign
             generic     :: assignment(=)  => copy
-            final       :: DestructFace
+            final       :: FinalizeFace
       end type Face
 !
 !     ========
@@ -146,6 +146,14 @@
 !
       SUBROUTINE DestructFace( self )
          IMPLICIT NONE 
+         class(Face), intent(inout) :: self
+         call FinalizeFace( self )
+      end SUBROUTINE DestructFace
+!
+!////////////////////////////////////////////////////////////////////////
+!
+      SUBROUTINE FinalizeFace( self )
+         IMPLICIT NONE 
          type(Face), intent(inout) :: self
          
          self % ID = -1
@@ -173,7 +181,7 @@
             nullify(self % storage)
          end if
 
-      end SUBROUTINE DestructFace
+      end SUBROUTINE FinalizeFace
 !
 !////////////////////////////////////////////////////////////////////////
 !
