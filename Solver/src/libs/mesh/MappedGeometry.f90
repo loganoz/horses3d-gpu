@@ -765,7 +765,7 @@ Module MappedGeometryClass
       pure subroutine DestructMappedGeometryFace(self)
          implicit none
          !-------------------------------------------------------------------
-         class(MappedGeometryFace), intent(inout) :: self
+         type(MappedGeometryFace), intent(inout) :: self
          !-------------------------------------------------------------------
 
          safedeallocate(self % x        )

@@ -146,7 +146,7 @@
 !
       SUBROUTINE DestructFace( self )
          IMPLICIT NONE 
-         class(Face), intent(inout) :: self
+         type(Face), intent(inout) :: self
          
          self % ID = -1
          self % FaceType = HMESH_NONE

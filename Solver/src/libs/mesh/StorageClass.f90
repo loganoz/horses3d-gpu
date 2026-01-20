@@ -1549,7 +1549,7 @@ module StorageClass
 
       elemental subroutine FaceStorage_Destruct(self)
          implicit none
-         class(FaceStorage_t), intent(inout) :: self
+         type(FaceStorage_t), intent(inout) :: self
 
          self % constructed = .FALSE.
          self % currentlyLoaded = OFF
