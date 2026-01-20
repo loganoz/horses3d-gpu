@@ -48,6 +48,13 @@ jobs:
         if: (matrix.compiler == 'gfortran')
         run: |
           sudo apt-get install -y openmpi-bin libopenmpi-dev
+          which mpif90
+          which mpicc
+          which mpicxx
+          which mpirun
+          which mpiexec
+          which mpifort
+          which gcc
 
       # # Install parallel HDF5 (OpenMPI version)
       # - name: Install HDF5 (parallel, OpenMPI)
@@ -378,14 +385,14 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/UniformFlow
         run: |
           source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 3 ./horses3d.ns UniformFlow_HDF5.control
+          mpirun -n 3 ./horses3d.ns UniformFlow_HDF5.control
         if: '!cancelled()'
 
       - name: Run NSUniformFlow_parallel_METIS
         working-directory: ./Solver/test/NavierStokes/UniformFlow
         run: |
           source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 3 ./horses3d.ns UniformFlow_HDF5_METIS.control
+          mpirun -n 3 ./horses3d.ns UniformFlow_HDF5_METIS.control
         if: '!cancelled()'
 
       - name: Run NSUniformFlow_serial
