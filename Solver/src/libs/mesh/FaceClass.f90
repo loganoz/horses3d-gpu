@@ -98,6 +98,7 @@
 #endif
             procedure   :: copy           => Face_Assign
             generic     :: assignment(=)  => copy
+            final       :: DestructFace
       end type Face
 !
 !     ========

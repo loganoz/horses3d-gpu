@@ -285,6 +285,7 @@ module StorageClass
 #endif
          procedure :: copy             => FaceStorage_Assign
          generic   :: assignment(=)    => copy
+         final     :: FaceStorage_Destruct
    end type FaceStorage_t
 !
 !  ========

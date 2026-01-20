@@ -52,6 +52,7 @@ Module MappedGeometryClass
          contains
             procedure :: construct => ConstructMappedGeometryFace
             procedure :: destruct  => DestructMappedGeometryFace
+            final     :: DestructMappedGeometryFace
       end type MappedGeometryFace
 
 !
