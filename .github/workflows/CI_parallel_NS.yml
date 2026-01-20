@@ -48,13 +48,17 @@ jobs:
         if: (matrix.compiler == 'gfortran')
         run: |
           sudo apt-get install -y openmpi-bin libopenmpi-dev
-          which mpif90
-          which mpicc
-          which mpicxx
-          which mpirun
-          which mpiexec
-          which mpifort
-          which gcc
+          mpif90 --version
+          mpif90 --showme
+          mpicc --version
+          mpicc --showme
+          mpicxx --version
+          mpicxx --showme
+          mpirun --version
+          mpiexec --version
+          mpifort --version
+          mpifort --showme
+          gcc --version
 
       # # Install parallel HDF5 (OpenMPI version)
       # - name: Install HDF5 (parallel, OpenMPI)
