@@ -26,6 +26,10 @@
       use HDF5
 #endif
       
+#ifdef _OPENACC
+      use cudafor
+      use openacc
+#endif    
       IMPLICIT NONE
       TYPE( FTValueDictionary)            :: controlVariables
       TYPE( DGSem )                       :: sem
@@ -33,7 +37,7 @@
       LOGICAL                             :: success, saveGradients
       integer                             :: initial_iteration
       INTEGER                             :: ierr
-      real(kind=RP)                       :: initial_time
+      real(kind=RP)                       :: initial_time, t_elaps
       character(len=LINE_LENGTH)          :: solutionFileName
       integer, allocatable                :: Nx(:), Ny(:), Nz(:)
       integer                             :: Nmax
@@ -97,6 +101,8 @@
       call InitializeNodalStorage(controlVariables, Nmax)
       call Initialize_InterpolationMatrices(Nmax)
       
+      !$acc enter data copyin(sem)
+
       call sem % construct (  controlVariables  = controlVariables,                                         &
                                  Nx_ = Nx,     Ny_ = Ny,     Nz_ = Nz,                                                 &
                                  success           = success)
@@ -123,7 +129,17 @@
 !     Integrate in time
 !     -----------------
 !
+#ifdef _OPENACC
+      call cudaProfilerStart() !Set up the profiling here to avoid memory transfers
+#endif
       CALL timeIntegrator % integrate(sem, controlVariables, sem % monitors, ComputeTimeDerivative, ComputeTimeDerivativeIsolated)
+      
+      call Stopwatch % Pause("TotalTime")
+
+#ifdef _OPENACC
+      call cudaProfilerStop() ! Stop the collection of statistics for OpenACC
+#endif
+
 !
 !     ----------------------------------
 !     Export particles to VTK (temporal)
@@ -172,6 +188,14 @@
 !     Finish up
 !     ---------
 !
+!     ----------------------------
+!     Delete the data from the GPU
+!     ----------------------------
+!
+#ifdef _OPENACC
+      call sem % mesh % ExitDeviceData()
+      print*, "I delete the data from the GPU"
+#endif
       call Stopwatch % destruct
       CALL timeIntegrator % destruct()
       CALL sem % destruct()
