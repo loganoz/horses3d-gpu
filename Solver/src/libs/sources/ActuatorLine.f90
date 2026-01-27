@@ -710,6 +710,7 @@ contains
 !    ----------------------------------------------------------------
 !
     pointsToFind = 0
+    newPointToFind = 0
 !$omp do schedule(runtime)private(ii,jj,kk,eID,Q,Qtemp,delta_temp,xi,found,allfound)
     do kk = 1, self%num_turbines
       do jj = 1, self%turbine_t(kk)%num_blades
@@ -755,18 +756,21 @@ contains
 !   -----------------------------------------------------------
     if ( (MPI_Process % doMPIAction) ) then
 #ifdef _HAS_MPI_
-             call mpi_allgather(pointsToFind, 1, MPI_INT, pointsToFind_proc, 1, MPI_INT, MPI_COMM_WORLD, ierr)
+      call mpi_allreduce(pointsToFind, allpointsToFind, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD, ierr)
 #endif
-      displ(1) = 0
-      do i = 1, MPI_Process % nProcs - 1
-         ! 3 indexes to communicate
-         displ(i+1) = displ(i) + pointsToFind_proc(i)
-      end do
-      allpointsToFind = sum(pointsToFind_proc)
-      safedeallocate(allNewPointToFind_ii)
-      safedeallocate(allNewPointToFind_jj)
-      safedeallocate(allNewPointToFind_kk)
       if (allpointsToFind .gt. 0) then
+#ifdef _HAS_MPI_
+          call mpi_allgather(pointsToFind, 1, MPI_INT, pointsToFind_proc, 1, MPI_INT, MPI_COMM_WORLD, ierr)
+#endif
+          displ(1) = 0
+          do i = 1, MPI_Process % nProcs - 1
+             ! 3 indexes to communicate
+             displ(i+1) = displ(i) + pointsToFind_proc(i)
+          end do
+          ! allpointsToFind = sum(pointsToFind_proc)
+          safedeallocate(allNewPointToFind_ii)
+          safedeallocate(allNewPointToFind_jj)
+          safedeallocate(allNewPointToFind_kk)
           allocate(allNewPointToFind_ii(allpointsToFind),allNewPointToFind_jj(allpointsToFind),allNewPointToFind_kk(allpointsToFind))
 #ifdef _HAS_MPI_
           call mpi_allgatherv( newPointToFind(1:pointsToFind,3), pointsToFind, MPI_INT, allNewPointToFind_ii, pointsToFind_proc, displ, MPI_INT, MPI_COMM_WORLD, ierr)
