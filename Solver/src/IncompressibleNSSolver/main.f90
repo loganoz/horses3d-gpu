@@ -22,6 +22,10 @@
 #ifdef _HAS_MPI_
       use mpi
 #endif
+#ifdef HAS_HDF5
+      use HDF5
+#endif
+      
 #ifdef _OPENACC
       use cudafor
       use openacc
@@ -55,7 +59,12 @@
 !     Initializations
 !     ---------------
 !
+      ! Initialize MPI
       call MPI_Process % Init
+      ! Initialize HDF5 predefined datatypes
+#ifdef HAS_HDF5
+      call h5open_f(ierr)
+#endif
       call CheckIfTheVersionIsRequested
 !
 !     ----------------------------------------------------------------------------------
@@ -198,6 +207,9 @@
       
       CALL UserDefinedTermination
 
+#ifdef HAS_HDF5
+      call h5close_f(ierr)
+#endif
       call MPI_Process % Close
       
       END PROGRAM HORSES3DMainiNS
