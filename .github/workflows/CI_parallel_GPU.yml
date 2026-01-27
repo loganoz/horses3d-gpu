@@ -1,0 +1,463 @@
+name: CI PARALLEL (MPI) GPU
+
+########################################################################
+on:
+  # Triggers the workflow on push or pull request events but only for the main branch
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+  workflow_dispatch:
+
+jobs:
+  parallel-gpu-tests:
+    # Uses self-hosted runner on Cesvima cluster with GPU access
+    name: Parallel GPU Tests (NVFORTRAN)
+    runs-on: [self-hosted, cesvima, gpu]
+    # Prevent runaway jobs from consuming cluster resources indefinitely
+    timeout-minutes: 120
+    
+    env:
+      METIS_HOME: ${{ github.workspace }}/metis-5.1.0/build/Linux-x86_64
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install METIS library (required for parallel partitioning)
+      - name: Install METIS
+        run: |
+          module purge
+          module load CMake/3.26.3-GCCcore-12.3.0
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          
+          if [ ! -d "metis-5.1.0" ]; then
+            wget "https://src.fedoraproject.org/lookaside/pkgs/metis/metis-5.1.0.tar.gz/5465e67079419a69e0116de24fce58fe/metis-5.1.0.tar.gz" 
+            tar -xvf metis-5.1.0.tar.gz
+            cd metis-5.1.0
+            make config cc=gcc
+            make
+            mkdir -p build/Linux-x86_64/lib build/Linux-x86_64/bin
+            cp -r build/Linux-x86_64/libmetis/* build/Linux-x86_64/lib/ 2>/dev/null || true
+            cp -r build/Linux-x86_64/programs/* build/Linux-x86_64/bin/ 2>/dev/null || true
+          fi
+
+      - name: Configure Horses3D
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          cd Solver
+          ./configure
+
+      - name: Compile horses3d
+        working-directory: ./Solver
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          make allclean COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
+          make ns ins mu COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
+
+########################################################################
+#######                    NAVIER-STOKES TESTS                  ########
+########################################################################
+
+#
+# 1) CYLINDER
+# -----------
+
+      - name: Build NSCylinder
+        working-directory: ./Solver/test/NavierStokes/Cylinder/SETUP
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO
+        if: '!cancelled()'
+
+      - name: Run NSCylinder
+        working-directory: ./Solver/test/NavierStokes/Cylinder
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          
+          cat > run_test.sh << 'EOF'
+          #!/bin/bash
+          #SBATCH --job-name=NSCylinder
+          #SBATCH --ntasks=4
+          #SBATCH --partition=standard-gpu
+          #SBATCH --cpus-per-task=1
+          #SBATCH --mem-per-cpu=20G
+          #SBATCH --gpus-per-task=1
+          #SBATCH --time=00:15:00
+          
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          mpirun -np 4 ./horses3d.ns Cylinder.control
+          EOF
+          
+          job_id=$(sbatch --parsable run_test.sh)
+          while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
+          
+          cat slurm-${job_id}.out
+          
+          # Check exit code (ExitCode:Signal, e.g., "0:0" means success)
+          exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
+          if [ "$exit_code" != "0" ]; then
+            echo "Test failed with exit code: $exit_code"
+            exit 1
+          fi
+        if: '!cancelled()'
+
+#
+# 5) CYLINDER SMAGORINSKY
+# -----------------------
+
+      - name: Build NSCylinderSmagorinsky
+        working-directory: ./Solver/test/NavierStokes/CylinderSmagorinsky/SETUP
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
+        if: '!cancelled()'
+
+      - name: Run NSCylinderSmagorinsky
+        working-directory: ./Solver/test/NavierStokes/CylinderSmagorinsky
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          
+          cat > run_test.sh << 'EOF'
+          #!/bin/bash
+          #SBATCH --job-name=NSCylinderSmagorinsky
+          #SBATCH --ntasks=4
+          #SBATCH --partition=standard-gpu
+          #SBATCH --cpus-per-task=1
+          #SBATCH --mem-per-cpu=20G
+          #SBATCH --gpus-per-task=1
+          #SBATCH --time=00:15:00
+          
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          mpirun -np 4 ./horses3d.ns CylinderSmagorinsky.control
+          EOF
+          
+          job_id=$(sbatch --parsable run_test.sh)
+          while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
+          
+          cat slurm-${job_id}.out
+          
+          # Check exit code (ExitCode:Signal, e.g., "0:0" means success)
+          exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
+          if [ "$exit_code" != "0" ]; then
+            echo "Test failed with exit code: $exit_code"
+            exit 1
+          fi
+        if: '!cancelled()'
+
+#
+# 6) CYLINDER WALE
+# ------------------
+
+      - name: Build NSCylinderWALE
+        working-directory: ./Solver/test/NavierStokes/CylinderWALE/SETUP
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
+        if: '!cancelled()'
+
+      - name: Run NSCylinderWALE
+        working-directory: ./Solver/test/NavierStokes/CylinderWALE
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+
+          cat > run_test.sh << 'EOF'
+          #!/bin/bash
+          #SBATCH --job-name=NSCylinderWALE
+          #SBATCH --ntasks=4
+          #SBATCH --partition=standard-gpu
+          #SBATCH --cpus-per-task=1
+          #SBATCH --mem-per-cpu=20G
+          #SBATCH --gpus-per-task=1
+          #SBATCH --time=00:15:00
+
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          mpirun -np 4 ./horses3d.ns CylinderWALE.control
+          EOF
+
+          job_id=$(sbatch --parsable run_test.sh)
+          while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
+
+          cat slurm-${job_id}.out
+
+          exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
+          if [ "$exit_code" != "0" ]; then
+            echo "Test failed with exit code: $exit_code"
+            exit 1
+          fi
+        if: '!cancelled()'
+
+#
+# 7) CYLINDER VREMAN
+# ------------------
+
+      - name: Build NSCylinderVreman
+        working-directory: ./Solver/test/NavierStokes/CylinderVreman/SETUP
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
+        if: '!cancelled()'
+
+      - name: Run NSCylinderVreman
+        working-directory: ./Solver/test/NavierStokes/CylinderVreman
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+
+          cat > run_test.sh << 'EOF'
+          #!/bin/bash
+          #SBATCH --job-name=NSCylinderVreman
+          #SBATCH --ntasks=4
+          #SBATCH --partition=standard-gpu
+          #SBATCH --cpus-per-task=1
+          #SBATCH --mem-per-cpu=20G
+          #SBATCH --gpus-per-task=1
+          #SBATCH --time=00:15:00
+
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          mpirun -np 4 ./horses3d.ns CylinderVreman.control
+          EOF
+
+          job_id=$(sbatch --parsable run_test.sh)
+          while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
+
+          cat slurm-${job_id}.out
+
+          exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
+          if [ "$exit_code" != "0" ]; then
+            echo "Test failed with exit code: $exit_code"
+            exit 1
+          fi
+        if: '!cancelled()'
+
+#
+# 8) CYLINDER ChandrasekarRoe
+# ------------------
+
+      - name: Build NSCylinderChandrasekarRoe
+        working-directory: ./Solver/test/NavierStokes/CylinderChandrasekarRoe/SETUP
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO
+        if: '!cancelled()'
+
+      - name: Run NSCylinderChandrasekarRoe
+        working-directory: ./Solver/test/NavierStokes/CylinderChandrasekarRoe
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+
+          cat > run_test.sh << 'EOF'
+          #!/bin/bash
+          #SBATCH --job-name=NSCylinderChandrasekarRoe
+          #SBATCH --ntasks=4
+          #SBATCH --partition=standard-gpu
+          #SBATCH --cpus-per-task=1
+          #SBATCH --mem-per-cpu=20G
+          #SBATCH --gpus-per-task=1
+          #SBATCH --time=00:15:00
+
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          mpirun -np 4 ./horses3d.ns CylinderChandrasekarRoe.control
+          EOF
+
+          job_id=$(sbatch --parsable run_test.sh)
+          while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
+
+          cat slurm-${job_id}.out
+
+          exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
+          if [ "$exit_code" != "0" ]; then
+            echo "Test failed with exit code: $exit_code"
+            exit 1
+          fi
+        if: '!cancelled()'
+
+#
+# 9) TAYLOR GREEN VORTEX
+# ----------------------
+
+      - name: Build TaylorGreen
+        working-directory: ./Solver/test/NavierStokes/TaylorGreen/SETUP
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
+        if: '!cancelled()'
+
+      - name: Run TaylorGreen
+        working-directory: ./Solver/test/NavierStokes/TaylorGreen
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          
+          cat > run_test.sh << 'EOF'
+          #!/bin/bash
+          #SBATCH --job-name=TaylorGreen_Serial
+          #SBATCH --ntasks=4
+          #SBATCH --partition=standard-gpu
+          #SBATCH --cpus-per-task=1
+          #SBATCH --mem-per-cpu=20G
+          #SBATCH --gpus-per-task=1
+          #SBATCH --time=00:15:00
+          
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          mpirun -np 4 ./horses3d.ns TaylorGreen.control
+          EOF
+          
+          job_id=$(sbatch --parsable run_test.sh)
+          while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
+          
+          cat slurm-${job_id}.out
+          
+          # Check exit code (ExitCode:Signal, e.g., "0:0" means success)
+          exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
+          if [ "$exit_code" != "0" ]; then
+            echo "Test failed with exit code: $exit_code"
+            exit 1
+          fi
+        if: '!cancelled()'
+
+#
+# 18) NACA0012 Unsteady Dual Time Stepping
+# ----------------------------
+
+      - name: Build DualTimeStepping
+        working-directory: ./Solver/test/NavierStokes/DualTimeStepping/SETUP
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
+        if: '!cancelled()'
+
+      - name: Run DualTimeStepping
+        working-directory: ./Solver/test/NavierStokes/DualTimeStepping
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+
+          cat > run_test.sh << 'EOF'
+          #!/bin/bash
+          #SBATCH --job-name=DualTimeStepping
+          #SBATCH --ntasks=4
+          #SBATCH --partition=standard-gpu
+          #SBATCH --cpus-per-task=1
+          #SBATCH --mem-per-cpu=20G
+          #SBATCH --gpus-per-task=1
+          #SBATCH --time=00:15:00
+
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          mpirun -np 4 ./horses3d.ns DualTimeStepping.control
+          EOF
+
+          job_id=$(sbatch --parsable run_test.sh)
+          while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
+
+          cat slurm-${job_id}.out
+
+          exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d ':' -f1)
+          if [ "$exit_code" != "0" ]; then
+            echo "Test failed with exit code: $exit_code"
+            exit 1
+          fi
+        if: '!cancelled()'
+
+#
+# 26) IBM CYLINDER
+# -------------------
+
+      - name: Build IBM_Cylinder
+        working-directory: ./Solver/test/NavierStokes/IBM_Cylinder/SETUP
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
+        if: '!cancelled()'
+
+      - name: Run IBM_Cylinder
+        working-directory: ./Solver/test/NavierStokes/IBM_Cylinder
+        run: |
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+
+          cat > run_test.sh << 'EOF'
+          #!/bin/bash
+          #SBATCH --job-name=IBM_Cylinder
+          #SBATCH --ntasks=4
+          #SBATCH --partition=standard-gpu
+          #SBATCH --cpus-per-task=1
+          #SBATCH --mem-per-cpu=20G
+          #SBATCH --gpus-per-task=1
+          #SBATCH --time=00:15:00
+
+          module purge
+          module load NVHPC/23.7-CUDA-12.2.0
+          export LD_LIBRARY_PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/lib/:$LD_LIBRARY_PATH
+          export PATH=/media/apps/avx512-2021/software/NVHPC/23.7-CUDA-12.2.0/Linux_x86_64/23.7/comm_libs/mpi/bin:$PATH
+          mpirun -np 4 ./horses3d.ns IBMCylinder.control
+          EOF
+
+          job_id=$(sbatch --parsable run_test.sh)
+          while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
+
+          cat slurm-${job_id}.out
+
+          exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
+          if [ "$exit_code" != "0" ]; then
+            echo "Test failed with exit code: $exit_code"
+            exit 1
+          fi
+        if: '!cancelled()'

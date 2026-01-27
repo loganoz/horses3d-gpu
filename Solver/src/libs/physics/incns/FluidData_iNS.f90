@@ -47,8 +47,10 @@ module FluidData_iNS
 !  ---------
 !
    type(Thermodynamics_t), protected   :: thermodynamics
+   !$acc declare create(thermodynamics)
    type(RefValues_t),      protected   :: refValues
    type(Dimensionless_t),  protected   :: dimensionless
+   !$acc declare create(dimensionless)
 
    contains
 !
@@ -64,22 +66,36 @@ module FluidData_iNS
       subroutine SetThermodynamics( thermodynamics_ )
          implicit none
          type(Thermodynamics_t), intent(in)  :: thermodynamics_
-
+      
          thermodynamics % number_of_fluids = thermodynamics_ % number_of_fluids  
-         thermodynamics % rho0c02          = thermodynamics_ % rho0c02              
-
-         if(allocated(thermodynamics % rho)) deallocate(thermodynamics % rho)
+         thermodynamics % rho0c02 = thermodynamics_ % rho0c02              
+      
+         if(allocated(thermodynamics % rho)) then
+            !$acc exit data delete(thermodynamics%rho)
+            deallocate(thermodynamics % rho)
+         endif
          allocate(thermodynamics % rho(thermodynamics % number_of_fluids))
-         thermodynamics % rho              = thermodynamics_ % rho              
-
-         if(allocated(thermodynamics % mu )) deallocate(thermodynamics % mu )
-         allocate(thermodynamics % mu (thermodynamics % number_of_fluids))
-         thermodynamics % mu               = thermodynamics_ % mu               
-
-         thermodynamics % rho_max          = thermodynamics_ % rho_max          
-         thermodynamics % rho_min          = thermodynamics_ % rho_min          
-
+         !$acc enter data copyin(thermodynamics%rho(1:thermodynamics%number_of_fluids))
+         thermodynamics % rho = thermodynamics_ % rho              
+      
+         if(allocated(thermodynamics % mu)) then
+            !$acc exit data delete(thermodynamics%mu)
+            deallocate(thermodynamics % mu)
+         endif
+         allocate(thermodynamics % mu(thermodynamics % number_of_fluids))
+         !$acc enter data copyin(thermodynamics%mu(1:thermodynamics%number_of_fluids))
+         thermodynamics % mu = thermodynamics_ % mu               
+      
+         thermodynamics % rho_max = thermodynamics_ % rho_max          
+         thermodynamics % rho_min = thermodynamics_ % rho_min          
+      
+         !!$acc update device(thermodynamics%rho)
+         !$acc update device(thermodynamics%number_of_fluids, thermodynamics%rho0c02)
+         !$acc update device(thermodynamics%rho, thermodynamics%mu)
+         !$acc update device(thermodynamics%rho_max, thermodynamics%rho_min)
+      
       end subroutine SetThermodynamics
+   
 
       subroutine SetRefValues( refValues_ )
          implicit none
@@ -94,22 +110,38 @@ module FluidData_iNS
 
       end subroutine SetRefValues
 
-      subroutine SetDimensionless( dimensionless_ )
+      subroutine SetDimensionless(dimensionless_)
          implicit none
-         type(Dimensionless_t),  intent(in)     :: dimensionless_
-
-         if(allocated(dimensionless % rho)) deallocate(dimensionless % rho)
-         allocate(dimensionless % rho(size(dimensionless_ % rho)))
-         dimensionless % rho              = dimensionless_ % rho              
-
-         if(allocated(dimensionless % mu )) deallocate(dimensionless % mu )
-         allocate(dimensionless % mu (size(dimensionless_ % mu)))
-         dimensionless % mu               = dimensionless_ % mu               
-
-         dimensionless % Re              = dimensionless_ % Re
-         dimensionless % Fr              = dimensionless_ % Fr
-         dimensionless % invFr2 = dimensionless_ % invFr2
-         dimensionless % gravity_dir     = dimensionless_ % gravity_dir
-
+         type(Dimensionless_t), intent(in) :: dimensionless_
+      
+         if(allocated(dimensionless%rho)) then
+            !$acc exit data delete(dimensionless%rho)
+            deallocate(dimensionless%rho)
+         endif
+         allocate(dimensionless%rho(size(dimensionless_%rho)))
+         !$acc enter data copyin(dimensionless%rho(1:size(dimensionless_%rho)))
+         dimensionless%rho = dimensionless_%rho
+      
+         if(allocated(dimensionless%mu)) then
+            !$acc exit data delete(dimensionless%mu)
+            deallocate(dimensionless%mu)
+         endif
+         allocate(dimensionless%mu(size(dimensionless_%mu)))
+         !$acc enter data copyin(dimensionless%mu(1:size(dimensionless_%mu)))
+         dimensionless%mu = dimensionless_%mu
+      
+         dimensionless%Re = dimensionless_%Re
+         dimensionless%Fr = dimensionless_%Fr
+         dimensionless%invFr2 = dimensionless_%invFr2
+         dimensionless%gravity_dir = dimensionless_%gravity_dir
+      
+         !!$acc update device(dimensionless)
+         !$acc update device(dimensionless%rho, dimensionless%mu)
+         !$acc update device(dimensionless%Re, dimensionless%Fr)
+         !$acc update device(dimensionless%invFr2, dimensionless%gravity_dir)
+      
       end subroutine SetDimensionless
+      
+            
+
 end module FluidData_iNS

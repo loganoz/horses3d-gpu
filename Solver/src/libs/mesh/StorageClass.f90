@@ -81,6 +81,9 @@ module StorageClass
       real(kind=RP),           allocatable :: G_NS(:,:,:,:)        ! NSE auxiliary storage
       real(kind=RP),           allocatable :: S_NS(:,:,:,:)        ! NSE source term
       real(kind=RP),           allocatable :: S_NSP(:,:,:,:)       ! NSE Particles source term
+#ifdef INCNS
+      real(kind=RP), dimension(:,:,:,:),   allocatable :: Q_grad_iNS  ! iNS State vector to calculate the gradient
+#endif
 #ifndef ACOUSTIC
       real(kind=RP),           allocatable :: mu_NS(:,:,:,:)       ! (mu, beta, kappa) artificial
       real(kind=RP),           allocatable :: mu_turb_NS(:,:,:)    ! mu of LES
@@ -815,6 +818,9 @@ module StorageClass
          ALLOCATE( self % G_NS   (NCONS,0:Nx,0:Ny,0:Nz) )
          ALLOCATE( self % S_NS   (NCONS,0:Nx,0:Ny,0:Nz) )
          ALLOCATE( self % S_NSP  (NCONS,0:Nx,0:Ny,0:Nz) )
+#ifdef INCNS
+         allocate(self % Q_grad_iNS(1:NCONS, 0:Nx, 0:Ny, 0:Nz))
+#endif
 #if defined (SPALARTALMARAS)
          ALLOCATE( self % S_SA  (NCONS,0:Nx,0:Ny,0:Nz) )
 #endif
@@ -894,6 +900,9 @@ module StorageClass
          self % FluxH    = 0.0_RP
          self % contravariantFlux    = 0.0_RP
          self % rho    = 0.0_RP
+#ifdef INCNS
+         self % Q_grad_iNS = 0.0_RP
+#endif
 #ifndef ACOUSTIC
          self % mu_NS  = 0.0_RP
          self % mu_turb_NS  = 0.0_RP
@@ -1011,7 +1020,9 @@ module StorageClass
          to % G_NS   = from % G_NS
          to % S_NS   = from % S_NS
          to % S_NSP  = from % S_NSP
-
+#ifdef INCNS
+         to % Q_grad_iNS = from % Q_grad_iNS
+#endif
 #if defined (SPALARTALMARAS)
          to % S_SA   = from % S_SA
 #endif
@@ -1116,6 +1127,9 @@ module StorageClass
          safedeallocate(self % S_NS)
          safedeallocate(self % S_NSP)
 
+#ifdef INCNS
+         safedeallocate(self % Q_grad_iNS)
+#endif
 #if defined (SPALARTALMARAS)
          safedeallocate(self % S_SA)
 #endif
@@ -1462,7 +1476,7 @@ module StorageClass
          self % rho    = 0.0_RP
 #ifndef ACOUSTIC
          self % mu_NS  = 0.0_RP
-         self % u_tau_NS = 0.0_RP
+         self % u_tau_NS = 1.0_RP
          self % wallNodeDistance = 0.0_RP
 #endif
 

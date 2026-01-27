@@ -12,16 +12,12 @@ LIBOBJS_NS = 	./build_ns/FluidData.o \
 		./build_ns/PhysicsStorage.o \
 		./build_ns/VariableConversion.o \
 		./build_ns/Physics.o \
-		./build_ns/WallFunctionDefinitions.o \
-		./build_ns/WallFunctionBC.o \
 		./build_ns/LESModels.o
 
 LIBOBJS_NSSA = 	./build_nssa/FluidData.o \
 		./build_nssa/PhysicsStorage.o \
 		./build_nssa/VariableConversion.o \
 		./build_nssa/Physics.o \
-		./build_nssa/WallFunctionDefinitions.o \
-		./build_nssa/WallFunctionBC.o 
 
 LIBOBJS_iNS = 	./build_ins/FluidData.o \
 		./build_ins/PhysicsStorage.o \
@@ -162,6 +158,12 @@ install-mu: lib$(LIB)_mu.a
 install-ns: lib$(LIB)_ns.a
 	cp -p lib$(LIB)_ns.a $(INSTALL_DIR)/lib/
 	cp -p ./include_ns/*.mod $(INSTALL_DIR)/include_ns/
+	@echo
+	@echo
+
+install-ins: lib$(LIB)_ins.a
+	cp -p lib$(LIB)_ins.a $(INSTALL_DIR)/lib/
+	cp -p ./include_ins/*.mod $(INSTALL_DIR)/include_ins/
 	@echo
 	@echo
 

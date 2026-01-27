@@ -79,12 +79,14 @@
 !    ----------------------------
 !
      logical, protected :: computeGradients   = .true.
+     !$acc declare copyin(computeGradients)
 !
 !    --------------------------
 !!   The sizes of the NS system
 !    --------------------------
 !
      INTEGER, PARAMETER :: NCONS = 5, NGRAD = 5
+     !$acc declare copyin(NCONS, NGRAD)
 !
 !    -------------------------------------------
 !!   The positions of the conservative variables
@@ -93,8 +95,10 @@
      enum, bind(C)
         enumerator :: INSRHO = 1, INSRHOU, INSRHOV, INSRHOW, INSP
      end enum
+      !$acc declare copyin(INSRHO,INSRHOU,INSRHOV,INSRHOW,INSP)
 
      logical, protected       :: enableGravity         = .false.
+      !$acc declare copyin(enableGravity)
 !
 !    ========
      contains

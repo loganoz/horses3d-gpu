@@ -44,6 +44,9 @@ MODULE HexMeshClass
       public      HexMesh_UpdateMPIFacesSolution, HexMesh_UpdateMPIFacesGradients
       public      HexMesh_GatherMPIFacesSolution, HexMesh_GatherMPIFacesGradients
       public      HexMesh_ComputeLocalGradientNS
+#ifdef INCNS
+      public      HexMesh_ComputeLocalGradientiNS
+#endif
 #if defined(CAHNHILLIARD)
       public      HexMesh_ComputeLocalGradientCH, HexMesh_ComputeLocalGradientMU
 #endif
@@ -3456,6 +3459,12 @@ slavecoord:             DO l = 1, 4
          refs(T_REF)     = 0.0_RP
          refs(MACH_REF)  = 0.0_RP
 
+!
+!        Update the host data from the GPU
+!        ---------------------------------
+#ifdef _OPENACC
+         call self % UpdateHostStatistics()
+#endif
 !        Create new file
 !        ---------------
          call CreateNewSolutionFile(trim(name),STATS_FILE, self % nodeType, self % no_of_allElements, iter, time, refs)
@@ -3659,7 +3668,8 @@ slavecoord:             DO l = 1, 4
 !        ---------------
 !
          INTEGER                        :: fID, eID, fileType, no_of_elements, flag, nodetype
-         integer                        :: padding, pos
+         integer                        :: padding
+         integer(kind=AddrInt)          :: pos, fsize_bytes
          integer                        :: Nxp1, Nyp1, Nzp1, no_of_eqs, array_rank, expectedNoEqs
          real(kind=RP), allocatable     :: Q(:,:,:,:)
          character(len=SOLFILE_STR_LEN) :: rstName
@@ -3764,10 +3774,25 @@ slavecoord:             DO l = 1, 4
 !        Read elements data
 !        ------------------
          fID = putSolutionFileInReadDataMode(trim(fileName))
+!
+!        Get file size for position validation
+!        -------------------------------------
+         inquire(unit=fID, size=fsize_bytes)
          do eID = 1, size(self % elements)
             associate( e => self % elements(eID) )
-            pos = POS_INIT_DATA + (e % globID-1)*5*SIZEOF_INT + 1_AddrInt*padding*e % offsetIO*SIZEOF_RP
-            if (has_sensor) pos = pos + (e % globID - 1) * SIZEOF_RP
+            pos = POS_INIT_DATA  + (e % globID - 1_AddrInt) * 5_AddrInt * SIZEOF_INT   + 1_AddrInt * padding * e % offsetIO * SIZEOF_RP
+            if (has_sensor) pos = pos + (e % globID - 1_AddrInt) * SIZEOF_RP
+!
+!           Guard: POS must be >= 1 and must not exceed the file size
+!           --------------------------------------------------------
+            if (pos < 1_AddrInt) then
+               write(STD_OUT,'(A, I0)') "Error reading restart: invalid POS=", pos
+               error stop
+            end if
+            if (pos > fsize_bytes) then
+               write(STD_OUT,'(A, I0, A, I0)') "Error reading restart: POS=", pos, " exceeds file size=", fsize_bytes
+               error stop
+            end if
             read(fID, pos=pos) array_rank
             read(fID) no_of_eqs, Nxp1, Nyp1, Nzp1
             if (      ((Nxp1-1) .ne. e % Nxyz(1)) &
@@ -4445,7 +4470,9 @@ slavecoord:             DO l = 1, 4
 
          !$acc enter data copyin(self % elements(eID) % isInsideBody)
          !$acc enter data copyin(self % elements(eID) % STL)
-
+#ifdef INCNS
+         !$acc enter data copyin(self % elements(eID) % storage % Q_grad_iNS) !iNS state to calculate the gradient
+#endif
 #ifdef CAHNHILLIARD
          !$acc enter data copyin(self % elements(eID) % storage % c)     ! CHE concentration
          !$acc enter data copyin(self % elements(eID) % storage % cDot)  ! CHE concentration time derivative
@@ -4491,11 +4518,9 @@ slavecoord:             DO l = 1, 4
          !$acc enter data copyin(self % faces(iFace) % storage(1) % U_z)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % U_z)
 
-
          !$acc enter data copyin(self % faces(iFace) % storage(1) % Q_aux)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % Q_aux)
         
-
          !$acc enter data copyin(self % faces(iFace) % storage(1) % mu_NS)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % mu_NS)
          !$acc enter data copyin(self % faces(iFace) % storage(1) % u_tau_NS)
@@ -4615,6 +4640,9 @@ slavecoord:             DO l = 1, 4
          !$acc exit data delete(self % elements(eID) % faceSide)
          !$acc exit data delete(self % elements(eID) % storage)
          !$acc exit data delete(self % elements(eID) % geom)
+#ifdef INCNS
+         !$acc exit data delete(self % elements(eID) % storage % Q_grad_iNS) !iNS state to calculate the gradient
+#endif
 #ifdef CAHNHILLIARD
          !$acc exit data delete(self % elements(eID) % storage % c)     ! CHE concentration
          !$acc exit data delete(self % elements(eID) % storage % cDot)  ! CHE concentration time derivative
@@ -5611,6 +5639,33 @@ call elementMPIList % destruct
 !$omp end do nowait
 
    end subroutine HexMesh_ComputeLocalGradientNS
+
+#ifdef INCNS
+   subroutine HexMesh_ComputeLocalGradientiNS(self)
+      use VariableConversion
+      implicit none
+      !-arguments-----------------------------------------
+      type(HexMesh), intent(inout)   :: self
+      !-local-variables-----------------------------------
+      integer :: eID, i, j, k
+
+      !--------------------------------------------------
+!$omp do schedule(runtime)
+      !$acc parallel loop gang vector_length(128) present(self) async(1)
+      do eID = 1 , size(self % elements)
+
+         !$acc loop vector collapse(3) 
+         do k = 0, self % elements(eID) % Nxyz(3) ; do j = 0, self % elements(eID) % Nxyz(2) ; do i = 0, self % elements(eID) % Nxyz(1)
+            call iNSGradientVariables(NCONS, NGRAD, self % elements(eID) % storage % Q(:,i,j,k), self % elements(eID) % storage % Q_grad_iNS(:,i,j,k))
+         end do         ; end do         ; end do
+
+         call HexElement_ComputeLocalGradient(self % elements(eID), NCONS, NGRAD, self % elements(eID) % storage % Q_grad_iNS)
+      end do
+   !$acc end parallel loop
+!$omp end do nowait
+
+   end subroutine HexMesh_ComputeLocalGradientiNS
+#endif 
 
 #ifdef CAHNHILLIARD
    subroutine HexMesh_ComputeLocalGradientCH(self, set_mu)
