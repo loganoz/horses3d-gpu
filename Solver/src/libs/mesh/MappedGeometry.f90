@@ -52,6 +52,7 @@ Module MappedGeometryClass
          contains
             procedure :: construct => ConstructMappedGeometryFace
             procedure :: destruct  => DestructMappedGeometryFace
+            final     :: FinalizeMappedGeometryFace
       end type MappedGeometryFace
 
 !
@@ -766,6 +767,16 @@ Module MappedGeometryClass
          !-------------------------------------------------------------------
          class(MappedGeometryFace), intent(inout) :: self
          !-------------------------------------------------------------------
+         call FinalizeMappedGeometryFace(self)
+      end subroutine DestructMappedGeometryFace
+!
+!////////////////////////////////////////////////////////////////////////
+!
+      pure subroutine FinalizeMappedGeometryFace(self)
+         implicit none
+         !-------------------------------------------------------------------
+         type(MappedGeometryFace), intent(inout) :: self
+         !-------------------------------------------------------------------
 
          safedeallocate(self % x        )
          safedeallocate(self % jacobian )
@@ -777,7 +788,7 @@ Module MappedGeometryClass
          safedeallocate(self % t2       )
          safedeallocate(self % dWall    )
 
-      end subroutine DestructMappedGeometryFace
+      end subroutine FinalizeMappedGeometryFace
 
 !
 !///////////////////////////////////////////////////////////////////////
