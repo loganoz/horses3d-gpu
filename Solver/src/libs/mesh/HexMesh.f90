@@ -4755,6 +4755,9 @@ slavecoord:             DO l = 1, 4
          !$acc update self(self % elements(eID) % storage % U_z)
          !$acc update self(self % elements(eID) % storage % mu_ns)
          !$acc update self(self % elements(eID) % storage % mu_turb_NS)
+#ifdef CAHNHILLIARD
+         !$acc update self(self % elements(eID) % storage % mu)
+#endif
       enddo
       
       !$acc wait
@@ -4790,6 +4793,10 @@ slavecoord:             DO l = 1, 4
          !$acc update self(self % faces(fID) % storage(2) % u_tau_NS)
          !$acc update self(self % faces(fID) % storage(1) % mu_NS)
          !$acc update self(self % faces(fID) % storage(2) % mu_NS)
+#endif
+#ifdef CAHNHILLIARD
+         !$acc update self(self % faces(fID) % storage(1) % mu)
+         !$acc update self(self % faces(fID) % storage(2) % mu)
 #endif
 #if (defined(CAHNHILLIARD) && (!defined(FLOW)))
          !$acc update self(self % faces(fID) % storage(1) % c_x)

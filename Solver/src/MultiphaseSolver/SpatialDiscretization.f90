@@ -767,6 +767,7 @@ endif
 !
       subroutine ComputeNSTimeDerivative( mesh , t )
          use ActuatorLine, only: farm, ForcesFarm
+         use IBMClass, only: IBM_SourceTerm
          implicit none
          type(HexMesh)              :: mesh
          real(kind=RP)              :: t
@@ -958,7 +959,10 @@ endif
                            if( .not. mesh % IBM % stl(mesh % elements(eID) % STL(i,j,k)) % move ) then 
                               call IBM_SourceTerm(mesh % IBM, eID = eID, Q = mesh % elements(eID) % storage % Q(:,i,j,k), Source = Source, wallfunction = .false. )
                            end if 
-                           mesh % elements(eID) % storage % QDot(:,i,j,k) = mesh % elements(eID) % storage % QDot(:,i,j,k) + Source
+                           !$acc loop seq
+                           do eq = 1,NCONS
+                              mesh % elements(eID) % storage % QDot(eq,i,j,k) = mesh % elements(eID) % storage % QDot(eq,i,j,k) + Source(eq)
+                           end do
                         end if
                      end do                  ; end do                ; end do
                   end do
@@ -966,6 +970,7 @@ endif
 !$omp end do       
             end if 
          end if
+         !$acc wait
 !
       end subroutine ComputeNSTimeDerivative
 !
