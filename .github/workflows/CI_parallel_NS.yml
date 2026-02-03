@@ -37,26 +37,53 @@ jobs:
     
     env:
       METIS_HOME:  /home/runner/work/horses3d-gpu/horses3d-gpu/metis-5.1.0/build/Linux-x86_64
-      INTEL_COMPILER_DIR : /opt/intel/oneapi/compiler/2024.1
+      # INTEL_COMPILER_DIR : /opt/intel/oneapi/compiler/2024.1
     # Steps represent a sequence of tasks that will be executed as part of the job
 
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v3
 
-      - name: Install hdf5 (only gfortran)
+      # Install OpenMPI (gfortran case)
+      - name: Install OpenMPI
         if: (matrix.compiler == 'gfortran')
         run: |
-          sudo apt-get update
-          sudo apt install libhdf5-dev
-          dpkg -L libhdf5-dev 
-          echo "HDF5_ROOT="/usr/lib/x86_64-linux-gnu/hdf5/serial/"" >> $GITHUB_ENV  
+          sudo apt-get install -y openmpi-bin libopenmpi-dev
+          export OMPI_FCFLAGS="-DOMPI_SKIP_MPIF08" # deactivate mpi_f08 interface to avoid compilation problems
+          mpif90 --version
+          mpif90 --showme
+          mpicc --version
+          mpicc --showme
+          mpicxx --version
+          mpicxx --showme
+          mpirun --version
+          mpiexec --version
+          mpifort --version
+          mpifort --showme
+          gcc --version
 
-      # IF COMPILER = GFORTRAN -> INSTALL OPEN-MPI #
-      - name: install openmpi
-        if: (matrix.compiler == 'gfortran')
+      # # Install parallel HDF5 (OpenMPI version)
+      # - name: Install HDF5 (parallel, OpenMPI)
+      #   if: (matrix.compiler == 'gfortran')
+      #   run: |
+      #     sudo apt-get update
+      #     sudo apt-get install -y libhdf5-openmpi-dev
+      #     dpkg -L libhdf5-openmpi-dev
+      #     echo "HDF5_ROOT=/usr/lib/x86_64-linux-gnu/hdf5/openmpi/" >> $GITHUB_ENV
+          
+      - name: Install HDF5 (gnu)
+        if: (matrix.compiler == 'gfortran') 
         run: |
-          sudo apt-get install openmpi-bin libopenmpi-dev
+          export OMPI_FCFLAGS="-DOMPI_SKIP_MPIF08" # deactivate mpi_f08 interface to avoid compilation problems
+          wget "https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.12/hdf5-1.12.0/src/hdf5-1.12.0.tar.gz"
+          tar -xvf hdf5-1.12.0.tar.gz
+          cd hdf5-1.12.0
+          ./configure --enable-parallel --enable-fortran CC=mpicc FC=mpif90 CXX=mpicxx
+          make -j8 install
+          echo "HDF5_ROOT=$PWD/hdf5" >> $GITHUB_ENV
+          echo "HDF5_DIR=$PWD/hdf5" >> $GITHUB_ENV
+          ./hdf5/bin/h5pfc -show
+      - name: Check HDF5 PATH
+        run: echo "HDF5_ROOT=$HDF5_ROOT"
 
       # IF COMPILER = IFORT -> INSTALL IFORT #
       # UNCOMMENT TO USE CACHED IFORT 
@@ -68,33 +95,33 @@ jobs:
       #    path: /opt/intel
       #    key: intel-${{ runner.os }}-compilers-b
 
-      - name: Intel Apt repository
-      # UNCOMMENT TO USE CACHED IFORT 
-      #  if: (steps.cache-intel-compilers.outputs.cache-hit != 'true')
-        run: |
-          wget https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
-          sudo apt-key add GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
-          sudo add-apt-repository "deb https://apt.repos.intel.com/oneapi all main"
-          sudo apt-get update
+      # - name: Intel Apt repository
+      # # UNCOMMENT TO USE CACHED IFORT 
+      # #  if: (steps.cache-intel-compilers.outputs.cache-hit != 'true')
+      #   run: |
+      #     wget https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
+      #     sudo apt-key add GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
+      #     sudo add-apt-repository "deb https://apt.repos.intel.com/oneapi all main"
+      #     sudo apt-get update
 
-      - name: Install Intel oneAPI
-      # UNCOMMENT TO USE CACHED IFORT
-      #  if: (steps.cache-intel-compilers.outputs.cache-hit != 'true')
-        run: sudo apt-get install intel-oneapi-compiler-fortran intel-oneapi-compiler-dpcpp-cpp intel-oneapi-mpi intel-oneapi-mpi-devel intel-oneapi-mkl-devel ninja-build
+      # - name: Install Intel oneAPI
+      # # UNCOMMENT TO USE CACHED IFORT
+      # #  if: (steps.cache-intel-compilers.outputs.cache-hit != 'true')
+      #   run: sudo apt-get install intel-oneapi-compiler-fortran intel-oneapi-compiler-dpcpp-cpp intel-oneapi-mpi intel-oneapi-mpi-devel intel-oneapi-mkl-devel ninja-build
 
-      # - name: cache-metis
-      #   id: cache-metis
-      #   uses: actions/cache@v2
-      #   with:
-      #     path: /home/runner/metis-5.1.0
-      #     key: metis-${{ runner.os }}-b
+      # # - name: cache-metis
+      # #   id: cache-metis
+      # #   uses: actions/cache@v2
+      # #   with:
+      # #     path: /home/runner/metis-5.1.0
+      # #     key: metis-${{ runner.os }}-b
 
       - name: Install METIS (intel)
         # if: (steps.cache-metis.outputs.cache-hit != 'true')
         # wget "http://glaros.dtc.umn.edu/gkhome/fetch/sw/metis/metis-5.1.0.tar.gz" (OLD LINK TO METIS)
         if: (matrix.compiler == 'ifort') 
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
+          # source /opt/intel/oneapi/setvars.sh || true
           wget "https://src.fedoraproject.org/lookaside/pkgs/metis/metis-5.1.0.tar.gz/5465e67079419a69e0116de24fce58fe/metis-5.1.0.tar.gz" 
           tar -xvf metis-5.1.0.tar.gz
           cd metis-5.1.0
@@ -110,6 +137,7 @@ jobs:
       # wget "http://glaros.dtc.umn.edu/gkhome/fetch/sw/metis/metis-5.1.0.tar.gz" (OLD LINK TO METIS)
         if: (matrix.compiler == 'gfortran') 
         run: |
+          export OMPI_FCFLAGS="-DOMPI_SKIP_MPIF08" # deactivate mpi_f08 interface to avoid compilation problems
           wget "https://src.fedoraproject.org/lookaside/pkgs/metis/metis-5.1.0.tar.gz/5465e67079419a69e0116de24fce58fe/metis-5.1.0.tar.gz" 
           tar -xvf metis-5.1.0.tar.gz
           cd metis-5.1.0
@@ -132,7 +160,7 @@ jobs:
       ##  run: gfortran-9 --version
       - name: Show ${{matrix.compiler}} version
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
+          # source /opt/intel/oneapi/setvars.sh || true
           ${{matrix.compiler}} --version
 
       - name: Configure
@@ -142,9 +170,12 @@ jobs:
       - name: Compile horses3d
         working-directory: ./Solver
         run: |
-         source /opt/intel/oneapi/setvars.sh || true
+         export OMPI_FCFLAGS="-DOMPI_SKIP_MPIF08" # deactivate mpi_f08 interface to avoid compilation problems
+         # source /opt/intel/oneapi/setvars.sh || true
          make allclean MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+         cp -r $HDF5_ROOT/lib/* lib/ # Copy hdf5 libraty files to local lib
+         ldd ./bin/horses3d.ns
 
 
 # GRC 30/10/2025 - DEACTIVATE EULER TEST CASES - NOT WORKING IN GPU         
@@ -158,15 +189,15 @@ jobs:
 #       - name: Build UniformFlow
 #         working-directory: ./Solver/test/Euler/UniformFlow/SETUP
 #         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
+#           # source /opt/intel/oneapi/setvars.sh || true
 #           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
 #         if: '!cancelled()'
 
 #       - name: Run UniformFlow
 #         working-directory: ./Solver/test/Euler/UniformFlow
 #         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           mpiexec -n 8 ./horses3d.ns UniformFlow.control
+#           # source /opt/intel/oneapi/setvars.sh || true
+#           mpiexec --oversubscribe -n 8 ./horses3d.ns UniformFlow.control
 #         if: '!cancelled()'
 
 # #
@@ -176,15 +207,15 @@ jobs:
 #       - name: Build BoxAroundCircle
 #         working-directory: ./Solver/test/Euler/BoxAroundCircle/SETUP
 #         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
+#           # source /opt/intel/oneapi/setvars.sh || true
 #           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
 #         if: '!cancelled()'
 
 #       - name: Run BoxAroundCircle
 #         working-directory: ./Solver/test/Euler/BoxAroundCircle
 #         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           mpiexec -n 8 ./horses3d.ns BoxAroundCircle.control
+#           # source /opt/intel/oneapi/setvars.sh || true
+#           mpiexec --oversubscribe -n 8 ./horses3d.ns BoxAroundCircle.control
 #         if: '!cancelled()'
 
 # #
@@ -194,15 +225,15 @@ jobs:
 #       - name: Build BoxAroundCirclePirozzoli
 #         working-directory: ./Solver/test/Euler/BoxAroundCirclePirozzoli/SETUP
 #         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
+#           # source /opt/intel/oneapi/setvars.sh || true
 #           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
 #         if: '!cancelled()'
 
 #       - name: Run BoxAroundCirclePirozzoli
 #         working-directory: ./Solver/test/Euler/BoxAroundCirclePirozzoli
 #         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           mpiexec -n 8 ./horses3d.ns BoxAroundCirclePirozzoli.control
+#           # source /opt/intel/oneapi/setvars.sh || true
+#           mpiexec --oversubscribe -n 8 ./horses3d.ns BoxAroundCirclePirozzoli.control
 #         if: '!cancelled()'
 
 # #
@@ -212,15 +243,15 @@ jobs:
 #       - name: Build TaylorGreenKEPEC
 #         working-directory: ./Solver/test/Euler/TaylorGreenKEPEC/SETUP
 #         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
+#           # source /opt/intel/oneapi/setvars.sh || true
 #           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
 #         if: '!cancelled()'
 
 #       - name: Run TaylorGreenKEPEC
 #         working-directory: ./Solver/test/Euler/TaylorGreenKEPEC
 #         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           mpiexec -n 8 ./horses3d.ns TaylorGreenKEPEC.control
+#           # source /opt/intel/oneapi/setvars.sh || true
+#           mpiexec --oversubscribe -n 8 ./horses3d.ns TaylorGreenKEPEC.control
 #         if: '!cancelled()'
 
 # #
@@ -230,14 +261,14 @@ jobs:
 #       - name: Build VortexTransport2DKEPEC
 #         working-directory: ./Solver/test/Euler/VortexTransport2D/SETUP
 #         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
+#           # source /opt/intel/oneapi/setvars.sh || true
 #           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
 
 #       - name: Run VortexTransport2DKEPEC
 #         working-directory: ./Solver/test/Euler/VortexTransport2D
 #         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           mpiexec -n 8 ./horses3d.ns VortexTransport2D.control
+#           # source /opt/intel/oneapi/setvars.sh || true
+#           mpiexec --oversubscribe -n 8 ./horses3d.ns VortexTransport2D.control
 
 # #
 # # 7) Jacobian-Free Newton-Krylov
@@ -254,7 +285,7 @@ jobs:
 
 #       # - name: Run JFNK Uniform Flow
 #       #   working-directory: ./Solver/test/Euler/JFNK
-#       #   run: mpiexec -n 8 ./horses3d.ns UniformFlowJFNK.control
+#       #   run: mpiexec --oversubscribe -n 8 ./horses3d.ns UniformFlowJFNK.control
 
 # #
 # # 8) BOX AROUND CIRCLE WITH ADAPTATION
@@ -263,14 +294,14 @@ jobs:
 #       - name: Build BoxAroundCircle_pAdapted
 #         working-directory: ./Solver/test/Euler/BoxAroundCircle_pAdapted/SETUP
 #         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
+#           # source /opt/intel/oneapi/setvars.sh || true
 #           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
 
 #       - name: Run BoxAroundCircle_pAdapted
 #         working-directory: ./Solver/test/Euler/BoxAroundCircle_pAdapted
 #         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           mpiexec -n 8 ./horses3d.ns BoxAroundCircle_pAdapted.control
+#           # source /opt/intel/oneapi/setvars.sh || true
+#           mpiexec --oversubscribe -n 8 ./horses3d.ns BoxAroundCircle_pAdapted.control
 
 # #
 # # 8) Cylinder with RL-based p-adaptation and error estimation
@@ -279,14 +310,14 @@ jobs:
 #       - name: Build Cylinder_ErrorEstimation_pAdaptationRL
 #         working-directory: ./Solver/test/Euler/Cylinder_ErrorEstimation_pAdaptationRL/SETUP
 #         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
+#           # source /opt/intel/oneapi/setvars.sh || true
 #           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
 
 #       - name: Run Cylinder_ErrorEstimation_pAdaptationRL
 #         working-directory: ./Solver/test/Euler/Cylinder_ErrorEstimation_pAdaptationRL
 #         run: |
-#           source /opt/intel/oneapi/setvars.sh || true
-#           mpiexec -n 8 ./horses3d.ns Cylinder_ErrorEstimation_pAdaptationRL.control
+#           # source /opt/intel/oneapi/setvars.sh || true
+#           mpiexec --oversubscribe -n 8 ./horses3d.ns Cylinder_ErrorEstimation_pAdaptationRL.control
 
 ########################################################################
 #######                         NAVIER-STOKES                   ########
@@ -299,15 +330,15 @@ jobs:
       # - name: Build Convergence
       #   working-directory: ./Solver/test/NavierStokes/Convergence/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run Convergence
       #   working-directory: ./Solver/test/NavierStokes/Convergence
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns Convergence.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns Convergence.control
       #   if: '!cancelled()'
 
 #
@@ -318,15 +349,15 @@ jobs:
       # - name: Build Convergence_energy
       #   working-directory: ./Solver/test/NavierStokes/Convergence_energy/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run Convergence_energy
       #   working-directory: ./Solver/test/NavierStokes/Convergence_energy
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns Convergence.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns Convergence.control
       #   if: '!cancelled()'
 
 #
@@ -337,15 +368,15 @@ jobs:
       # - name: Build Convergence_entropy
       #   working-directory: ./Solver/test/NavierStokes/Convergence_entropy/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run Convergence_entropy
       #   working-directory: ./Solver/test/NavierStokes/Convergence_entropy
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns Convergence.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns Convergence.control
       #   if: '!cancelled()'
 
 #
@@ -355,22 +386,29 @@ jobs:
       - name: Build NSUniformFlow
         working-directory: ./Solver/test/NavierStokes/UniformFlow/SETUP
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
+          # source /opt/intel/oneapi/setvars.sh || true
           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
         if: '!cancelled()'
 
-      - name: Run NSUniformFlow_parallel
+      - name: Run NSUniformFlow_parallel_SFC
         working-directory: ./Solver/test/NavierStokes/UniformFlow
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 3 ./horses3d.ns UniformFlow_HDF5.control
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpirun --oversubscribe -n 3 ./horses3d.ns UniformFlow_HDF5.control
+        if: '!cancelled()'
+
+      - name: Run NSUniformFlow_parallel_METIS
+        working-directory: ./Solver/test/NavierStokes/UniformFlow
+        run: |
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpirun --oversubscribe -n 3 ./horses3d.ns UniformFlow_HDF5_METIS.control
         if: '!cancelled()'
 
       - name: Run NSUniformFlow_serial
         working-directory: ./Solver/test/NavierStokes/UniformFlow
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 1 ./horses3d.ns UniformFlow_HDF5.control
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 1 ./horses3d.ns UniformFlow_HDF5.control
         if: '!cancelled()'
 
 #
@@ -380,15 +418,15 @@ jobs:
       - name: Build NSCylinder
         working-directory: ./Solver/test/NavierStokes/Cylinder/SETUP
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
+          # source /opt/intel/oneapi/setvars.sh || true
           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
         if: '!cancelled()'
 
       - name: Run NSCylinder
         working-directory: ./Solver/test/NavierStokes/Cylinder
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 8 ./horses3d.ns Cylinder.control
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns Cylinder.control
         if: '!cancelled()'  
 
 #
@@ -399,15 +437,15 @@ jobs:
       # - name: Build NSCylinderIP
       #   working-directory: ./Solver/test/NavierStokes/CylinderIP/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run NSCylinderIP
       #   working-directory: ./Solver/test/NavierStokes/CylinderIP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns CylinderIP.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderIP.control
       #   if: '!cancelled()'
 
 #
@@ -418,15 +456,15 @@ jobs:
       # - name: Build NSCylinderBR2
       #   working-directory: ./Solver/test/NavierStokes/CylinderBR2/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run NSCylinderBR2
       #   working-directory: ./Solver/test/NavierStokes/CylinderBR2
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns CylinderBR2.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderBR2.control
       #   if: '!cancelled()'
 
 #
@@ -436,15 +474,15 @@ jobs:
       - name: Build NSCylinderDucros
         working-directory: ./Solver/test/NavierStokes/CylinderDucros/SETUP
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
+          # source /opt/intel/oneapi/setvars.sh || true
           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
         if: '!cancelled()'
 
       - name: Run NSCylinderDucros
         working-directory: ./Solver/test/NavierStokes/CylinderDucros
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 8 ./horses3d.ns CylinderDucros.control
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderDucros.control
         if: '!cancelled()'
 
 #
@@ -454,15 +492,15 @@ jobs:
       - name: Build NSCylinderSmagorinsky
         working-directory: ./Solver/test/NavierStokes/CylinderSmagorinsky/SETUP
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
+          # source /opt/intel/oneapi/setvars.sh || true
           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
         if: '!cancelled()'
 
       - name: Run NSCylinderSmagorinsky
         working-directory: ./Solver/test/NavierStokes/CylinderSmagorinsky
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 8 ./horses3d.ns CylinderSmagorinsky.control
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderSmagorinsky.control
         if: '!cancelled()'
 
 #
@@ -472,15 +510,15 @@ jobs:
       - name: Build NSCylinderWALE
         working-directory: ./Solver/test/NavierStokes/CylinderWALE/SETUP
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
+          # source /opt/intel/oneapi/setvars.sh || true
           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
         if: '!cancelled()'
 
       - name: Run NSCylinderWALE
         working-directory: ./Solver/test/NavierStokes/CylinderWALE
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 8 ./horses3d.ns CylinderWALE.control
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderWALE.control
         if: '!cancelled()'
 
 #
@@ -490,15 +528,15 @@ jobs:
       - name: Build NSCylinderVreman
         working-directory: ./Solver/test/NavierStokes/CylinderVreman/SETUP
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
+          # source /opt/intel/oneapi/setvars.sh || true
           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
         if: '!cancelled()'
 
       - name: Run NSCylinderVreman
         working-directory: ./Solver/test/NavierStokes/CylinderVreman
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 8 ./horses3d.ns CylinderVreman.control
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderVreman.control
         if: '!cancelled()'
 
 #
@@ -508,15 +546,15 @@ jobs:
       - name: Build NSCylinderChandrasekarRoe
         working-directory: ./Solver/test/NavierStokes/CylinderChandrasekarRoe/SETUP
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
+          # source /opt/intel/oneapi/setvars.sh || true
           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
         if: '!cancelled()'
 
       - name: Run NSCylinderChandrasekarRoe
         working-directory: ./Solver/test/NavierStokes/CylinderChandrasekarRoe
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 8 ./horses3d.ns CylinderChandrasekarRoe.control
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderChandrasekarRoe.control
         if: '!cancelled()'
 
 #
@@ -526,15 +564,15 @@ jobs:
       - name: Build TaylorGreen
         working-directory: ./Solver/test/NavierStokes/TaylorGreen/SETUP
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
+          # source /opt/intel/oneapi/setvars.sh || true
           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
         if: '!cancelled()'
 
       - name: Run TaylorGreen
         working-directory: ./Solver/test/NavierStokes/TaylorGreen
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 8 ./horses3d.ns TaylorGreen.control
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns TaylorGreen.control
         if: '!cancelled()'
 
 #
@@ -544,15 +582,15 @@ jobs:
       # - name: Build TaylorGreenKEP_BR2
       #   working-directory: ./Solver/test/NavierStokes/TaylorGreenKEP_BR2/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run TaylorGreenKEP_BR2
       #   working-directory: ./Solver/test/NavierStokes/TaylorGreenKEP_BR2
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns TaylorGreenKEP_BR2.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns TaylorGreenKEP_BR2.control
       #   if: '!cancelled()'
 
 #
@@ -563,15 +601,15 @@ jobs:
       # - name: Build TaylorGreenKEPEC_IP
       #   working-directory: ./Solver/test/NavierStokes/TaylorGreenKEPEC_IP/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run TaylorGreenKEPEC_IP
       #   working-directory: ./Solver/test/NavierStokes/TaylorGreenKEPEC_IP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns TaylorGreenKEPEC_IP.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns TaylorGreenKEPEC_IP.control
       #   if: '!cancelled()'
 
 #
@@ -582,14 +620,14 @@ jobs:
       # - name: Build NSCylinderFAS
       #   working-directory: ./Solver/test/NavierStokes/CylinderFAS/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
 
       # - name: Run NSCylinderFAS
       #   working-directory: ./Solver/test/NavierStokes/CylinderFAS
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns CylinderFAS.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderFAS.control
 
 #
 # 13) CYLINDER IP+BDF2
@@ -602,7 +640,7 @@ jobs:
       #
       #- name: Run NSCylinderIP_BDF2
       #  working-directory: ./Solver/test/NavierStokes/CylinderIP_BDF2
-      #  run: mpiexec -n 8 ./horses3d.ns CylinderIP_BDF2.control
+      #  run: mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderIP_BDF2.control
 
 #
 # 14) CYLINDER DIFFERENT ORDERS
@@ -611,15 +649,15 @@ jobs:
       # - name: Build NSCylinderDifferentOrders
       #   working-directory: ./Solver/test/NavierStokes/CylinderDifferentOrders/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run NSCylinderDifferentOrders
       #   working-directory: ./Solver/test/NavierStokes/CylinderDifferentOrders
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns CylinderDifferentOrders.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderDifferentOrders.control
       #   if: '!cancelled()'
 
 #
@@ -629,15 +667,15 @@ jobs:
       # - name: Build EntropyConservingTest
       #   working-directory: ./Solver/test/NavierStokes/EntropyConservingTest/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run EntropyConservingTest
       #   working-directory: ./Solver/test/NavierStokes/EntropyConservingTest
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns EntropyConservingTest.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns EntropyConservingTest.control
       #   if: '!cancelled()'
 
 #
@@ -648,15 +686,15 @@ jobs:
       # - name: Build EnergyConservingTest
       #   working-directory: ./Solver/test/NavierStokes/EnergyConservingTest/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run EnergyConservingTest
       #   working-directory: ./Solver/test/NavierStokes/EnergyConservingTest
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns EnergyConservingTest.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns EnergyConservingTest.control
       #   if: '!cancelled()'
 
 #
@@ -667,15 +705,15 @@ jobs:
       # - name: Build NACA0012
       #   working-directory: ./Solver/test/NavierStokes/NACA0012/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run NACA0012
       #   working-directory: ./Solver/test/NavierStokes/NACA0012
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns NACA0012.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns NACA0012.control
       #   if: '!cancelled()'
 
 #
@@ -685,15 +723,15 @@ jobs:
       - name: Build DualTimeStepping
         working-directory: ./Solver/test/NavierStokes/DualTimeStepping/SETUP
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
+          # source /opt/intel/oneapi/setvars.sh || true
           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
         if: '!cancelled()'
 
       - name: Run DualTimeStepping
         working-directory: ./Solver/test/NavierStokes/DualTimeStepping
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 8 ./horses3d.ns DualTimeStepping.control
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns DualTimeStepping.control
         if: '!cancelled()'
 
 #
@@ -703,14 +741,14 @@ jobs:
 #      - name: Build ManufacturedSolutionsSA
 #        working-directory: ./Solver/test/NavierStokes/ManufacturedSolutionsSA/SETUP
 #        run: |
-#          source /opt/intel/oneapi/setvars.sh || true
+#          # source /opt/intel/oneapi/setvars.sh || true
 #          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
 #
 #      - name: Run ManufacturedSolutionsSA
 #        working-directory: ./Solver/test/NavierStokes/ManufacturedSolutionsSA
 #        run: |
-#          source /opt/intel/oneapi/setvars.sh || true
-#          mpiexec -n 8 ./horses3d.nssa MSSA.control
+#          # source /opt/intel/oneapi/setvars.sh || true
+#          mpiexec --oversubscribe -n 8 ./horses3d.nssa MSSA.control
 
 #
 # 20) Flat-Plate test case for Spalart-Almaras
@@ -719,14 +757,14 @@ jobs:
 #      - name: Build FlatPlateSA
 #        working-directory: ./Solver/test/NavierStokes/FlatPlateSA/SETUP
 #        run: |
-#          source /opt/intel/oneapi/setvars.sh || true
+#          # source /opt/intel/oneapi/setvars.sh || true
 #          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
 #
 #      - name: Run FlatPlateSA
 #        working-directory: ./Solver/test/NavierStokes/FlatPlateSA
 #        run: |
-#          source /opt/intel/oneapi/setvars.sh || true
-#          mpiexec -n 8 ./horses3d.nssa FlatPlate.control
+#          # source /opt/intel/oneapi/setvars.sh || true
+#          mpiexec --oversubscribe -n 8 ./horses3d.nssa FlatPlate.control
 
 #
 # 21) Numerical Jacobian for BIRK5
@@ -736,13 +774,13 @@ jobs:
 #      - name: Build BIRK5NumJac
 #        working-directory: ./Solver/test/NavierStokes/BIRK5NumJac/SETUP
 #        run: |
-#          source /opt/intel/oneapi/setvars.sh || true
+#          # source /opt/intel/oneapi/setvars.sh || true
 #          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
 #      - name: Run BIRK5NumJac
 #        working-directory: ./Solver/test/NavierStokes/BIRK5NumJac
 #        run: |
-#          source /opt/intel/oneapi/setvars.sh || true
-#          mpiexec -n 8 ./horses3d.ns Cylinder.control
+#          # source /opt/intel/oneapi/setvars.sh || true
+#          mpiexec --oversubscribe -n 8 ./horses3d.ns Cylinder.control
 #
 # 22) Forward facing step with SVV
 # --------------------------------
@@ -751,15 +789,15 @@ jobs:
       # - name: Build ForwardFacingStepSVV
       #   working-directory: ./Solver/test/NavierStokes/ForwardFacingStepSVV/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run ForwardFacingStepSVV
       #   working-directory: ./Solver/test/NavierStokes/ForwardFacingStepSVV
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns FFS_SVV.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns FFS_SVV.control
       #   if: '!cancelled()'
 
 #
@@ -770,15 +808,15 @@ jobs:
       # - name: Build ForwardFacingStep_SSPRK33
       #   working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK33/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run ForwardFacingStep_SSPRK33
       #   working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK33
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns FFS_SSPRK33.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns FFS_SSPRK33.control
       #   if: '!cancelled()'
 
 #
@@ -788,15 +826,15 @@ jobs:
       # - name: Build ForwardFacingStep_SSPRK43
       #   working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK43/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run ForwardFacingStep_SSPRK43
       #   working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK43
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns FFS_SSPRK43.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns FFS_SSPRK43.control
       #   if: '!cancelled()'
 
 #
@@ -807,15 +845,15 @@ jobs:
       # - name: Build TaylorGreenSVVLES
       #   working-directory: ./Solver/test/NavierStokes/TaylorGreenSVVLES/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run TaylorGreenSVVLES
       #   working-directory: ./Solver/test/NavierStokes/TaylorGreenSVVLES
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns TaylorGreenSVVLES.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns TaylorGreenSVVLES.control
       #   if: '!cancelled()'
 
 #
@@ -825,15 +863,15 @@ jobs:
       - name: Build IBM_Cylinder
         working-directory: ./Solver/test/NavierStokes/IBM_Cylinder/SETUP
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
+          # source /opt/intel/oneapi/setvars.sh || true
           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
         if: '!cancelled()'
      
       - name: Run IBM_Cylinder
         working-directory: ./Solver/test/NavierStokes/IBM_Cylinder
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 8 ./horses3d.ns IBMCylinder.control
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns IBMCylinder.control
         if: '!cancelled()'
           
 #
@@ -843,15 +881,15 @@ jobs:
       # - name: Build CylinderGMM
       #   working-directory: ./Solver/test/NavierStokes/CylinderGMM/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run CylinderGMM
       #   working-directory: ./Solver/test/NavierStokes/CylinderGMM
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns CylinderGMM.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderGMM.control
       #   if: '!cancelled()'
 
 #
@@ -861,15 +899,15 @@ jobs:
       # - name: Build Cylinder_pAdaptationRL
       #   working-directory: ./Solver/test/NavierStokes/Cylinder_pAdaptationRL/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run Cylinder_pAdaptationRL
       #   working-directory: ./Solver/test/NavierStokes/Cylinder_pAdaptationRL
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns Cylinder_pAdaptationRL.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns Cylinder_pAdaptationRL.control
       #   if: '!cancelled()'
 
 #
@@ -879,15 +917,15 @@ jobs:
       # - name: Build IBM_Cylinder_pAdaptationRL
       #   working-directory: ./Solver/test/NavierStokes/IBM_Cylinder_pAdaptationRL/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run IBM_Cylinder_pAdaptationRL
       #   working-directory: ./Solver/test/NavierStokes/IBM_Cylinder_pAdaptationRL
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns IBM_Cylinder_pAdaptationRL.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns IBM_Cylinder_pAdaptationRL.control
       #   if: '!cancelled()'
 
 #
@@ -897,15 +935,15 @@ jobs:
       # - name: Build Cylinder_Overenriching_pAdaptationRL
       #   working-directory: ./Solver/test/NavierStokes/Cylinder_Overenriching_pAdaptationRL/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run Cylinder_Overenriching_pAdaptationRL
       #   working-directory: ./Solver/test/NavierStokes/Cylinder_Overenriching_pAdaptationRL
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns Cylinder_Overenriching_pAdaptationRL.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns Cylinder_Overenriching_pAdaptationRL.control
       #   if: '!cancelled()'
 
 #
@@ -915,15 +953,15 @@ jobs:
       # - name: Build EulerRK3_pAdaptationRL
       #   working-directory: ./Solver/test/NavierStokes/EulerRK3_pAdaptationRL/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run EulerRK3_pAdaptationRL
       #   working-directory: ./Solver/test/NavierStokes/EulerRK3_pAdaptationRL
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 8 ./horses3d.ns EulerRK3_pAdaptationRL.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 8 ./horses3d.ns EulerRK3_pAdaptationRL.control
       #   if: '!cancelled()'
 
 #
@@ -933,15 +971,15 @@ jobs:
       # - name: Build Cylinder_acoustics_pAdaptationRL
       #   working-directory: ./Solver/test/NavierStokes/Cylinder_acoustics_pAdaptationRL/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run Cylinder_acoustics_pAdaptationRL
       #   working-directory: ./Solver/test/NavierStokes/Cylinder_acoustics_pAdaptationRL
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 64 ./horses3d.ns Cylinder_acoustics_pAdaptationRL.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 64 ./horses3d.ns Cylinder_acoustics_pAdaptationRL.control
       #   if: '!cancelled()'
 
 #
@@ -952,15 +990,15 @@ jobs:
       # - name: Build VirtualSurfaces_acoustics_pAdaptationRL
       #   working-directory: ./Solver/test/NavierStokes/VirtualSurfaces_acoustics_pAdaptationRL/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: ('!cancelled()' && matrix.compiler == 'gfortran')
 
       # - name: Run VirtualSurfaces_acoustics_pAdaptationRL
       #   working-directory: ./Solver/test/NavierStokes/VirtualSurfaces_acoustics_pAdaptationRL
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 64 ./horses3d.ns virtualSurfaces_acoustics_pAdaptationRL.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 64 ./horses3d.ns virtualSurfaces_acoustics_pAdaptationRL.control
       #   if: ('!cancelled()' && matrix.compiler == 'gfortran')
       #
 # 34) Actuator Line (AL) Interpolation formulation
@@ -969,15 +1007,15 @@ jobs:
       # - name: Build AL_interpolation
       #   working-directory: ./Solver/test/NavierStokes/ActuatorLineInterpolation/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run AL_interpolation
       #   working-directory: ./Solver/test/NavierStokes/ActuatorLineInterpolation
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 64 ./horses3d.ns Actuator.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 64 ./horses3d.ns Actuator.control
       #   if: '!cancelled()'
 
 
@@ -988,15 +1026,15 @@ jobs:
       # - name: Build AL_projection
       #   working-directory: ./Solver/test/NavierStokes/ActuatorLineProjection/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run AL_projection
       #   working-directory: ./Solver/test/NavierStokes/ActuatorLineProjection
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 64 ./horses3d.ns Actuator.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 64 ./horses3d.ns Actuator.control
       #   if: '!cancelled()'
 
 #
@@ -1006,15 +1044,15 @@ jobs:
       # - name: Build Cylinder_AdaptiveTimeStep_pAdaptationRL
       #   working-directory: ./Solver/test/NavierStokes/Cylinder_AdaptiveTimeStep_pAdaptationRL/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #   if: '!cancelled()'
 
       # - name: Run Cylinder_AdaptiveTimeStep_pAdaptationRL
       #   working-directory: ./Solver/test/NavierStokes/Cylinder_AdaptiveTimeStep_pAdaptationRL
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 64 ./horses3d.ns Cylinder_AdaptiveTimeStep_pAdaptationRL.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 64 ./horses3d.ns Cylinder_AdaptiveTimeStep_pAdaptationRL.control
       #   if: '!cancelled()'
 
 #
@@ -1024,7 +1062,7 @@ jobs:
       # - name: Build ABL_BoundaryMapping
       #   working-directory: ./Solver/test/NavierStokes/ABLBoundaryMapping/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     TEST_HOME_DIR=$(grep '^HOME_DIR=' Makefile | cut -d'=' -f2)
       #     rm Makefile
       #     wget https://people.math.sc.edu/Burkardt/f_src/geompack2/geompack2.f90
@@ -1039,8 +1077,8 @@ jobs:
       # - name: Run ABL_BoundaryMapping
       #   working-directory: ./Solver/test/NavierStokes/ABLBoundaryMapping
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 64 ./horses3d.ns ABLBoundaryMapping.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 64 ./horses3d.ns ABLBoundaryMapping.control
       #   if: '!cancelled()'
       
 #
@@ -1050,7 +1088,7 @@ jobs:
       # - name: Build ActuatorLineController
       #   working-directory: ./Solver/test/NavierStokes/ActuatorLineController/SETUP
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
+      #     # source /opt/intel/oneapi/setvars.sh || true
       #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
       #     cd ../ActuatorDef/controller
       #     git clone https://github.com/EduardoJane/DRC_Fortran_H3D.git
@@ -1062,8 +1100,8 @@ jobs:
       # - name: Run ActuatorLineController
       #   working-directory: ./Solver/test/NavierStokes/ActuatorLineController
       #   run: |
-      #     source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec -n 64 ./horses3d.ns ActuatorLineController.control
+      #     # source /opt/intel/oneapi/setvars.sh || true
+      #     mpiexec --oversubscribe -n 64 ./horses3d.ns ActuatorLineController.control
       #   if: '!cancelled()'
 #
 # 39) CHANNEL
@@ -1072,7 +1110,7 @@ jobs:
       - name: Build Channel
         working-directory: ./Solver/test/NavierStokes/Channel/SETUP
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
+          # source /opt/intel/oneapi/setvars.sh || true
           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
         if: '!cancelled()'
 
@@ -1086,8 +1124,8 @@ jobs:
       - name: Run Channel - Parallel 8
         working-directory: ./Solver/test/NavierStokes/Channel
         run: |
-          source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 8 ./horses3d.ns Channel.control
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns Channel.control
         if: '!cancelled()'  
 
       - name: Build Channel 64
