@@ -1139,5 +1139,5 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/Channel64
         run: |
           source /opt/intel/oneapi/setvars.sh || true
-          mpiexec -n 64 ./horses3d.ns Channel.control
+          mpiexec --oversubscribe -n 64 ./horses3d.ns Channel.control
         if: '!cancelled()'
