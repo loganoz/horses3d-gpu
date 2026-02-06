@@ -6,6 +6,14 @@ on:
   workflow_dispatch:
 
 jobs:
+  wait-guard:
+    name: Runner availability guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 2880   # 48 hours
+    steps:
+    # This job serves as a guard to prevent the workflow from pending indefinitely if the self-hosted GPU runner is not available.
+      - run: echo "GPU runner did not appear within 48 hours"
+
   parallel-gpu-tests:
     # Uses self-hosted runner on Cesvima cluster with GPU access
     name: Parallel GPU Tests (NVFORTRAN)
