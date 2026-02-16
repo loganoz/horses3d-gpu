@@ -183,6 +183,7 @@ all: $(TARGET_NS) $(TARGET_NSSA) $(TARGET_iNS) $(TARGET_CH) $(TARGET_MU)
 
 mu: $(TARGET_MU)
 ns: $(TARGET_NS)
+ins: $(TARGET_iNS)
 
 $(TARGET_NS): FORCE ./ProblemFile_NS.o
 	$(FC) $(WHOLE_FILE) $(DYNLIB_FLAG_NS) $(MACROS) $(FFLAGS) $(INCLUDE) $(INCLUDE)_ns ./ProblemFile_NS.o -L$(HOME_DIR)/lib $(HORSES_LIBS_NS)

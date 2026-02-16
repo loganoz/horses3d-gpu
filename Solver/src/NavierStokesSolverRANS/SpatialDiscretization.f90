@@ -1315,9 +1315,9 @@ module SpatialDiscretization
                   end if
               end do
           end if
-          if (useWallFuncFace) then
-              call WallFunctionGatherFlowVariables(mesh, f, wallFunV, wallFunRho, wallFunMu, wallFunY, wallFunVavg)
-          end if
+          !if (useWallFuncFace) then
+           !   call WallFunctionGatherFlowVariables(mesh, f, wallFunV, wallFunRho, wallFunMu, wallFunY, wallFunVavg)
+          !end if
 
          DO j = 0, f % Nf(2)
             DO i = 0, f % Nf(1)

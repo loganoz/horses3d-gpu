@@ -41,7 +41,7 @@ GNU_HPC_FLAGS= -cpp -fallow-argument-mismatch -std=legacy -ffree-line-length-0 -
 		   -ftree-vectorizer-verbose=0 -fbackslash -D_has_Quad -march=znver3 -funroll-loops
 GNU_RELEASE_FLAGS= -cpp -ffree-line-length-0 -O3 -ftree-vectorize  -ftree-vectorizer-verbose=0 \
 		   -fbackslash -D_has_Quad
-GNU_DEBUG_FLAGS=  -ffree-line-length-0 -cpp -O0 -g -fcheck=all -Wno-unused-variable \
+GNU_DEBUG_FLAGS=  -ffree-line-length-0 -cpp -frecursive -O0 -g -fcheck=all -Wno-unused-variable \
 		  -fbacktrace -fbounds-check -finit-real=snan -Wall \
 		  -ffpe-trap=invalid,zero,overflow -fcheck-array-temporaries \
 		  -fbackslash -fcheck=pointer -D_has_Quad
@@ -51,7 +51,8 @@ INTEL_DEBUG_FLAGS= -cpp -O0 -g -warn all -fpscomp logicals -traceback \
 		   -check bounds -check uninit -ftrapuv -debug all \
 		   -ftrace=full -ftz -fp-model precise \
 		   -fp-speculation=off -assume bscc -D_has_Quad
-NVFORTRAN_RELEASE_FLAGS= -O3 -fast -cuda -acc -cpp -gpu=cc70,cc75,cc80,cc90,gvmode,ptxinfo,maxregcount:128 -cudalib=curand -Minfo=accel -Mfree -Mbackslash -Mpreprocess
+NVFORTRAN_RELEASE_FLAGS= -fPIC -O3 -fast -cuda -acc -cpp -gpu=cc70,cc75,cc80,cc89,cc90,gvmode,ptxinfo,maxregcount:128 -cudalib=curand -Minfo=accel -Mfree -Mbackslash -Mpreprocess
+NVFORTRAN_DEBUG_FLAGS= -fPIC -O0 -g -cuda -acc -cpp -gpu=cc70,cc75,cc80,cc89,cc90,gvmode,ptxinfo,maxregcount:128 -cudalib=curand -Minfo=accel -Mfree -Mbackslash -Mpreprocess
 ARFLAGS=crv
 CPU_METIS_FLAGS= -cpp -O2 -ffree-line-length-0
 NVFORTRAN_METIS_FLAGS= -cpp -Mfree -acc -fPIC -Mbackslash
@@ -136,6 +137,8 @@ else ifeq ($(MODE),DEBUG)
          FFLAGS=$(GNU_DEBUG_FLAGS)
      else ifeq ($(FC),ifort)
          FFLAGS=$(INTEL_DEBUG_FLAGS)
+	else ifeq ($(FC),nvfortran)
+         FFLAGS=$(NVFORTRAN_DEBUG_FLAGS)
      endif
 endif
 
@@ -248,9 +251,9 @@ endif
 ##  	Select HORSES libraries 	##
 ##########################################
 HORSES_LIBS_GENERAL = ftobject foundation mpiutils ml spectral io physics/multiphase physics/incns physics/navierstokes physics/cahnhilliard physics/spallartalmaras physics/acoustic
-HORSES_LIBS_PARTICULAR = physics/common mesh physics/common/bcs particles sources monitors problemfile discretization jacobian timeintegrator
+HORSES_LIBS_PARTICULAR = physics/common mesh physics/common/bcs particles monitors sources problemfile discretization jacobian timeintegrator
 HORSES_LIBS=$(HORSES_LIBS_GENERAL) $(HORSES_LIBS_PARTICULAR)
-HORSES_LIBS_iNS=-L$(HOME_DIR)/lib -ltimeintegrator_ins -ljacobian_ins -ldiscretization_ins -lmonitors_ins -lparticles_ins -lmesh_ins -lphysics_ins -lphysicsins -lio -lspectral -lmpiutils -lfoundation -lftobject -lsources_ins -lml
+HORSES_LIBS_iNS=-L$(HOME_DIR)/lib -ltimeintegrator_ins -ljacobian_ins -ldiscretization_ins -lmonitors_ins -lparticles_ins -lphysics_bcs_ins  -lmesh_ins -lphysics_ins -lphysicsins -lio -lspectral -lmpiutils -lfoundation -lftobject -lsources_ins -lml
 HORSES_LIBS_NS=-L$(HOME_DIR)/lib -ltimeintegrator_ns -ljacobian_ns -ldiscretization_ns -lmonitors_ns -lparticles_ns -lphysics_bcs_ns -lmesh_ns -lphysics_ns -lphysicsns -lio -lspectral -lmpiutils -lfoundation -lftobject -lsources_ns -lml
 HORSES_LIBS_NSSA=-L$(HOME_DIR)/lib -ltimeintegrator_nssa -ljacobian_nssa -ldiscretization_nssa -lmonitors_nssa -lparticles_nssa -lmesh_nssa -lphysics_nssa -lphysicsnssa -lio -lspectral -lmpiutils -lfoundation -lftobject -lsources_nssa -lml
 HORSES_LIBS_CH=-L$(HOME_DIR)/lib -ltimeintegrator_ch -ljacobian_ch -ldiscretization_ch -lmonitors_ch -lparticles_ch -lmesh_ch -lphysics_ch -lphysicsch -lio -lspectral -lmpiutils -lfoundation -lftobject -lsources_ch -lml
@@ -364,6 +367,7 @@ all: header mkdirs horseslibs horses3d.ns horses3d.nssa horses3d.ins horses3d.ch
 
 mu: header mkdirs horseslibs-mu horses3d.mu 
 ns: header mkdirs horseslibs-ns horses3d.ns
+ins: header mkdirs horseslibs-ins horses3d.ins
 nssa: header mkdirs horseslibs-nssa horses3d.nssa
 caa: header mkdirs horseslibs-caa horses3d.caa 
 
@@ -449,6 +453,24 @@ horseslibs-ns:
 		fi \
 	done
 
+horseslibs-ins:
+	@for subdir in $(HORSES_LIBS_GENERAL) ; do \
+		if [ "$$subdir" = "problemfile" ] ; \
+		then  \
+			(cd $(HOME_DIR)/src/libs/problemfile/ && $(MAKE) PLATFORM=$(PLATFORM) $(LIBFLAGS) DYNLIB_FLAG='$(DYNLIB_FLAG)' install) || exit 1 ; \
+	    	else \
+			(cd $(HOME_DIR)/src/libs/$$subdir && $(MAKE) $(LIBFLAGS) install) || exit 1; \
+		fi \
+	done
+	@for subdir in $(HORSES_LIBS_PARTICULAR) ; do \
+		if [ "$$subdir" = "problemfile" ] ; \
+		then  \
+			(cd $(HOME_DIR)/src/libs/problemfile/ && $(MAKE) PLATFORM=$(PLATFORM) $(LIBFLAGS) DYNLIB_FLAG='$(DYNLIB_FLAG)' install-ins) || exit 1 ; \
+	    	else \
+			(cd $(HOME_DIR)/src/libs/$$subdir && $(MAKE) $(LIBFLAGS) install-ins) || exit 1; \
+		fi \
+	done
+	
 horseslibs-nssa:
 	@for subdir in $(HORSES_LIBS_GENERAL) ; do \
 		if [ "$$subdir" = "problemfile" ] ; \

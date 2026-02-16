@@ -1,14 +1,19 @@
 #include "Includes.h"
 module LESModels
    use SMConstants
-   use PhysicsStorage_NS
    use FTValueDictionaryClass
-   use Physics_NSKeywordsModule
    use MPI_Process_Info
    use Headers
    use Utilities                 , only: toLower
-   use FluidData_NS
+   use PhysicsStorage
+   use FluidData
+#if defined(NAVIERSTOKES)
+   use Physics_NSKeywordsModule
    use VariableConversion_NS     , only: getVelocityGradients, getTemperatureGradient, getVelocityGradients_State
+#elif defined(INCNS)
+   use Physics_iNSKeywordsModule
+   use VariableConversion_iNS     ,only: getVelocityGradients
+#endif
    implicit none
 
    private
@@ -311,9 +316,12 @@ module LESModels
          real(kind=RP)  :: U_y(NDIM)
          real(kind=RP)  :: U_z(NDIM)
          !-------------------------------------------------------
-         
+#if !defined(INCNS)
          !call getVelocityGradients(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
          call getVelocityGradients_State(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#else
+         call getVelocityGradients(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#endif
 
 !
 !        Compute symmetric part of the deformation tensor
@@ -336,7 +344,11 @@ module LESModels
 !        ------------------------------------------
          LS = C * delta
          LS = LESModel_ComputeWallEffect(LS,dWall, WallModel)
+#if !defined(INCNS)
          mu = Q(IRHO) * POW2(LS) * normS
+#else 
+         mu = Q(INSRHO) * POW2(LS) * normS
+#endif
          
       end subroutine Smagorinsky_ComputeViscosity
 !
@@ -421,8 +433,12 @@ module LESModels
          integer        :: k   ! The third index
          !-------------------------------------------------------
          
+#if !defined(INCNS)
          !call getVelocityGradients  (Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
          call getVelocityGradients_State(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#else
+         call getVelocityGradients(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#endif
 
          gradV(1,:) = U_x(1:3)
          gradV(2,:) = U_y(1:3)
@@ -553,9 +569,13 @@ module LESModels
          real(kind=RP)  :: U_z(NDIM)
          integer        :: i,j,k
          !-------------------------------------------------------
-         
+
+#if !defined(INCNS)
          !call getVelocityGradients  (Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
          call getVelocityGradients_State(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#else
+         call getVelocityGradients(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+#endif
 
          delta2 = delta*delta 
          gradV(1,:) = U_x(1:3)
@@ -580,11 +600,19 @@ module LESModels
             &  - G__ij(2,3) * G__ij(2,3) &
             &  - G__ij(1,3) * G__ij(1,3)
 
-         if(alpha>1.0e-10_RP) then
-            mu = Q(IRHO) * C * sqrt (abs(Bbeta)/alpha)
-         else 
-            mu = 0.0_RP
-         end if
+#if !defined(INCNS)
+            if(alpha>1.0e-10_RP) then
+               mu = Q(IRHO) * C * sqrt (abs(Bbeta)/alpha)
+            else 
+               mu = 0.0_RP
+            end if
+#else  
+            if(alpha>1.0e-10_RP) then
+               mu = Q(INSRHO) * C * sqrt (abs(Bbeta)/alpha)
+            else 
+               mu = 0.0_RP
+            end if
+#endif
          
       end subroutine Vreman_ComputeViscosity
 

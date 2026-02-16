@@ -10,19 +10,21 @@ module MeshPartitioning
    public   PerformMeshPartitioning
 
    contains
-      subroutine PerformMeshPartitioning(mesh, no_of_domains, partitions, useWeights)
+      subroutine PerformMeshPartitioning(mesh, no_of_allElements, no_of_domains, partitions, useWeights, Nx, Ny, Nz)
          implicit none
          type(HexMesh), intent(in)  :: mesh
+         integer,       intent(in)  :: no_of_allElements
          integer,       intent(in)  :: no_of_domains
          type(PartitionedMesh_t)    :: partitions(no_of_domains)
          logical,       intent(in)  :: useWeights
+         integer,       intent(in)  :: Nx(no_of_allElements), Ny(no_of_allElements), Nz(no_of_allElements)
 !
 !        ---------------
 !        Local variables
 !        ---------------
 !
          integer               :: fID, domain
-         integer               :: elementsDomain(mesh % no_of_elements)
+         integer               :: elementsDomain(no_of_allElements)
 !
 !        Initialize partitions
 !        ---------------------
@@ -32,7 +34,7 @@ module MeshPartitioning
 !
 !        Get each domain elements and nodes
 !        ----------------------------------
-         call GetElementsDomain(mesh, no_of_domains, elementsDomain, partitions, useWeights)
+         call GetElementsDomain(mesh, no_of_allElements, no_of_domains, elementsDomain, partitions, useWeights, Nx, Ny, Nz)
 !
 !        Get the partition boundary faces
 !        --------------------------------
@@ -44,15 +46,17 @@ module MeshPartitioning
          call WritePartitionsFile(mesh, elementsDomain)
       end subroutine PerformMeshPartitioning
 
-      subroutine GetElementsDomain(mesh, no_of_domains, elementsDomain, partitions, useWeights)
+      subroutine GetElementsDomain(mesh, no_of_allElements, no_of_domains, elementsDomain, partitions, useWeights, Nx, Ny, Nz)
          use IntegerDataLinkedList
          use MPI_Process_Info
          implicit none
          type(HexMesh), intent(in)              :: mesh
+         integer,       intent(in)              :: no_of_allElements
          integer,       intent(in)              :: no_of_domains
          integer,       intent(out)             :: elementsDomain(mesh % no_of_elements)
          type(PartitionedMesh_t), intent(inout) :: partitions(no_of_domains)      
          logical,       intent(in)  :: useWeights
+         integer,       intent(in)  :: Nx(no_of_allElements), Ny(no_of_allElements), Nz(no_of_allElements)
 !
 !        ---------------
 !        Local variables
@@ -72,7 +76,7 @@ module MeshPartitioning
 !           Space-filling curve partitioning
 !           --------------------------------
             case (SFC_PARTITIONING)
-               call GetSFCElementsPartition(mesh, no_of_domains, mesh % no_of_elements, elementsDomain, useWeights=useWeights)
+               call GetSFCElementsPartition(no_of_domains, no_of_allElements, elementsDomain, useWeights, Nx, Ny, Nz)
 !     
 !           METIS partitioning
 !           ------------------
@@ -93,120 +97,78 @@ module MeshPartitioning
 !
 !////////////////////////////////////////////////////////////////////////
 !
-     subroutine GetNodesPartition(mesh, no_of_domains, elementsDomain, partitions)
-        use Utilities, only: Qsort
-        implicit none
-        type(HexMesh), intent(in)              :: mesh
-        integer,       intent(in)              :: no_of_domains
-        integer,       intent(in)              :: elementsDomain(mesh % no_of_elements)
-        type(PartitionedMesh_t), intent(inout) :: partitions(no_of_domains)   
-!
-!       ---------------
-!       Local Variables
-!       ---------------
-!
-        integer              :: nvertex
-        integer              :: i
-        integer              :: j
-        integer              :: k
-        integer              :: ipoint
-        integer              :: jpoint
-        integer              :: idomain
-        integer              :: npoints
-        integer              :: ielem
-        logical              :: isnewpoint
-        logical              :: meshIsHOPR
-        integer, allocatable :: points(:)
-        integer, allocatable :: HOPRpoints(:)
-
-        nvertex = 8
-        
-        meshIsHOPR = allocated (mesh % HOPRnodeIDs)
-        
-        do idomain=1,no_of_domains
-!
-!       Get the number of elements for the partition
-!       --------------------------------------------
-        partitions(idomain)%no_of_elements = count(elementsDomain == idomain)
-        allocate(partitions(idomain)%elementIDs(partitions(idomain)%no_of_elements))
-!
-!       This will store the partition nodes (allocated as 8 * no_of_elements)
-!       ---------------------------------------------------------------------
-        allocate(points(nvertex*partitions(idomain)%no_of_elements))
-        points = 0
-        if (meshIsHOPR) then
-            allocate(HOPRpoints(nvertex*partitions(idomain)%no_of_elements))
-            HOPRpoints = 0
-        end if
-!
-!       ****************************************
-!       Gather each partition nodes and elements      
-!       ****************************************
-!
-        k = 0
-        npoints = 0
-        do ielem=1,mesh % no_of_elements
-           if (elementsDomain(ielem) == idomain) then
-!
-!             Append a new element
-!             --------------------
-              k = k + 1
-              partitions(idomain)%elementIDs(k) = ielem
-!
-!             Append its nodes
-!             ----------------           
-              do j=1,nvertex
-!
-!                Get the node ID
-!                ---------------
-                 jpoint = mesh % elements(ielem) % nodeIDs(j)
-!
-!                Check if it is already stored
-!                -----------------------------
-                 isnewpoint = .true.
-                 do i=1,npoints
-                    ipoint = points(i)
-                    if (jpoint == ipoint) then
-                       isnewpoint = .false.
-                       exit
-                    end if
-                 end do
-!
-!                Store the node
-!                --------------      
-                 if (isnewpoint) then
-                    npoints = npoints + 1
-                    points(npoints) = jpoint
-                    if (meshIsHOPR) HOPRpoints(npoints) = mesh % HOPRnodeIDs(jpoint)
-                 end if                  
-              end do
-            end if      
+      subroutine GetNodesPartition(mesh, no_of_domains, elementsDomain, partitions)
+         use Utilities, only: Qsort
+         implicit none
+     
+         type(HexMesh), intent(in)              :: mesh
+         integer,       intent(in)              :: no_of_domains
+         integer,       intent(in)              :: elementsDomain(mesh%no_of_elements)
+         type(PartitionedMesh_t), intent(inout) :: partitions(no_of_domains)
+     
+         integer              :: nvertex, i, j, k, ipoint, jpoint
+         integer              :: idomain, npoints, ielem
+         logical              :: isnewpoint, meshIsHOPR
+         integer, allocatable :: points(:), HOPRpoints(:)
+         logical, allocatable :: mask(:)  ! Mask array for node uniqueness
+         integer              :: max_nodes
+     
+         nvertex = 8
+         meshIsHOPR = allocated(mesh%HOPRnodeIDs)
+         max_nodes = 0
+         do ielem = 1, mesh%no_of_elements
+            max_nodes = max(maxval(mesh%elements(ielem)%nodeIDs(:)), max_nodes)
          end do
-!
-!        Put the nodeIDs into the partitions structure
-!        ---------------------------------------------      
-         allocate(partitions(idomain)%nodeIDs(npoints))
-         partitions(idomain)%nodeIDs(:) = points(1:npoints)
-         
-         if (meshIsHOPR) then
-            allocate(partitions(idomain)%HOPRnodeIDs(npoints))
-            partitions(idomain)%HOPRnodeIDs(:) = HOPRpoints(1:npoints)
-         end if
-!
-!        Sort the nodeIDs to read the mesh file accordingly (only needed for SpecMesh)
-!        --------------------------------------------------
-         if (.not. meshIsHOPR) call Qsort(partitions(idomain)%nodeIDs)
 
-         partitions(idomain)%no_of_nodes = npoints
-!
-!        ****
-!        Free
-!        ****
-!
-         deallocate(points)
-         safedeallocate(HOPRpoints)
-      end do
-
+         allocate(mask(max_nodes))  ! One-time allocation
+     
+         do idomain = 1, no_of_domains
+             partitions(idomain)%no_of_elements = count(elementsDomain == idomain)
+             allocate(partitions(idomain)%elementIDs(partitions(idomain)%no_of_elements))
+             allocate(points(nvertex * partitions(idomain)%no_of_elements))
+             points = 0
+     
+             if (meshIsHOPR) then
+                 allocate(HOPRpoints(nvertex * partitions(idomain)%no_of_elements))
+                 HOPRpoints = 0
+             end if
+     
+             mask = .false.  ! Reset mask for new domain
+             k = 0
+             npoints = 0
+             do ielem = 1, mesh%no_of_elements
+                 if (elementsDomain(ielem) == idomain) then
+                     k = k + 1
+                     partitions(idomain)%elementIDs(k) = ielem
+                     do j = 1, nvertex
+                         jpoint = mesh%elements(ielem)%nodeIDs(j)
+                         if (.not. mask(jpoint)) then
+                             npoints = npoints + 1
+                             points(npoints) = jpoint
+                             mask(jpoint) = .true.
+                             if (meshIsHOPR) HOPRpoints(npoints) = mesh%HOPRnodeIDs(jpoint)
+                         end if
+                     end do
+                 end if
+             end do
+     
+             allocate(partitions(idomain)%nodeIDs(npoints))
+             partitions(idomain)%nodeIDs = points(1:npoints)
+     
+             if (meshIsHOPR) then
+                 allocate(partitions(idomain)%HOPRnodeIDs(npoints))
+                 partitions(idomain)%HOPRnodeIDs = HOPRpoints(1:npoints)
+             end if
+     
+             if (.not. meshIsHOPR) call Qsort(partitions(idomain)%nodeIDs)
+     
+             partitions(idomain)%no_of_nodes = npoints
+     
+             deallocate(points)
+             if (allocated(HOPRpoints)) deallocate(HOPRpoints)
+         end do
+     
+         deallocate(mask)
      end subroutine GetNodesPartition
 !
 !////////////////////////////////////////////////////////////////////////
@@ -347,14 +309,14 @@ module MeshPartitioning
 !     --------------------------------
 !     Space-filling curve partitioning
 !     --------------------------------
-      subroutine GetSFCElementsPartition(mesh, no_of_domains, nelem, elementsDomain, useWeights)
+      subroutine GetSFCElementsPartition(no_of_domains, no_of_allElements, elementsDomain, useWeights, Nx, Ny, Nz)
          implicit none
          !-arguments--------------------------------------------------
-         type(HexMesh), intent(in)        :: mesh
          integer, intent(in)    :: no_of_domains
-         integer, intent(in)    :: nelem
-         integer, intent(inout) :: elementsDomain(nelem)
+         integer, intent(in)    :: no_of_allElements
+         integer, intent(inout) :: elementsDomain(no_of_allElements)
          logical, intent(in)    :: useWeights
+         integer, intent(in)    :: Nx(no_of_allElements), Ny(no_of_allElements), Nz(no_of_allElements)
          !-local-variables--------------------------------------------
          integer :: elems_per_domain(no_of_domains)
          integer :: biggerdomains
@@ -366,9 +328,9 @@ module MeshPartitioning
          !------------------------------------------------------------
 
          if (useWeights) then
-             allocate(weights(nelem))
-             do ielem=1,nelem
-                 weights(ielem) = product(mesh % elements(ielem) % Nxyz + 1)
+             allocate(weights(no_of_allElements))
+             do ielem=1,no_of_allElements
+                 weights(ielem) = (Nx(ielem) + 1) * (Ny(ielem) + 1) * (Nz(ielem) + 1)
              end do
              if (maxval(weights) .eq. minval(weights)) then
                  neddWeights = .false.
@@ -379,8 +341,8 @@ module MeshPartitioning
              endif
          end if 
          
-         elems_per_domain = nelem / no_of_domains
-         biggerdomains = mod(nelem,no_of_domains)
+         elems_per_domain = no_of_allElements / no_of_domains
+         biggerdomains = mod(no_of_allElements,no_of_domains)
          elems_per_domain(1:biggerdomains) = elems_per_domain(1:biggerdomains) + 1
          
          first = 1
@@ -401,7 +363,7 @@ module MeshPartitioning
              do domain = 1, no_of_domains-1
                  if (start_index(domain) .ge. start_index(domain+1)) start_index(domain+1) = start_index(domain) + 1
                  dof_in_domain = sum(weights(start_index(domain):start_index(domain+1)))
-                 do ielem=1,nelem
+                 do ielem=1,no_of_allElements
                      if (dof_in_domain .lt. max_dof) then
                          start_index(domain+1) = start_index(domain+1) + 1
                          dof_in_domain = sum(weights(start_index(domain):start_index(domain+1)))

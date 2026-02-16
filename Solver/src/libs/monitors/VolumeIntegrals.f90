@@ -570,6 +570,7 @@ module VolumeIntegrals
 !           Implemented integrals are:
 !              * VELOCITY
 !              * MOMENTUM
+!              * SOURCE
 !        -----------------------------------------------------------
 !
          implicit none
@@ -584,48 +585,217 @@ module VolumeIntegrals
 !
          logical       :: fiveVars
          integer       :: eID, ierr
+         integer       :: i, j, k, eq
          real(kind=RP) :: localVal(num_of_vars)
-         real(kind=RP) :: valAux(num_of_vars)
          real(kind=RP) :: val1, val2, val3, val4, val5
-
-         if (num_of_vars == 5) then    ! Ugly hack.. But only way to make it work with ifort....
-            fiveVars = .TRUE.
-         else
-            fiveVars = .FALSE.
-         end if
+         real(kind=RP) :: local1, local2, local3, local4, local5
+         real(kind=RP) :: invRHo
 
 !
 !        Initialization
 !        --------------
+         val  = 0.0_RP
          val1 = 0.0_RP
          val2 = 0.0_RP
          val3 = 0.0_RP
          val4 = 0.0_RP
          val5 = 0.0_RP
 !
-!        Loop the mesh
-!        -------------
-!$omp parallel do reduction(+:val1,val2,val3,val4,val5) private(valAux) schedule(guided)
+         select case ( integralType )
+
+#if defined(NAVIERSTOKES) && (!(SPALARTALMARAS))
+
+            case ( VELOCITY )
+                ! num_of_vars is equal to NDIM
+!$acc parallel loop gang present(mesh) num_gangs(9700) reduction(+:val1,val2,val3) async(1)
+!$omp parallel do reduction(+:val1,val2,val3) private(val) schedule(guided)
          do eID = 1, mesh % no_of_elements
 !
-!           Compute the integral
-!           --------------------
-            valAux = VectorVolumeIntegral_Local(mesh % elements(eID), integralType  , num_of_vars  )
+            local1 = 0.0_RP
+            local2 = 0.0_RP
+            local3 = 0.0_RP
 
-            val1 = val1 + valAux(1)
-            val2 = val2 + valAux(2)
-            val3 = val3 + valAux(3)
 
-            if (fiveVars) then
-               val4 = val4 + valAux(4)
-               val5 = val5 + valAux(5)
-            end if
+            !$acc loop vector collapse(3) reduction(+:local1,local2,local3)
+            do k = 0, mesh % elements(eID) % Nxyz(3) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
+
+                invRHo = 1.0_RP / mesh % elements(eID) % storage % Q(IRHO,i,j,k)
+                local1 = local1 + NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
+                                  mesh % elements(eID) % storage % Q(IRHOU,i,j,k) * invRHo * &
+                                  mesh % elements(eID) % geom % jacobian(i,j,k)
+
+                local2 = local2 + NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
+                                  mesh % elements(eID) % storage % Q(IRHOV,i,j,k) * invRHo * &
+                                  mesh % elements(eID) % geom % jacobian(i,j,k)
+
+                local3 = local3 + NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
+                                  mesh % elements(eID) % storage % Q(IRHOW,i,j,k) * invRHo * &
+                                  mesh % elements(eID) % geom % jacobian(i,j,k)
+
+            end do            ; end do           ; end do
+
+            val1 = val1 + local1
+            val2 = val2 + local2
+            val3 = val3 + local3
+
          end do
 !$omp end parallel do
+!$acc end parallel loop
 
-         val(1:3) = [val1, val2, val3]
 
-         if (fiveVars) val(4:5) = [val4, val5]
+            case ( MOMENTUM )
+                ! num_of_vars is equal to NDIM
+!$acc parallel loop gang present(mesh) num_gangs(9700) reduction(+:val1,val2,val3)
+!$omp parallel do reduction(+:val1,val2,val3) private(val) schedule(guided)
+         do eID = 1, mesh % no_of_elements
+!
+            local1 = 0.0_RP
+            local2 = 0.0_RP
+            local3 = 0.0_RP
+
+            !$acc loop vector collapse(3) reduction(+:local1,local2,local3)
+            do k = 0, mesh % elements(eID) % Nxyz(3) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
+
+                local1 = local1 + NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
+                                  mesh % elements(eID) % storage % Q(IRHOU,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
+
+                local2 = local2 + NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
+                                  mesh % elements(eID) % storage % Q(IRHOV,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
+
+                local3 = local3 + NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
+                                  mesh % elements(eID) % storage % Q(IRHOW,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
+
+            end do            ; end do           ; end do
+
+            val1 = val1 + local1
+            val2 = val2 + local2
+            val3 = val3 + local3
+
+         end do
+!$omp end parallel do
+!$acc end parallel loop
+
+!            case ( PSOURCE )
+!                ! num_of_vars is equal to NCONS
+!!$acc parallel loop gang present(mesh) num_gangs(9700) reduction(+:val1,val2,val3,val4,val5) async(1)
+!!$omp parallel do reduction(+:val1,val2,val3,val4,val5) private(val) schedule(guided)
+!         do eID = 1, mesh % no_of_elements
+!!
+!            local1 = 0.0_RP
+!            local2 = 0.0_RP
+!            local3 = 0.0_RP
+!            local4 = 0.0_RP
+!            local5 = 0.0_RP
+!
+!            !$acc loop vector collapse(4) reduction(+:local1, local2, local3, local4, local5) private(val)
+!            do k = 0, mesh % elements(eID) % Nxyz(3) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1); do eq = 1, num_of_vars
+!                val(eq) = val(eq) +  NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
+!                                     NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
+!                                     NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
+!                                     mesh % elements(eID) % storage % S_NSP(eq,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
+!
+!                local1 = local1 + val(1)
+!                local2 = local2 + val(2)
+!                local3 = local3 + val(3)
+!                local4 = local4 + val(4)
+!                local5 = local5 + val(5)
+!
+!            end do            ; end do           ; end do;          enddo
+!
+!            val1 = val1 + local1
+!            val2 = val2 + local2
+!            val3 = val3 + local3
+!            val4 = val4 + local4
+!            val5 = val5 + local5
+!
+!         end do
+!!$omp end parallel do
+!!$acc end parallel loop
+!
+#endif
+
+#if defined(NAVIERSTOKES) || defined(INCNS) || defined(MULTIPHASE) || defined(ACOUSTIC)
+            case ( SOURCE )
+                ! num_of_vars is equal to NCONS
+
+!$acc parallel loop gang present(mesh) num_gangs(9700) reduction(+:val1,val2,val3,val4,val5)
+!$omp parallel do reduction(+:val1,val2,val3,val4,val5) private(val) schedule(guided)
+         do eID = 1, mesh % no_of_elements
+!
+            local1 = 0.0_RP
+            local2 = 0.0_RP
+            local3 = 0.0_RP
+            local4 = 0.0_RP
+            local5 = 0.0_RP
+
+            !$acc loop vector collapse(3) reduction(+:local1,local2,local3,local4,local5)
+            do k = 0, mesh % elements(eID) % Nxyz(3) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
+
+                local1 = local1 + NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
+                                  mesh % elements(eID) % storage % S_NS(1,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
+
+                local2 = local2 + NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
+                                  mesh % elements(eID) % storage % S_NS(2,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
+
+                local3 = local3 + NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
+                                  mesh % elements(eID) % storage % S_NS(3,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
+
+                local4 = local4 + NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
+                                  mesh % elements(eID) % storage % S_NS(4,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
+
+                local5 = local5 + NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) * &
+                                  NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) * &
+                                  mesh % elements(eID) % storage % S_NS(5,i,j,k) * mesh % elements(eID) % geom % jacobian(i,j,k)
+
+            end do           ; end do;          enddo
+
+            val1 = val1 + local1
+            val2 = val2 + local2
+            val3 = val3 + local3
+            val4 = val4 + local4
+            val5 = val5 + local5
+
+         end do
+!$omp end parallel do
+!$acc end parallel loop
+!
+#endif
+!
+            case default
+
+               write(STD_OUT,'(A,A)') 'VectorVolumeIntegral :: ERROR: Not defined integral type'
+               error stop 99
+
+         end select
+
+         ! Special case: when num_of_vars == 5, this corresponds to a 5-component vector (e.g., for 3D Navier-Stokes with additional variables).
+         ! This assignment is required due to legacy code structure and is considered a hack because the number of variables is not handled generically.
+         if (num_of_vars == 5) then
+             val(1:5) = [val1, val2, val3, val4, val5]
+         else
+             val(1:3) = [val1, val2, val3]
+         end if
 
 #ifdef _HAS_MPI_
          localVal = val
@@ -663,51 +833,51 @@ module VolumeIntegrals
          select case ( integralType )
 
 #if defined(NAVIERSTOKES) && (!(SPALARTALMARAS))
-            case ( VELOCITY )
-
-               do k = 0, Nel(3)  ; do j = 0, Nel(2) ; do i = 0, Nel(1)
-                  val = val +   wx(i) * wy(j) * wz(k) * e % storage % Q(IRHOU:IRHOW,i,j,k) / e % storage % Q(IRHO,i,j,k) * e % geom % jacobian(i,j,k)
-               end do            ; end do           ; end do
-
-            case ( MOMENTUM )
-
-               do k = 0, Nel(3)  ; do j = 0, Nel(2) ; do i = 0, Nel(1)
-                  val = val +   wx(i) * wy(j) * wz(k) * e % storage % Q(IRHOU:IRHOW,i,j,k) * e % geom % jacobian(i,j,k)
-               end do            ; end do           ; end do
-
-            case ( SOURCE )
-
-               do k = 0, Nel(3)  ; do j = 0, Nel(2) ; do i = 0, Nel(1)
-                  val = val +   wx(i) * wy(j) * wz(k) * e % storage % S_NS(1:num_of_vars,i,j,k) * e % geom % jacobian(i,j,k)
-               end do            ; end do           ; end do
-
-            case ( PSOURCE )
-
-               do k = 0, Nel(3)  ; do j = 0, Nel(2) ; do i = 0, Nel(1)
-                  val = val +   wx(i) * wy(j) * wz(k) * e % storage % S_NSP(1:num_of_vars,i,j,k) * e % geom % jacobian(i,j,k)
-               end do            ; end do           ; end do
+!            case ( VELOCITY )
+!
+!               do k = 0, Nel(3)  ; do j = 0, Nel(2) ; do i = 0, Nel(1)
+!                  val = val +   wx(i) * wy(j) * wz(k) * e % storage % Q(IRHOU:IRHOW,i,j,k) / e % storage % Q(IRHO,i,j,k) * e % geom % jacobian(i,j,k)
+!               end do            ; end do           ; end do
+!
+!            case ( MOMENTUM )
+!
+!               do k = 0, Nel(3)  ; do j = 0, Nel(2) ; do i = 0, Nel(1)
+!                  val = val +   wx(i) * wy(j) * wz(k) * e % storage % Q(IRHOU:IRHOW,i,j,k) * e % geom % jacobian(i,j,k)
+!               end do            ; end do           ; end do
+!
+!            case ( SOURCE )
+!
+!               do k = 0, Nel(3)  ; do j = 0, Nel(2) ; do i = 0, Nel(1)
+!                  val = val +   wx(i) * wy(j) * wz(k) * e % storage % S_NS(1:num_of_vars,i,j,k) * e % geom % jacobian(i,j,k)
+!               end do            ; end do           ; end do
+!
+!            case ( PSOURCE )
+!
+!               do k = 0, Nel(3)  ; do j = 0, Nel(2) ; do i = 0, Nel(1)
+!                  val = val +   wx(i) * wy(j) * wz(k) * e % storage % S_NSP(1:num_of_vars,i,j,k) * e % geom % jacobian(i,j,k)
+!               end do            ; end do           ; end do
 #endif
-#if defined(INCNS)
-            case ( SOURCE )
-
-               do k = 0, Nel(3)  ; do j = 0, Nel(2) ; do i = 0, Nel(1)
-                  val = val +   wx(i) * wy(j) * wz(k) * e % storage % S_NS(1:num_of_vars,i,j,k) * e % geom % jacobian(i,j,k)
-               end do            ; end do           ; end do
-#endif
-#if defined(MULTIPHASE)
-            case ( SOURCE )
-
-               do k = 0, Nel(3)  ; do j = 0, Nel(2) ; do i = 0, Nel(1)
-                  val = val +   wx(i) * wy(j) * wz(k) * e % storage % S_NS(1:num_of_vars,i,j,k) * e % geom % jacobian(i,j,k)
-               end do            ; end do           ; end do
-#endif
-#if defined(ACOUSTIC)
-            case ( SOURCE )
-
-               do k = 0, Nel(3)  ; do j = 0, Nel(2) ; do i = 0, Nel(1)
-                  val = val +   wx(i) * wy(j) * wz(k) * e % storage % S_NS(1:num_of_vars,i,j,k) * e % geom % jacobian(i,j,k)
-               end do            ; end do           ; end do
-#endif
+!#if defined(INCNS)
+!            case ( SOURCE )
+!
+!               do k = 0, Nel(3)  ; do j = 0, Nel(2) ; do i = 0, Nel(1)
+!                  val = val +   wx(i) * wy(j) * wz(k) * e % storage % S_NS(1:num_of_vars,i,j,k) * e % geom % jacobian(i,j,k)
+!               end do            ; end do           ; end do
+!#endif
+!#if defined(MULTIPHASE)
+!            case ( SOURCE )
+!
+!               do k = 0, Nel(3)  ; do j = 0, Nel(2) ; do i = 0, Nel(1)
+!                  val = val +   wx(i) * wy(j) * wz(k) * e % storage % S_NS(1:num_of_vars,i,j,k) * e % geom % jacobian(i,j,k)
+!               end do            ; end do           ; end do
+!#endif
+!#if defined(ACOUSTIC)
+!            case ( SOURCE )
+!
+!               do k = 0, Nel(3)  ; do j = 0, Nel(2) ; do i = 0, Nel(1)
+!                  val = val +   wx(i) * wy(j) * wz(k) * e % storage % S_NS(1:num_of_vars,i,j,k) * e % geom % jacobian(i,j,k)
+!               end do            ; end do           ; end do
+!#endif
 
             case default
 

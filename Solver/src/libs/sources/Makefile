@@ -12,6 +12,7 @@ LIBOBJS_NS = ./build_ns/ActuatorLine.o \
 			 ./build_ns/mkl_dfti.o \
 			 ./build_ns/TripForceClass.o \
 			 ./build_ns/SpongeClass.o \
+			 ./build_ns/ChannelForcing.o \
 			 ./build_ns/RandomNumberGenerator.o
 		
 LIBOBJS_NSSA =  ./build_nssa/ActuatorLine.o \
@@ -148,6 +149,12 @@ install-mu: lib$(LIB)_mu.a
 install-ns: lib$(LIB)_ns.a
 	cp -p lib$(LIB)_ns.a $(INSTALL_DIR)/lib/
 	cp -p ./include_ns/*.mod $(INSTALL_DIR)/include_ns/
+	@echo
+	@echo
+
+install-ins: lib$(LIB)_ins.a
+	cp -p lib$(LIB)_ins.a $(INSTALL_DIR)/lib/
+	cp -p ./include_ins/*.mod $(INSTALL_DIR)/include_ins/
 	@echo
 	@echo
 

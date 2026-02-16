@@ -567,7 +567,6 @@ module RiemannSolvers_NS
       end subroutine CentralRiemannSolver
 
       subroutine StdRoeRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
-         
          use RiemannSolvers_NSKeywordsModule
          !$acc routine vector
          implicit none
@@ -586,14 +585,15 @@ module RiemannSolvers_NS
          real(kind=RP)  :: dQ(5), lambda(5), K(5,5), V2abs, alpha(5), dLambda
          real(kind=RP)  :: rho, u, v, w, V2, H, a
          real(kind=RP)  :: stab(5)     ! Careful with this variable
+         real(kind=RP)  :: flux_rot(5)     
+
 !
 !        ********************
 !        Perform the rotation
 !        ********************
 !
-         !$acc loop vector collapse(2) private(QLRot, QRRot, VL, VR, dQ, lambda, K, alpha, stab)
-         do j = 0, Ny
-         do i = 0, Nx  
+         !$acc loop vector collapse(2) private(QLRot, QRRot, VL, VR, dQ, lambda, K, alpha, stab, flux_rot)
+         do j = 0, Ny ; do i = 0, Nx  
          
          QLRot(1) = QLeft(1,i,j)  ; QRRot(1) = QRight(1,i,j)
 
@@ -684,7 +684,7 @@ module RiemannSolvers_NS
 !
 !        Perform the average using the averaging function
 !        ------------------------------------------------
-         call AveragedState_Selector(QLRot, QRRot, VL(IPP), VR(IPP), VL(IPIRHO), VR(IPIRHO), flux(:,i,j))
+         call AveragedState_Selector(QLRot, QRRot, VL(IPP), VR(IPP), VL(IPIRHO), VR(IPIRHO), flux_rot(:))
 
 !
 !        Compute the Roe stabilization
@@ -703,21 +703,25 @@ module RiemannSolvers_NS
 
          stab = 0.0_RP
          do l = 1, 5
-            stab = stab + 0.5_RP * alpha(l) * abs(lambda(i)) * K(:,l)
+            stab = stab + 0.5_RP * alpha(l) * abs(lambda(l)) * K(:,l)
          end do
 !
 !        Compute the flux: apply the lambda stabilization here.
 !        ----------------
-         flux(:,i,j) = flux(:,i,j) - lambdaStab * stab
+         flux_rot(:) = flux_rot(:) - lambdaStab * stab
+
+         flux(1,i,j) = flux_rot(1)
+         flux(5,i,j) = flux_rot(5)
 !
 !        ************************************************
 !        Return momentum equations to the cartesian frame
 !        ************************************************
 !
-         flux(2:4,i,j) = nHat(:,i,j)*flux(2,i,j) + t1(:,i,j)*flux(3,i,j) + t2(:,i,j)*flux(4,i,j)
-
-         enddo
-         enddo
+         flux(2,i,j) = nHat(1,i,j)*flux_rot(2) + t1(1,i,j)*flux_rot(3) + t2(1,i,j)*flux_rot(4)
+         flux(3,i,j) = nHat(2,i,j)*flux_rot(2) + t1(2,i,j)*flux_rot(3) + t2(2,i,j)*flux_rot(4)
+         flux(4,i,j) = nHat(3,i,j)*flux_rot(2) + t1(3,i,j)*flux_rot(3) + t2(3,i,j)*flux_rot(4)  
+      
+      enddo ; enddo
         
       end subroutine StdRoeRiemannSolver
 
