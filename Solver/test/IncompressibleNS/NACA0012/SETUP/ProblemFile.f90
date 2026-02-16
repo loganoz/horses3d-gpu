@@ -76,36 +76,53 @@ module ProblemFileFunctions
       end subroutine UserDefinedInitialCondition_f
 #ifdef FLOW
       subroutine UserDefinedState_f(x, t, nHat, Q, thermodynamics_, dimensionless_, refValues_)
-!
-!           -------------------------------------------------
-!           Used to define an user defined boundary condition
-!           -------------------------------------------------
-!
          use SMConstants
          use PhysicsStorage
          use FluidData
          implicit none
-         real(kind=RP), intent(in)     :: x(NDIM)
-         real(kind=RP), intent(in)     :: t
-         real(kind=RP), intent(in)     :: nHat(NDIM)
-         real(kind=RP), intent(inout)  :: Q(NCONS)
-         type(Thermodynamics_t),    intent(in)  :: thermodynamics_
-         type(Dimensionless_t),     intent(in)  :: dimensionless_
-         type(RefValues_t),         intent(in)  :: refValues_
+         real(kind=RP), intent(in)          :: x(NDIM)
+         real(kind=RP), intent(in)          :: t
+         real(kind=RP), intent(in)          :: nHat(NDIM)
+         real(kind=RP), intent(inout)       :: Q(NCONS)
+         type(Thermodynamics_t), intent(in) :: thermodynamics_
+         type(Dimensionless_t),  intent(in) :: dimensionless_
+         type(RefValues_t),      intent(in) :: refValues_
       end subroutine UserDefinedState_f
 
-      subroutine UserDefinedNeumann_f(x, t, nHat, U_x, U_y, U_z)
+      subroutine UserDefinedGradVars_f(x, t, nHat, Q, U, thermodynamics_, dimensionless_, refValues_)
          use SMConstants
          use PhysicsStorage
          use FluidData
          implicit none
-         real(kind=RP), intent(in)     :: x(NDIM)
-         real(kind=RP), intent(in)     :: t
-         real(kind=RP), intent(in)     :: nHat(NDIM)
-         real(kind=RP), intent(inout)  :: U_x(NGRAD)
-         real(kind=RP), intent(inout)  :: U_y(NGRAD)
-         real(kind=RP), intent(inout)  :: U_z(NGRAD)
+         real(kind=RP), intent(in)          :: x(NDIM)
+         real(kind=RP), intent(in)          :: t
+         real(kind=RP), intent(in)          :: nHat(NDIM)
+         real(kind=RP), intent(in)          :: Q(NCONS)
+         real(kind=RP), intent(inout)       :: U(NGRAD)
+         type(Thermodynamics_t), intent(in) :: thermodynamics_
+         type(Dimensionless_t),  intent(in) :: dimensionless_
+         type(RefValues_t),      intent(in) :: refValues_
+      end subroutine UserDefinedGradVars_f
+
+
+      subroutine UserDefinedNeumann_f(x, t, nHat, Q, U_x, U_y, U_z, flux, thermodynamics_, dimensionless_, refValues_)
+         use SMConstants
+         use PhysicsStorage
+         use FluidData
+         implicit none
+         real(kind=RP), intent(in)    :: x(NDIM)
+         real(kind=RP), intent(in)    :: t
+         real(kind=RP), intent(in)    :: nHat(NDIM)
+         real(kind=RP), intent(in)    :: Q(NCONS)
+         real(kind=RP), intent(in)    :: U_x(NGRAD)
+         real(kind=RP), intent(in)    :: U_y(NGRAD)
+         real(kind=RP), intent(in)    :: U_z(NGRAD)
+         real(kind=RP), intent(inout) :: flux(NCONS)
+         type(Thermodynamics_t), intent(in) :: thermodynamics_
+         type(Dimensionless_t),  intent(in) :: dimensionless_
+         type(RefValues_t),      intent(in) :: refValues_
       end subroutine UserDefinedNeumann_f
+
 #endif
 !
 !//////////////////////////////////////////////////////////////////////// 
@@ -124,7 +141,7 @@ module ProblemFileFunctions
 !//////////////////////////////////////////////////////////////////////// 
 ! 
 #ifdef FLOW
-      subroutine UserDefinedSourceTermNS_f(x, Q, time, S, thermodynamics_, dimensionless_, refValues_&
+      subroutine UserDefinedSourceTermNS_f(x, Q, time, S, thermodynamics_, dimensionless_, refValues_ &
 #ifdef CAHNHILLIARD
 ,multiphase_ &
 #endif
@@ -142,7 +159,7 @@ module ProblemFileFunctions
          type(Dimensionless_t),  intent(in)  :: dimensionless_
          type(RefValues_t),      intent(in)  :: refValues_
 #ifdef CAHNHILLIARD
-         type(Multiphase_t),  intent(in)  :: multiphase_
+         type(Multiphase_t),     intent(in)  :: multiphase_
 #endif
       end subroutine UserDefinedSourceTermNS_f
 #endif
@@ -267,38 +284,81 @@ end module ProblemFileFunctions
 #endif
 !
 !           ---------------
-!           local variables
+!           Local variables
 !           ---------------
 !
-            integer        :: eid, i, j, k
-            real(kind=RP)  :: c, u, v, w, p, phi
-            real(kind=RP)  :: x, y, z
+            integer        :: eID, i, j, k
+            real(kind=RP)  :: qq, u, v, w, p
+            real(kind=RP)  :: Q(NCONS), phi, theta
+
+!
+!           ---------------------------------------
+!           Navier-Stokes default initial condition
+!           ---------------------------------------
+!
+#if defined(NAVIERSTOKES)
+            associate ( gammaM2 => dimensionless_ % gammaM2, &
+                        gamma => thermodynamics_ % gamma )
+            theta = refValues_ % AOATheta*(PI/180.0_RP)
+            phi   = refValues_ % AOAPhi*(PI/180.0_RP)
+      
+            do eID = 1, mesh % no_of_elements
+               associate( Nx => mesh % elements(eID) % Nxyz(1), &
+                          Ny => mesh % elements(eID) % Nxyz(2), &
+                          Nz => mesh % elements(eID) % Nxyz(3) )
+               do k = 0, Nz;  do j = 0, Ny;  do i = 0, Nx 
+                  qq = 1.0_RP
+                  u  = qq*cos(theta)*COS(phi)
+                  v  = qq*sin(theta)*COS(phi)
+                  w  = qq*SIN(phi)
+      
+                  Q(1) = 1.0_RP
+                  p    = 1.0_RP/(gammaM2)
+                  Q(2) = Q(1)*u
+                  Q(3) = Q(1)*v
+                  Q(4) = Q(1)*w
+                  Q(5) = p/(gamma - 1._RP) + 0.5_RP*Q(1)*(u**2 + v**2 + w**2)
+
+                  mesh % elements(eID) % storage % Q(:,i,j,k) = Q 
+               end do;        end do;        end do
+               end associate
+            end do
+
+            end associate
+#endif
 !
 !           ------------------------------------------------------
 !           Incompressible Navier-Stokes default initial condition
 !           ------------------------------------------------------
 !
-#if defined(MULTIPHASE)
+#if defined(INCNS)
             do eID = 1, mesh % no_of_elements
                associate( Nx => mesh % elements(eID) % Nxyz(1), &
                           ny => mesh % elemeNts(eID) % nxyz(2), &
                           Nz => mesh % elements(eID) % Nxyz(3) )
                do k = 0, Nz;  do j = 0, Ny;  do i = 0, Nx 
-                  x = mesh % elements(eID) % geom % x(IX,i,j,k)               
-                  y = mesh % elements(eID) % geom % x(IY,i,j,k)               
-                  z = mesh % elements(eID) % geom % x(IZ,i,j,k)               
-
-                  phi = 0.0_RP
-                  c = 0.5_RP
-      
-                  u = 0.0_RP
-                  v = 0.0_RP
-                  w = 0.0_RP
-
-                  p = 2*sin(PI*x)*sin(PI*y)
-   
-                  mesh % elements(eID) % storage % q(:,i,j,k) = [c,u,v,w,p] 
+                  mesh % elements(eID) % storage % q(:,i,j,k) = [1.0_RP, 1.0_RP,0.0_RP,0.0_RP,0.0_RP] 
                end do;        end do;        end do
+               end associate
+            end do
+#endif
+
+!
+!           ---------------------------------------
+!           Cahn-Hilliard default initial condition
+!           ---------------------------------------
+!
+#ifdef CAHNHILLIARD
+            call random_seed()
+         
+            do eid = 1, mesh % no_of_elements
+               associate( Nx => mesh % elements(eid) % Nxyz(1), &
+                          Ny => mesh % elements(eid) % Nxyz(2), &
+                          Nz => mesh % elements(eid) % Nxyz(3) )
+               associate(e => mesh % elements(eID) % storage)
+               call random_number(e % c) 
+               e % c = 2.0_RP * (e % c - 0.5_RP)
+               end associate
                end associate
             end do
 #endif
@@ -306,11 +366,6 @@ end module ProblemFileFunctions
          end subroutine UserDefinedInitialCondition
 #ifdef FLOW
          subroutine UserDefinedState1(x, t, nHat, Q, thermodynamics_, dimensionless_, refValues_)
-!
-!           -------------------------------------------------
-!           Used to define an user defined boundary condition
-!           -------------------------------------------------
-!
             use SMConstants
             use PhysicsStorage
             use FluidData
@@ -381,7 +436,7 @@ end module ProblemFileFunctions
 !//////////////////////////////////////////////////////////////////////// 
 ! 
 #ifdef FLOW
-         subroutine UserDefinedSourceTermNS(x, Q, time, S, thermodynamics_, dimensionless_, refValues_&
+         subroutine UserDefinedSourceTermNS(x, Q, time, S, thermodynamics_, dimensionless_, refValues_ &
 #ifdef CAHNHILLIARD
 , multiphase_ &
 #endif
@@ -405,107 +460,17 @@ end module ProblemFileFunctions
             type(RefValues_t),      intent(in)  :: refValues_
 #ifdef CAHNHILLIARD
             type(Multiphase_t),     intent(in)  :: multiphase_
+#endif
 !
 !           ---------------
 !           Local variables
 !           ---------------
-! !
-!             real(kind=RP)  :: rho0, eta = 0.001_RP
-!             real(kind=RP)  :: rho1, rho2, cs1, cs2
-
-!             rho1 = dimensionless_ % rho(2)
-!             rho2 = dimensionless_ % rho(1)
-!             cs1 = sqrt(thermodynamics_ % c02(2))
-!             cs2 = sqrt(thermodynamics_ % c02(1))
-
-!             S(IMC) = 0.5_RP*cos(time)*cos(PI*x(IX))*cos(PI*x(IY)) &  !diff(c,t)                          
-!                      +PI* &
-!                      (4.0_RP*sin(time)*(cos(PI*x(IX)))**2*(cos(PI*x(IY)))**2 &
-!                      -1.0_RP*sin(time)*(cos(PI*x(IX)))**2  &
-!                      -1.0_RP*sin(time)*(cos(PI*x(IY)))**2  &
-!                      +2.0_RP*cos(PI*x(IX))*cos(PI*x(IY))   &
-!                      )*(sin(time)) &  !+diff(c*u,x)+diff(c*v,y)
-!                      +(PI**2)*(multiphase_ % M0*multiphase_ % sigma/multiphase_ % eps) &
-!                      *(                                 &
-!                       3.0_RP*(PI*multiphase_ % eps)**2 &
-!                       +108.0_RP*(sin(time)*sin (PI*x(IX))*sin(PI*x(IY)))**2 &
-!                       -72.0_RP*(sin(time)*sin(PI*x(IX)))**2 &
-!                       -72.0_RP*(sin(time)*sin(PI*x(IY)))**2 &
-!                       +36.0_RP*(sin(time)**2) &
-!                       -12.0_RP &
-!                       ) &
-!                      *sin(time)*cos(PI*x(IX))*cos(PI*x(IY))  !-M0*(diff(μ,x,2)+diff(μ,y,2)) 
-
-!             S(IMSQRHOU) = 1.0_RP*( &
-!                            -1.5_RP*rho1*sin(time)*cos(PI*x(IX))*cos(PI*x(IY)) + rho1 & 
-!                            +1.5_RP*rho2*sin(time)*cos(PI*x(IX))*cos(PI*x(IY)) + rho2 &
-!                           ) &
-!                           *sin(PI*x(IX))*cos(time)*cos(PI*x(IY)) & !sqrt(ρ)*diff(sqrt(ρ)*u,t)                                                                                                                                                        
-!                          + PI * ( &
-!                            - 6.0_RP * rho1 * sin(time) * (cos(PI*x(IX)))**2 * (cos(PI*x(IY)))**3 &
-!                            + 2.0_RP * rho1 * sin(time) * (cos(PI*x(IX)))**2 * cos(PI*x(IY)) &
-!                            + 1.0_RP * rho1 * sin(time) * cos(PI*x(IY))**3 &
-!                            + 4.0_RP * rho1 * cos(PI*x(IX)) * (cos(PI*x(IY)))**2 &
-!                            - 1.0_RP * rho1 * cos(PI*x(IX)) &
-!                            + 6.0_RP * rho2 * sin(time) * (cos(PI*x(IX)))**2 * (cos(PI*x(IY)))**3 &
-!                            - 2.0_RP * rho2 * sin(time) * (cos(PI*x(IX)))**2 * cos(PI*x(IY)) &
-!                            - 1.0_RP * rho2 * sin(time) * cos(PI*x(IY))**3 &
-!                            + 4.0_RP * rho2 * cos(PI*x(IX)) * (cos(PI*x(IY)))**2 &
-!                            - 1.0_RP * rho2 * cos(PI*x(IX)) &
-!                              ) * (sin(time))**2 * sin(PI*x(IX)) & !0.5*(diff(ρ*u*u,x)+diff(ρ*u*v,y))
-!                           -PI*( &
-!                            rho1*(sin(time)*cos(PI*x(IX))*cos(PI*x(IY)) - 1.0_RP) &
-!                           -rho2*(sin(time)*cos(PI*x(IX))*cos(PI*x(IY)) + 1.0_RP) &
-!                            ) &
-!                           *(sin(time))**2*sin(PI*x(IX))*cos(PI*x(IX))*cos(2*PI*x(IY)) &    !0.5*ρ*(u*diff(u,x)+v*diff(u,y))
-!                           -0.5_RP*PI*multiphase_ % sigma / multiphase_ % eps  & 
-!                           *(sin(time)*cos(PI*x(IX))*cos(PI*x(IY)) + 1.0_RP) &
-!                           *(1.5_RP*(PI*multiphase_ % eps)**2  + 18.0_RP*(sin(time)*cos(PI*x(IX))*cos(PI*x(IY)))**2 - 6.0_RP) &
-!                           *sin(time)*sin(PI*x(IX))*cos(PI*x(IY)) &  !+ c *diff(μ,x)
-!                           + 2.0_RP*PI*sin(PI*x(IY))*cos(time)*cos(PI*x(IX)) & !+diff(p,x)
-!                           + 8.0_RP*(PI**2) *eta*sin(time)*sin(PI*x(IX))*cos(PI*x(IY)) !- diff(η*(diff(u,x) + diff(u,x)),x) - diff(η*(diff(u,y) + diff(v,x)),y)
-
-!             S(IMSQRHOV) = 1.0_RP*( &
-!                            -1.5_RP*rho1*sin(time)*cos(PI*x(IX))*cos(PI*x(IY)) + rho1 & 
-!                            +1.5_RP*rho2*sin(time)*cos(PI*x(IX))*cos(PI*x(IY)) + rho2 &
-!                           ) &
-!                           *sin(PI*x(IY))*cos(time)*cos(PI*x(IX)) & !sqrt(ρ)*diff(sqrt(ρ)*v,t)        
-!                           +PI * ( &
-!                              -6.0_RP * rho1 * sin(time) * (cos(PI*x(IX)))**3 * (cos(PI*x(IY)))**2 &
-!                              + 1.0_RP * rho1 * sin(time) * (cos(PI*x(IX)))**3 &
-!                              + 2.0_RP * rho1 * sin(time) * cos(PI*x(IX)) * (cos(PI*x(IY)))**2 &
-!                              + 4.0_RP * rho1 * (cos(PI*x(IX)))**2 * cos(PI*x(IY)) &
-!                              - 1.0_RP * rho1 * (cos(PI*x(IY))) &
-!                              + 6.0_RP * rho2 * sin(time) * (cos(PI*x(IX)))**3 * (cos(PI*x(IY)))**2 &
-!                              - 1.0_RP * rho2 * sin(time) * (cos(PI*x(IX)))**3 &
-!                              - 2.0_RP * rho2 * sin(time) * cos(PI*x(IX)) * (cos(PI*x(IY)))**2 &
-!                              + 4.0_RP * rho2 * (cos(PI*x(IX)))**2 * cos(PI*x(IY)) &
-!                              - 1.0_RP * rho2 * (cos(PI*x(IY))) ) &
-!                            * (sin(time))**2 * sin(PI*x(IY)) & !0.5*(diff(ρ*v*u,x)+diff(ρ*v*v,y))
-!                           -PI*( &
-!                            rho1*(sin(time)*cos(PI*x(IX))*cos(PI*x(IY)) - 1.0_RP) &
-!                           -rho2*(sin(time)*cos(PI*x(IX))*cos(PI*x(IY)) + 1.0_RP) &
-!                            ) &
-!                           *(sin(time))**2*sin(PI*x(IY))*cos(2.0_RP*PI*x(IX))*cos(PI*x(IY)) &    !0.5*ρ*(u*diff(v,x)+v*diff(v,y))
-!                           -0.5_RP*PI*multiphase_ % sigma / multiphase_ % eps  & 
-!                           *(sin(time)*cos(PI*x(IX))*cos(PI*x(IY)) + 1.0_RP) &
-!                           *(1.5_RP*(PI*multiphase_ % eps)**2  + 18.0_RP*(sin(time)*cos(PI*x(IX))*cos(PI*x(IY)))**2 - 6.0_RP) &
-!                           *sin(time)*sin(PI*x(IY))*cos(PI*x(IX)) &  !+ c *diff(μ,y)
-!                           + 2.0_RP*PI*sin(PI*x(IX))*cos(time)*cos(PI*x(IY)) & !+diff(p,y)
-!                           + 8.0_RP *(PI**2)*eta*sin(time)*sin(PI*x(IY))*cos(PI*x(IX)) !- diff(η*(diff(v,x) + diff(u,y)),x) - diff(η*(diff(v,y) + diff(v,y)),y)
-
-            
-!             S(IMSQRHOW) = 0.0_RP
-            
-!             S(IMP) = sin(PI*x(IX))*sin(PI*x(IY))*sin(time)*(-2.0_RP) & !diff(p,t) 
-!                      -0.5_RP * PI * ( &
-!                          cs1 * (sin(time) * cos(PI*x(IX)) * cos(PI*x(IY)) - 1.0_RP) &
-!                        - cs2 * (sin(time) * cos(PI*x(IX)) * cos(PI*x(IY)) + 1.0_RP) )**2 &
-!                        * ( &
-!                          rho1 * (sin(time) * cos(PI*x(IX)) * cos(PI*x(IY)) - 1.0_RP) &
-!                        - rho2 * (sin(time) * cos(PI*x(IX)) * cos(PI*x(IY)) + 1.0_RP) ) &
-!                        * sin(time) * cos(PI*x(IX)) * cos(PI*x(IY)) !+ρ*cs^2*(diff(u,x)+diff(v,y))
-#endif                  
+!
+            integer  :: i, j, k, eID
+!
+!           Usage example
+!           -------------
+!           S(:) = x(1) + x(2) + x(3) + time
    
          end subroutine UserDefinedSourceTermNS
 #endif
@@ -531,11 +496,11 @@ end module ProblemFileFunctions
 !           --------------------------------------------------------
 !
             use SMConstants
+            use FTAssertions
             USE HexMeshClass
             use PhysicsStorage
             use FluidData
             use MonitorsClass
-            use FTAssertions
             IMPLICIT NONE
             CLASS(HexMesh)                        :: mesh
             REAL(KIND=RP)                         :: time
@@ -552,54 +517,59 @@ end module ProblemFileFunctions
             type(Monitor_t),        intent(in)    :: monitors
             real(kind=RP),             intent(in) :: elapsedTime
             real(kind=RP),             intent(in) :: CPUTime
-            real(kind=RP)  :: x, y, z, c, locErr(5), phi, u, v, w, p, rho, rho0
-            real(kind=RP), parameter  :: residuals_saved(5) = [7.3644444835909262E-02_RP, &
-                                          1.6085710893905991E-00_RP, &
-                                          1.6085710893905780E-00_RP, &
-                                          1.6080541546271472E-17_RP, & 
-                                          3.2244103331817502E+02_RP]
-            integer        :: i, j,k, eID 
-            CHARACTER(LEN=49)                  :: testName           = "Multiphase convergence non constant sound speed"
-            real(kind=RP)  :: error(5)
+!
+!           ---------------
+!           Local variables
+!           ---------------
+!
+            CHARACTER(LEN=29)                  :: testName           = "NACA0012_INCNS"
+            REAL(KIND=RP)                      :: maxError
+            REAL(KIND=RP), ALLOCATABLE         :: QExpected(:,:,:,:)
+            INTEGER                            :: eID
+            INTEGER                            :: i, j, k, N
             TYPE(FTAssertionsManager), POINTER :: sharedManager
             LOGICAL                            :: success
 
-!
-!           *********************************
-!           Check the L-inf norm of the error
-!           *********************************
-!
-#ifdef MULTIPHASE
-            rho0 = dimensionless_ % rho(2)
-#endif
+#if defined(INCNS)
+            INTEGER                            :: iterations(3:7) = [100, 0, 0, 0, 0]
+  
+            real(kind=RP), parameter :: residuals(5) = [ 5.5248695555734109E+01_RP, &
+                                                         4.7076986243096044E+03_RP, &
+                                                         2.8697954715784713E+03_RP, &
+                                                         2.4410624255E-06_RP, &
+                                                         5.5858280100370481E+04_RP]
+
+            N = mesh % elements(1) % Nxyz(1) ! This works here because all the elements have the same order in all directions
 
             CALL initializeSharedAssertionsManager
             sharedManager => sharedAssertionsManager()
-            
-            CALL FTAssertEqual(expectedValue = residuals_saved(1), &
-                               actualValue   = monitors % residuals % values(1,1), &
-                               tol           = 1.d-11, &
-                               msg           = "Conceentration Residual")
 
-            CALL FTAssertEqual(expectedValue = residuals_saved(2), &
-                               actualValue   = monitors % residuals % values(2,1), &
+            CALL FTAssertEqual(expectedValue = residuals(1)+1.0_RP, &
+                               actualValue   = monitors % residuals % values(1,1)+1.0_RP, &
                                tol           = 1.d-11, &
-                               msg           = "X-Momentum Residual")
+                               msg           = "Density residual")
 
-            CALL FTAssertEqual(expectedValue = residuals_saved(3), &
-                               actualValue   = monitors % residuals % values(3,1), &
+            CALL FTAssertEqual(expectedValue = residuals(2)+1.0_RP, &
+                               actualValue   = monitors % residuals % values(2,1)+1.0_RP, &
                                tol           = 1.d-11, &
-                               msg           = "Y-Momentum Residual")
+                               msg           = "X-Momentum residual")
 
-            CALL FTAssertEqual(expectedValue = residuals_saved(4), &
-                               actualValue   = monitors % residuals % values(4,1), &
+            CALL FTAssertEqual(expectedValue = residuals(3)+1.0_RP, &
+                               actualValue   = monitors % residuals % values(3,1)+1.0_RP, &
                                tol           = 1.d-11, &
-                               msg           = "Z-Momentum Residual")
+                               msg           = "Y-Momentum residual")
 
-            CALL FTAssertEqual(expectedValue = residuals_saved(5), &
-                               actualValue   = monitors % residuals % values(5,1), &
+            CALL FTAssertEqual(expectedValue = residuals(4)+1.0_RP, &
+                               actualValue   = monitors % residuals % values(4,1)+1.0_RP, &
                                tol           = 1.d-11, &
-                               msg           = "Pressure Residual")
+                               msg           = "Z-Momentum residual")
+
+            CALL FTAssertEqual(expectedValue = residuals(5)+1.0_RP, &
+                               actualValue   = monitors % residuals % values(5,1)+1.0_RP, &
+                               tol           = 1.d-11, &
+                               msg           = "Divergence residual")
+
+
 
             CALL sharedManager % summarizeAssertions(title = testName,iUnit = 6)
    
@@ -616,10 +586,7 @@ end module ProblemFileFunctions
             
             CALL finalizeSharedAssertionsManager
             CALL detachSharedAssertionsManager
-
-
-
-
+#endif
          END SUBROUTINE UserDefinedFinalize
 !
 !//////////////////////////////////////////////////////////////////////// 

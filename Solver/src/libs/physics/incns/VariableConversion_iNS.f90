@@ -21,6 +21,7 @@ module VariableConversion_iNS
 !---------------------------------------------------------------------
 !
    PURE function Pressure(Q) RESULT(P)
+         !$acc routine seq
    !
    !     ---------
    !     Arguments
@@ -47,6 +48,7 @@ module VariableConversion_iNS
 !---------------------------------------------------------------------
 !
       pure subroutine iNSGradientVariables(nEqn, nGrad, Q, U, rho_ )
+         !$acc routine seq
          implicit none
          integer, intent(in)        :: nEqn, nGrad
          real(kind=RP), intent(in)  :: Q(nEqn)
@@ -71,6 +73,7 @@ module VariableConversion_iNS
       end subroutine iNSGradientVariables
 
       pure subroutine GetiNSOneFluidViscosity(phi, mu)
+         !$acc routine seq
 !
 !        ***********************************
 !           Here phi is the density, such
@@ -92,6 +95,7 @@ module VariableConversion_iNS
       end subroutine GetiNSOneFluidViscosity
 
       pure subroutine GetiNSTwoFluidsViscosity(phi, mu)
+         !$acc routine seq
 !
 !        ***********************************
 !           Here phi is the density, such
@@ -126,6 +130,7 @@ module VariableConversion_iNS
 !///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 !
       pure subroutine getVelocityGradients(Q,Q_x,Q_y,Q_z,U_x,U_y,U_z)
+         !$acc routine seq
          implicit none
          !-arguments---------------------------------------------------
          real(kind=RP), intent(in)  :: Q(NCONS)

@@ -462,7 +462,7 @@ module NoSlipWallBCClass
 !
 !
 #if defined(INCNS)
-      subroutine NoSlipWallBC_FlowState(self, x, t, nHat, Q)
+      subroutine NoSlipWallBC_FlowState(self, mesh, zone)
 !
 !        *************************************************************
 !           Compute the state variables for a general wall
@@ -472,52 +472,90 @@ module NoSlipWallBCClass
 !           · Pressure is computed from the interior state
 !        *************************************************************
 !
-
+         use HexMeshClass
          implicit none
-         class(NoSlipWallBC_t),  intent(in)    :: self
-         real(kind=RP),       intent(in)    :: x(NDIM)
-         real(kind=RP),       intent(in)    :: t
-         real(kind=RP),       intent(in)    :: nHat(NDIM)
-         real(kind=RP),       intent(inout) :: Q(NCONS)
+         class(NoSlipWallBC_t),   intent(in)    :: self
+         type(HexMesh),           intent(inout)    :: mesh
+         type(Zone_t), intent(in)               :: zone
 
-         Q(INSRHOU:INSRHOW) = -Q(INSRHOU:INSRHOW)
+   !
+   !        ---------------
+   !        Local variables
+   !        ---------------
+   !
+         real(kind=RP) :: Q(NCONS)
+         integer       :: i,j
+         integer       :: fID
+         integer       :: zonefID
 
+            !$acc parallel loop gang present(mesh, self,zone) async(1)
+            do zonefID = 1, zone % no_of_faces
+               fID = zone % faces(zonefID)
+               !$acc loop vector private(Q)            
+               do j = 0, mesh % faces(fID) % Nf(2)  ; do i = 0, mesh % faces(fID) % Nf(1)
+                  
+                  Q = mesh % faces(fID) % storage(1) % Q(:,i,j)
+
+                  Q(INSRHOU:INSRHOW) = -Q(INSRHOU:INSRHOW)
+
+                  mesh % faces(fID) % storage(2) % Q(:,i,j) = Q 
+
+               enddo ; enddo
+            enddo
+            !$acc end parallel loop
       end subroutine NoSlipWallBC_FlowState
 
-      subroutine NoSlipWallBC_FlowGradVars(self, x, t, nHat, Q, U, GetGradients)
+      subroutine NoSlipWallBC_FlowGradVars(self, mesh, zone)
          implicit none
          class(NoSlipWallBC_t),  intent(in)    :: self
-         real(kind=RP),          intent(in)    :: x(NDIM)
-         real(kind=RP),          intent(in)    :: t
-         real(kind=RP),          intent(in)    :: nHat(NDIM)
-         real(kind=RP),          intent(in)    :: Q(NCONS)
-         real(kind=RP),          intent(inout) :: U(NGRAD)
-         procedure(GetGradientValues_f)        :: GetGradients
+         type(HexMesh),          intent(inout) :: mesh
+         type(Zone_t), intent(in)              :: zone
 !
 !        ---------------
 !        Local variables
 !        ---------------
-!
-         U(INSRHOU:INSRHOW) = self % vWall
-   
+!        
+         real(kind=RP)  :: Q(NCONS), Q_aux(NCONS)
+         integer        :: i,j,zonefID,fID
+         real(kind=RP)  :: u_int(NGRAD), u_star(NGRAD)
+
+         !$acc parallel loop gang present(mesh, self, zone) private(fID) async(1)
+         do zonefID = 1, zone % no_of_faces
+            fID = zone % faces(zonefID)
+            !$acc loop vector collapse(2) private(Q, Q_aux, u_star, u_int)            
+            do j = 0, mesh % faces(fID) % Nf(2)  ; do i = 0, mesh % faces(fID) % Nf(1)
+               
+               Q = mesh % faces(fID) % storage(1) % Q(:,i,j)
+
+               
+               call iNSGradientVariables(NCONS, NGRAD, Q, u_int)
+
+               u_star(INSRHO) = u_int(INSRHO)
+               u_star(INSRHOU:INSRHOW) = self % vWall
+               u_star(INSP) = u_int(INSP) 
+               
+               mesh % faces(fID) % storage(1) % unStar(:,1,i,j) = (u_star-u_int) * mesh % faces(fID) % geom % normal(1,i,j) * mesh % faces(fID) % geom % jacobian(i,j)
+               mesh % faces(fID) % storage(1) % unStar(:,2,i,j) = (u_star-u_int) * mesh % faces(fID) % geom % normal(2,i,j) * mesh % faces(fID) % geom % jacobian(i,j)    
+               mesh % faces(fID) % storage(1) % unStar(:,3,i,j) = (u_star-u_int) * mesh % faces(fID) % geom % normal(3,i,j) * mesh % faces(fID) % geom % jacobian(i,j)
+               
+            enddo ; enddo
+
+         enddo
+         !$acc end parallel loop
+         !Write(*,*), "--------------"  
+
       end subroutine NoSlipWallBC_FlowGradVars
 
-      subroutine NoSlipWallBC_FlowNeumann(self, x, t, nHat, Q, U_x, U_y, U_z, flux)
+      subroutine NoSlipWallBC_FlowNeumann(self, mesh, zone)
 !
 !        **********************************************
 !           Do nothing: no slip walls are Dirichlet BCs
 !        **********************************************
 !
-         implicit none
-         class(NoSlipWallBC_t),  intent(in) :: self
-         real(kind=RP),       intent(in)    :: x(NDIM)
-         real(kind=RP),       intent(in)    :: t
-         real(kind=RP),       intent(in)    :: nHat(NDIM)
-         real(kind=RP),       intent(in)    :: Q(NCONS)
-         real(kind=RP),       intent(in)    :: U_x(NCONS)
-         real(kind=RP),       intent(in)    :: U_y(NCONS)
-         real(kind=RP),       intent(in)    :: U_z(NCONS)
-         real(kind=RP),       intent(inout) :: flux(NCONS)
+         implicit none 
+         class(NoSlipWallBC_t), intent(in)     :: self
+         type(HexMesh),         intent(inout)  :: mesh
+         type(Zone_t),          intent(in)     :: zone
       end subroutine NoSlipWallBC_FlowNeumann
 #endif
 !

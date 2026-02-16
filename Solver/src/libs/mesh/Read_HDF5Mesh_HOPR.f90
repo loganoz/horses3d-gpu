@@ -18,7 +18,7 @@ module Read_HDF5Mesh_HOPR
    use FacePatchClass
    use MappedGeometryClass
    use MPI_Process_Info
-   use PartitionedMeshClass            , only: mpi_partition
+   use PartitionedMeshClass            , only: mpi_partition, MPI_Partitioning, SFC_PARTITIONING, METIS_PARTITIONING
    use NodeClass                       , only: Node, ConstructNode
    use MPI_Face_Class                  , only: ConstructMPIFaces
    use Utilities                       , only: toLower
@@ -34,9 +34,6 @@ module Read_HDF5Mesh_HOPR
 !  Module variables
 !  ----------------
 !
-#ifdef HAS_HDF5
-   integer(HID_T) :: file_id       ! File identifier
-#endif
    integer        :: iError        ! Error flag
    integer        :: idx = 0       ! Index of node to add to the list
 !   
@@ -60,12 +57,9 @@ contains
       !----------------------------------
       CHARACTER(LEN=*), intent(in) :: fileName
       integer                      :: nelem
-      !----------------------------------
 #ifdef HAS_HDF5
-
-!     Initialize FORTRAN predefined datatypes
-!     ---------------------------------------
-      call h5open_f(iError)
+      integer(HID_T) :: file_id       ! File identifier
+      !----------------------------------
       
 !     Open the specified mesh file
 !     ----------------------------
@@ -74,6 +68,10 @@ contains
 !     Read the number of elements
 !     ---------------------------
       CALL GetHDF5Attribute(File_ID,'nElems',1,IntegerScalar=nelem)
+      
+!     Close HDF5 file
+!     ---------------
+      call H5Fclose_f(file_id, iError)
 #else
       error stop ':: HDF5 is not linked correctly'
 #endif
@@ -102,6 +100,7 @@ contains
       logical         , intent(out)   :: success
       !-local-variables---------------------------------------------------------
 #ifdef HAS_HDF5
+      integer(HID_T) :: file_id       ! File identifier
       ! Variables as called by Kopriva
       integer  :: numberOfElements  ! ...
       integer  :: bFaceOrder        ! Polynomial order for aproximating curved faces
@@ -166,9 +165,6 @@ contains
 !     Prepare to read file
 !     ------------------------------------
       
-      ! Initialize FORTRAN predefined datatypes
-      call h5open_f(iError)
-      
       ! Open the specified mesh file.
       call h5fopen_f (trim(filename), H5F_ACC_RDONLY_F, file_id, iError) ! instead of H5F_ACC_RDONLY_F one can also use  H5F_ACC_RDWR_F
         
@@ -180,19 +176,20 @@ contains
       CALL GetHDF5Attribute(File_ID,'nSides',1,IntegerScalar=nSides)
       CALL GetHDF5Attribute(File_ID,'nNodes',1,IntegerScalar=nNodes)
       CALL GetHDF5Attribute(File_ID,'nUniqueNodes',1,IntegerScalar=nUniqueNodes)
-      
+
       allocate(ElemInfo(6,1:numberOfElements))
-      call ReadArrayFromHDF5(File_ID,'ElemInfo',2,(/6,numberOfElements/),0,IntegerArray=ElemInfo)
+      call ReadArrayFromHDF5(.true., File_ID,'ElemInfo',2,(/6,numberOfElements/),0,2,IntegerArray=ElemInfo)
       
       offset=ElemInfo(ELEM_FirstNodeInd,1) ! hdf5 array starts at 0-> -1
       first=offset+1
       last =offset+nNodes
       
       ALLOCATE( GlobalNodeIDs(first:last) )
-      CALL ReadArrayFromHDF5(File_ID,'GlobalNodeIDs',1,(/nNodes/),offset,IntegerArray=GlobalNodeIDs)
+
+      CALL ReadArrayFromHDF5(.true., File_ID,'GlobalNodeIDs',1,(/nNodes/),offset,1,IntegerArray=GlobalNodeIDs)
       
       allocate( NodeCoords(1:3,first:last),TempArray(1:3,first:last) )
-      CALL ReadArrayFromHDF5(File_ID,'NodeCoords',2,(/3,nNodes/),offset,RealArray=TempArray)
+      CALL ReadArrayFromHDF5(.true., File_ID,'NodeCoords',2,(/3,nNodes/),offset,2,RealArray=TempArray)
       NodeCoords = TempArray
       deallocate (TempArray)
       
@@ -200,15 +197,29 @@ contains
       first=offset+1
       last =offset+nSides
       ALLOCATE(SideInfo(5,first:last))
-      CALL ReadArrayFromHDF5(File_ID,'SideInfo',2,(/5,nSides/),offset,IntegerArray=SideInfo) ! There's a mistake in the documentation of HOPR regarding the SideInfo size!!
+      CALL ReadArrayFromHDF5(.true., File_ID,'SideInfo',2,(/5,nSides/),offset,2,IntegerArray=SideInfo) ! There's a mistake in the documentation of HOPR regarding the SideInfo size!!
       
       ! Read boundary names from HDF5 file
       CALL GetHDF5DataSize(File_ID,'BCNames',nDims,HSize)
       nBCs=INT(HSize(1),4)
       DEALLOCATE(HSize)
       ALLOCATE(BCNames(nBCs)) !, BCMapping(nBCs))
-      CALL ReadArrayFromHDF5(File_ID,'BCNames',1,(/nBCs/),Offset,StrArray=BCNames)  ! Type is a dummy type only
+      CALL ReadArrayFromHDF5(.true., File_ID,'BCNames',1,(/nBCs/),0,1,StrArray=BCNames)  ! Type is a dummy type only
       
+!
+!     ---------------------------------------------------------------------------
+!     Construct the zoneNameDictionary: 
+!        It must be in the order of appearance of the boundaries in the mesh file
+!     ---------------------------------------------------------------------------
+!
+      DO k = 1, nBCs
+         call toLower(BCNames(k))
+         zoneNames => zoneNameDictionary % allKeys()
+         if ( all(trim(BCNames(k)) .ne. zoneNames) ) then
+            call zoneNameDictionary % addValueForKey(trim(BCNames(k)), trim(BCNames(k)))
+         end if
+         deallocate (zoneNames)
+      END DO  
 !      
 !     Set up for face patches
 !     Face patches are defined at equidistant points in HOPR (not Chebyshev-Lobatto as in .mesh format)
@@ -338,11 +349,6 @@ contains
          DO k = 1, 6
             IF(TRIM(names(k)) /= emptyBCName) then
                numberOfBoundaryFaces = numberOfBoundaryFaces + 1
-               zoneNames => zoneNameDictionary % allKeys()
-               if ( all(trim(names(k)) .ne. zoneNames) ) then
-                  call zoneNameDictionary % addValueForKey(trim(names(k)), trim(names(k)))
-               end if
-               deallocate (zoneNames)
             end if
          END DO  
          
@@ -447,6 +453,9 @@ contains
       
       call self % ExportBoundaryMesh (trim(fileName))
 
+!     Close HDF5 file
+!     ---------------
+      call H5Fclose_f(file_id, iError)
 #else
       error stop ':: HDF5 is not linked correctly'
 #endif
@@ -458,6 +467,9 @@ contains
 !  Subroutine to construct individual mesh partitions from an HDF5 mesh file
 !  -----------------------------------------------------------------------------------------------------------------------
    subroutine ConstructMeshPartition_FromHDF5File_( self, fileName, nodes, Nx, Ny, Nz, MeshInnerCurves, dir2D, periodRelative, success )
+#ifdef _HAS_MPI_
+      use MPI
+#endif      
       implicit none
       !-arguments--------------------------------------------------------------
       class(HexMesh)  , intent(inout) :: self
@@ -470,6 +482,7 @@ contains
       logical         , intent(out)   :: success
       !-local-variables---------------------------------------------------------
 #ifdef HAS_HDF5
+      integer(HID_T) :: file_id       ! File identifier
       ! Variables as called by Kopriva
       integer  :: numberOfAllElements
       integer  :: bFaceOrder        ! Polynomial order for aproximating curved faces
@@ -493,8 +506,9 @@ contains
       real(kind=RP)   , allocatable    :: NodeCoords(:,:)
       integer         , allocatable    :: ElemInfo(:,:)
       integer         , allocatable    :: SideInfo(:,:)
-      integer                          :: offset
-      integer                          :: first, last
+      integer                          :: first_elem, last_elem, offset_elem, no_of_elements_toread
+      integer                          :: first_node, last_node, offset_node, no_of_nodes_toread
+      integer                          :: first_side, last_side, offset_side, no_of_sides_toread
       INTEGER(HSIZE_T),POINTER         :: HSize(:)
       integer                          :: nBCs
       integer                          :: nDims
@@ -509,6 +523,7 @@ contains
       integer                    :: HSideMap(6)          ! Map from the side index of an element in HORSES3D to the side index used in HOPR
       integer, allocatable       :: HNodeSideMap(:,:,:)  ! Map from the face-node-index of an element to the global node index of HOPR (for surface curvature)
       logical                    :: CurveCondition
+      INTEGER(HID_T) :: fapl
       !---------------------------------------------------------------
       
 !
@@ -521,11 +536,14 @@ contains
 !     Prepare to read file
 !     ------------------------------------
       
-      ! Initialize FORTRAN predefined datatypes
-      call h5open_f(iError)
-      
+#ifdef _HAS_MPI_
+      CALL H5Pcreate_f(H5P_FILE_ACCESS_F, fapl, iError)
+      CALL H5Pset_fapl_mpio_f(fapl, MPI_COMM_WORLD, MPI_INFO_NULL, iError)
+      call h5fopen_f (trim(filename), H5F_ACC_RDONLY_F, file_id, iError, access_prp = fapl) ! instead of H5F_ACC_RDONLY_F one can also use  H5F_ACC_RDWR_F
+#else
       ! Open the specified mesh file.
       call h5fopen_f (trim(filename), H5F_ACC_RDONLY_F, file_id, iError) ! instead of H5F_ACC_RDONLY_F one can also use  H5F_ACC_RDWR_F
+#endif /*_HAS_MPI_*/      
         
 !
 !     Read important mesh attributes
@@ -535,33 +553,68 @@ contains
       CALL GetHDF5Attribute(File_ID,'nSides',1,IntegerScalar=nSides)
       CALL GetHDF5Attribute(File_ID,'nNodes',1,IntegerScalar=nNodes)
       
-      allocate(ElemInfo(6,1:numberOfAllElements))
-      call ReadArrayFromHDF5(File_ID,'ElemInfo',2,(/6,numberOfAllElements/),0,IntegerArray=ElemInfo)
+!
+!     Prepare memory allocation and read in 
+!     ------------------------------------- 
+      if ( MPI_Partitioning == SFC_PARTITIONING) then
+         ! If the partitioning is done with SFC, we can save some storage because the elements have contiguous numbering
+         ! We only allocate the necessary storage
+
+         ! Elements
+         first_elem = mpi_partition % elementIDs(1)
+         last_elem = first_elem + mpi_partition % no_of_elements - 1
+         no_of_elements_toread = mpi_partition % no_of_elements
+
+         ! Nodes (as in HOPR)
+         no_of_nodes_toread = no_of_elements_toread * (bFaceOrder + 1)**3
+      else
+         ! If it's not an SFC, we read all elements: This can probably be improved...
+
+         ! Elements
+         first_elem = 1
+         last_elem = numberOfAllElements
+         no_of_elements_toread = numberOfAllElements
+
+         ! Nodes (as in HOPR)
+         no_of_nodes_toread = nNodes
+      end if
+      offset_elem = first_elem - 1
+
+      allocate(ElemInfo(6, first_elem:last_elem))
+
+      call ReadArrayFromHDF5(.false., File_ID,'ElemInfo',2,(/6,no_of_elements_toread/),offset_elem,2,IntegerArray=ElemInfo)
+
+      offset_node = ElemInfo(ELEM_FirstNodeInd,first_elem) ! hdf5 array starts at 0-> -1 !
+      first_node = offset_node + 1
+      last_node = offset_node + no_of_nodes_toread
+
+      ALLOCATE( GlobalNodeIDs(first_node:last_node) )
+      CALL ReadArrayFromHDF5(.false., File_ID,'GlobalNodeIDs',1,(/no_of_nodes_toread/),offset_node,1,IntegerArray=GlobalNodeIDs)
       
-      offset=ElemInfo(ELEM_FirstNodeInd,1) ! hdf5 array starts at 0-> -1
-      first=offset+1
-      last =offset+nNodes
-      
-      ALLOCATE( GlobalNodeIDs(first:last) )
-      CALL ReadArrayFromHDF5(File_ID,'GlobalNodeIDs',1,(/nNodes/),offset,IntegerArray=GlobalNodeIDs)
-      
-      allocate( NodeCoords(1:3,first:last),TempArray(1:3,first:last) )
-      CALL ReadArrayFromHDF5(File_ID,'NodeCoords',2,(/3,nNodes/),offset,RealArray=TempArray)
+      allocate( NodeCoords(1:3,first_node:last_node),TempArray(1:3,first_node:last_node) )
+      CALL ReadArrayFromHDF5(.false., File_ID,'NodeCoords',2,(/3,no_of_nodes_toread/),offset_node,2,RealArray=TempArray)
       NodeCoords = TempArray
       deallocate (TempArray)
       
-      offset=ElemInfo(ELEM_FirstSideInd,1) ! hdf5 array starts at 0-> -1  
-      first=offset+1
-      last =offset+nSides
-      ALLOCATE(SideInfo(5,first:last))
-      CALL ReadArrayFromHDF5(File_ID,'SideInfo',2,(/5,nSides/),offset,IntegerArray=SideInfo) ! There's a mistake in the documentation of HOPR regarding the SideInfo size!!
+      offset_side=ElemInfo(ELEM_FirstSideInd,first_elem) ! hdf5 array starts at 0-> -1  
+      if (MPI_Partitioning == SFC_PARTITIONING) then
+         ! Sides (as in HOPR)
+         no_of_sides_toread = ElemInfo(ELEM_LastSideInd,last_elem) - ElemInfo(ELEM_FirstSideInd,first_elem)
+      else
+         ! Sides (as in HOPR)
+         no_of_sides_toread = nSides
+      end if
+      first_side = offset_side + 1
+      last_side = offset_side + no_of_sides_toread
+      ALLOCATE(SideInfo(5,first_side:last_side))
+      CALL ReadArrayFromHDF5(.false., File_ID,'SideInfo',2,(/5,no_of_sides_toread/),offset_side,2,IntegerArray=SideInfo)
       
       ! Read boundary names from HDF5 file
       CALL GetHDF5DataSize(File_ID,'BCNames',nDims,HSize)
       nBCs=INT(HSize(1),4)
       DEALLOCATE(HSize)
       ALLOCATE(BCNames(nBCs)) !, BCMapping(nBCs))
-      CALL ReadArrayFromHDF5(File_ID,'BCNames',1,(/nBCs/),Offset,StrArray=BCNames)  ! Type is a dummy type only
+      CALL ReadArrayFromHDF5(.false., File_ID,'BCNames',1,(/nBCs/),0,1,StrArray=BCNames)  ! offset=0 makes every process read all BCs
       
 !      
 !     Set up for face patches
@@ -615,34 +668,20 @@ contains
       end do
       
 !
-!     ------------------------------------------------------------------------
+!     ---------------------------------------------------------------------------
 !     Construct the zoneNameDictionary: 
-!        It must be in the order of appearance of the boundaries in the global
-!        element numbering
-!     ------------------------------------------------------------------------
+!        It must be in the order of appearance of the boundaries in the mesh file
+!     ---------------------------------------------------------------------------
 !
-      do l = 1, NumberOfAllElements
-         
-         do k = 1, FACES_PER_ELEMENT
-            j = SideInfo(5,ElemInfo(3,l) + HSideMap(k))
-            if (j == 0) then
-               names(k) = emptyBCName
-            else
-               names(k) = trim(BCNames(j))
-            end if
-         end do
-         
-         do k = 1, 6
-            IF(TRIM(names(k)) /= emptyBCName) then
-               call toLower( names(k) )
-               zoneNames => zoneNameDictionary % allKeys()
-               if ( all(trim(names(k)) .ne. zoneNames) ) then
-                  call zoneNameDictionary % addValueForKey(trim(names(k)), trim(names(k)))
-               end if
-               deallocate (zoneNames)
-            end if
-         end do
-      end do
+      ! Fill zoneNameDictionary in the order of BCNames of the mesh file
+      DO k = 1, nBCs
+         call toLower(BCNames(k))
+         zoneNames => zoneNameDictionary % allKeys()
+         if ( all(trim(BCNames(k)) .ne. zoneNames) ) then
+            call zoneNameDictionary % addValueForKey(trim(BCNames(k)), trim(BCNames(k)))
+         end if
+         deallocate (zoneNames)
+      END DO  
       
 !      
 !     Now we construct the elements (only read the elements of the current partition)
@@ -858,6 +897,9 @@ contains
 !
       call self % PrepareForIO
 
+!     Close HDF5 file
+!     ---------------
+      call H5Fclose_f(file_id, iError)
 #else
       error stop ':: HDF5 is not linked correctly'
 #endif
@@ -902,6 +944,7 @@ contains
       INTEGER(HID_T)                 :: Attr_ID, Type_ID,Loc_ID  ! ?
       INTEGER(HSIZE_T), DIMENSION(1) :: Dimsf  ! ?
       INTEGER                        :: inttolog  ! ?
+      integer(HID_T) :: file_id       ! File identifier
       !===================================================================================================================================
 
       Dimsf(1)=nVal
@@ -958,7 +1001,7 @@ contains
    ! HOPR is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License 
    ! as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 !  -----------------------------------------------------------------------------------------------------------------------
-   SUBROUTINE ReadArrayFromHDF5(Loc_ID,ArrayName,Rank,nVal,Offset_in,RealArray,IntegerArray,StrArray)
+   SUBROUTINE ReadArrayFromHDF5(serial_read, Loc_ID,ArrayName,Rank,nVal,Offset_in,offset_dim,RealArray,IntegerArray,StrArray)
    !===================================================================================================================================
    ! Subroutine to read arrays of rank "Rank" with dimensions "Dimsf(1:Rank)".
    !===================================================================================================================================
@@ -967,8 +1010,10 @@ contains
       IMPLICIT NONE
       !-----------------------------------------------------------------------------------------------------------------------------------
       ! INPUT VARIABLES
+      logical, intent(in)                :: serial_read
       INTEGER, INTENT(IN)                :: Rank ! ?
       INTEGER, INTENT(IN)                :: Offset_in  ! ?
+      INTEGER, INTENT(IN)                :: Offset_dim  ! 
       INTEGER, INTENT(IN)                            :: nVal(Rank)  ! ?
       INTEGER(HID_T), INTENT(IN)         :: Loc_ID  ! ?
       CHARACTER(LEN=*),INTENT(IN)        :: ArrayName  ! ?
@@ -989,10 +1034,14 @@ contains
       ! Define and select the hyperslab to use for reading.
       CALL H5DGET_SPACE_F(DSet_ID, FileSpace, iError)
       Offset(:)=0
-      Offset(1)=Offset_in
+      Offset(offset_dim)=Offset_in
       CALL H5SSELECT_HYPERSLAB_F(FileSpace, H5S_SELECT_SET_F, Offset, Dimsf, iError)
       ! Create property list
       CALL H5PCREATE_F(H5P_DATASET_XFER_F, PList_ID, iError)
+#ifdef _HAS_MPI_
+      ! Set property list to collective dataset read
+      if (.not. serial_read) CALL H5PSET_DXPL_MPIO_F(PList_ID, H5FD_MPIO_COLLECTIVE_F, iError)
+#endif /*_HAS_MPI_*/
       ! Read the data
       IF(PRESENT(RealArray))THEN
         CALL H5DREAD_F(DSet_ID,H5T_NATIVE_DOUBLE,&
