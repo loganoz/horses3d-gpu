@@ -90,7 +90,7 @@
 
             <li class="list-inline-item" id="statements"><i class="fa fa-list-ol"></i>
               <a data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-html="true"
-                 title="10.8% of total for procedures.">100 statements</a>
+                 title="10.2% of total for procedures.">100 statements</a>
             </li>
 
             <li class="list-inline-item" id="source-file">
@@ -188,7 +188,7 @@
     <tbody>
         <tr>
             <td>
-              <span class="anchor" id="variable-mesh~18"></span>
+              <span class="anchor" id="variable-mesh~10"></span>
               type(HexMesh),
             </td>
 <td>intent(inout)</td>
@@ -203,7 +203,7 @@
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-zoneid~3"></span>
+              <span class="anchor" id="variable-zoneid~2"></span>
               integer,
             </td>
 <td>intent(in)</td>
@@ -218,7 +218,7 @@
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-integraltype~3"></span>
+              <span class="anchor" id="variable-integraltype~7"></span>
               integer,
             </td>
 <td>intent(in)</td>
@@ -233,7 +233,7 @@
         </tr>
         <tr>
             <td>
-              <span class="anchor" id="variable-iter~13"></span>
+              <span class="anchor" id="variable-iter~5"></span>
               integer,
             </td>
 <td>intent(in)</td>
@@ -251,7 +251,7 @@
 
       <h3>Return Value
         <small>
-          <span class="anchor" id="variable-val~3"></span>
+          <span class="anchor" id="variable-val~7"></span>
           real(kind=RP), (NDIM)
         </small>
       </h3>
@@ -315,7 +315,7 @@
 <span class="w">         </span><span class="k">case</span><span class="w"> </span><span class="p">(</span><span class="w"> </span><span class="n">SURFACE</span><span class="w"> </span><span class="p">)</span>
 
 <span class="c">!$acc parallel loop gang present(mesh) num_gangs(mesh % zones(zoneID) % no_of_faces) reduction(+:valx, valy, valz)</span>
-<span class="c">!$omp do private(fID,localVal, valx, valy, valz) reduction(+:valx, valy, valz) schedule(runtime)</span>
+<span class="c">!$omp parallel do private(fID,localVal,localx,localy,localz) reduction(+:valx, valy, valz) schedule(runtime)</span>
 <span class="w">         </span><span class="k">do </span><span class="n">zonefID</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">mesh</span><span class="w"> </span><span class="p">%</span><span class="w"> </span><span class="n">zones</span><span class="p">(</span><span class="n">zoneID</span><span class="p">)</span><span class="w"> </span><span class="p">%</span><span class="w"> </span><span class="n">no_of_faces</span>
 <span class="w">            </span><span class="c">!</span>
 <span class="w">            </span><span class="c">!           Face global ID</span>
@@ -347,14 +347,13 @@
 <span class="w">                        </span><span class="n">valz</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">valz</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">localz</span>
 <span class="w">            </span>
 <span class="w">                     </span><span class="k">end do</span>
-<span class="c">!$omp end do</span>
-<span class="c">!$omp end parallel</span>
+<span class="c">!$omp end parallel do</span>
 <span class="c">!$acc end parallel loop</span>
 <span class="w">                     </span>
 <span class="w">         </span><span class="k">case</span><span class="w"> </span><span class="p">(</span><span class="w"> </span><span class="n">TOTAL_FORCE</span><span class="w"> </span><span class="p">)</span>
 
 <span class="c">!$acc parallel loop gang present(mesh) num_gangs(mesh % zones(zoneID) % no_of_faces) reduction(+:valx, valy, valz)</span>
-<span class="c">!$omp do private(fID,localVal, valx, valy, valz) reduction(+:valx, valy, valz) schedule(runtime)</span>
+<span class="c">!$omp parallel do private(fID,localVal,localx,localy,localz) reduction(+:valx, valy, valz) schedule(runtime)</span>
 <span class="w">         </span><span class="k">do </span><span class="n">zonefID</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">mesh</span><span class="w"> </span><span class="p">%</span><span class="w"> </span><span class="n">zones</span><span class="p">(</span><span class="n">zoneID</span><span class="p">)</span><span class="w"> </span><span class="p">%</span><span class="w"> </span><span class="n">no_of_faces</span>
 <span class="w">            </span><span class="c">!</span>
 <span class="w">            </span><span class="c">!           Face global ID</span>
@@ -393,14 +392,13 @@
 <span class="w">                        </span><span class="n">valz</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">valz</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">localz</span>
 <span class="w">            </span>
 <span class="w">         </span><span class="k">end do</span>
-<span class="c">!$omp end do</span>
-<span class="c">!$omp end parallel</span>
+<span class="c">!$omp end parallel do</span>
 <span class="c">!$acc end parallel loop</span>
 <span class="w">         </span>
 <span class="w">         </span><span class="k">case</span><span class="w"> </span><span class="p">(</span><span class="w"> </span><span class="n">PRESSURE_FORCE</span><span class="w"> </span><span class="p">)</span>
 
 <span class="c">!$acc parallel loop gang present(mesh) num_gangs(mesh % zones(zoneID) % no_of_faces) reduction(+:valx, valy, valz) </span>
-<span class="c">!$omp do private(fID,localVal, valx, valy, valz) reduction(+:valx, valy, valz) schedule(runtime)</span>
+<span class="c">!$omp parallel do private(fID,localVal,localx,localy,localz) reduction(+:valx, valy, valz) schedule(runtime)</span>
 <span class="w">         </span><span class="k">do </span><span class="n">zonefID</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">mesh</span><span class="w"> </span><span class="p">%</span><span class="w"> </span><span class="n">zones</span><span class="p">(</span><span class="n">zoneID</span><span class="p">)</span><span class="w"> </span><span class="p">%</span><span class="w"> </span><span class="n">no_of_faces</span>
 <span class="w">            </span><span class="c">!</span>
 <span class="w">            </span><span class="c">!           Face global ID</span>
@@ -437,14 +435,13 @@
 <span class="w">                        </span><span class="n">valz</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">valz</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">localz</span>
 <span class="w">            </span>
 <span class="w">         </span><span class="k">end do</span>
-<span class="c">!$omp end do</span>
-<span class="c">!$omp end parallel</span>
+<span class="c">!$omp end parallel do</span>
 <span class="c">!$acc end parallel loop</span>
 
 <span class="w">         </span><span class="k">case</span><span class="w"> </span><span class="p">(</span><span class="w"> </span><span class="n">VISCOUS_FORCE</span><span class="w"> </span><span class="p">)</span>
 
 <span class="c">!$acc parallel loop gang present(mesh) num_gangs(mesh % zones(zoneID) % no_of_faces) reduction(+:valx, valy, valz)</span>
-<span class="c">!$omp do private(fID,localVal, valx, valy, valz) reduction(+:valx, valy, valz) schedule(runtime)</span>
+<span class="c">!$omp parallel do private(fID,localVal,localx,localy,localz) reduction(+:valx, valy, valz) schedule(runtime)</span>
 <span class="w">         </span><span class="k">do </span><span class="n">zonefID</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">mesh</span><span class="w"> </span><span class="p">%</span><span class="w"> </span><span class="n">zones</span><span class="p">(</span><span class="n">zoneID</span><span class="p">)</span><span class="w"> </span><span class="p">%</span><span class="w"> </span><span class="n">no_of_faces</span>
 <span class="w">            </span><span class="c">!</span>
 <span class="w">            </span><span class="c">!           Face global ID</span>
@@ -482,8 +479,7 @@
 <span class="w">                        </span><span class="n">valz</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">valz</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">localz</span>
 <span class="w">            </span>
 <span class="w">         </span><span class="k">end do</span>
-<span class="c">!$omp end do</span>
-<span class="c">!$omp end parallel</span>
+<span class="c">!$omp end parallel do</span>
 <span class="c">!$acc end parallel loop</span>
 <span class="w">           </span>
 <span class="w">         </span><span class="k">end select</span>
@@ -512,14 +508,14 @@
           <div class="col">
             <p>
               HORSES3D
- was developed by HORSES3D developers<br>              &copy; 2025 <a rel="license" href="http://creativecommons.org/licenses/by-nc/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc/4.0/80x15.png" /></a>
+ was developed by HORSES3D developers<br>              &copy; 2026 <a rel="license" href="http://creativecommons.org/licenses/by-nc/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc/4.0/80x15.png" /></a>
 </p>
           </div>
           <div class="col">
             <p class="text-end">
               Documentation generated by
               <a href="https://github.com/Fortran-FOSS-Programmers/ford">FORD</a>
- on 2025-11-04 14:09 +0000             </p>
+ on 2026-02-16 08:26 +0000             </p>
           </div>
         </div>
         <br>
