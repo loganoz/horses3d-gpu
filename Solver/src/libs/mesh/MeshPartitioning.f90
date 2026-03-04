@@ -448,39 +448,39 @@ module MeshPartitioning
             write(fileID,*) partitions % no_of_nodes, partitions % no_of_elements, partitions % no_of_mpifaces
             ! Write nodeIDs
             do nID = 1, no_of_nodes
-               write(fileID,*) nodeIDs(nID)
+               write(fileID,*) partitions(pID) % nodeIDs(nID)
             end do
             ! Write elementIDs
             do eID = 1, no_of_elements
-               write(fileID,*) elementIDs(eID)
+               write(fileID,*) partitions(pID) % elementIDs(eID)
             end do
             ! Write mpiface_elements
             do fID = 1, no_of_mpifaces
-               write(fileID,*) mpiface_elements(fID)
+               write(fileID,*) partitions(pID) % mpiface_elements(fID)
             end do
             ! Write element_mpifaceSide
             do fID = 1, no_of_mpifaces
-               write(fileID,*) element_mpifaceSide(fID)
+               write(fileID,*) partitions(pID) % element_mpifaceSide(fID)
             end do
 
             ! Write element_mpifaceSideOther
             do fID = 1, no_of_mpifaces
-               write(fileID,*) element_mpifaceSideOther(fID)
+               write(fileID,*) partitions(pID) % element_mpifaceSideOther(fID)
             end do
 
             ! Write mpiface_rotation
             do fID = 1, no_of_mpifaces
-               write(fileID,*) mpiface_rotation(fID)
+               write(fileID,*) partitions(pID) % mpiface_rotation(fID)
             end do
 
             ! Write mpiface_elementSide
             do fID = 1, no_of_mpifaces
-               write(fileID,*) mpiface_elementSide(fID)
+               write(fileID,*) partitions(pID) % mpiface_elementSide(fID)
             end do
 
             ! Write mpiface_sharedDomain
             do fID = 1, no_of_mpifaces
-               write(fileID,*) mpiface_sharedDomain(fID)
+               write(fileID,*) partitions(pID) % mpiface_sharedDomain(fID)
             end do
             
             write(fileID,*) "meshIsHOPR", meshIsHOPR
@@ -488,7 +488,7 @@ module MeshPartitioning
             if (meshIsHOPR) then
                ! Write HOPRnodeIDs
                do nID = 1, no_of_nodes
-                  write(fileID,*) HOPRnodeIDs(nID)
+                  write(fileID,*) partitions(pID) % HOPRnodeIDs(nID)
                end do
             end if
 
