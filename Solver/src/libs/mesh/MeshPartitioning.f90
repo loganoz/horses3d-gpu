@@ -44,6 +44,8 @@ module MeshPartitioning
 !        Export partitions file
 !        ----------------------
          call WritePartitionsFile(mesh, elementsDomain)
+         call WriteMeshPartitioningFile(mesh, no_of_domains, partitions)
+
       end subroutine PerformMeshPartitioning
 
       subroutine GetElementsDomain(mesh, no_of_allElements, no_of_domains, elementsDomain, partitions, useWeights, Nx, Ny, Nz)
@@ -416,5 +418,83 @@ module MeshPartitioning
          close(fID)
          
       end subroutine WritePartitionsFile
+
+      ! This routine writes one file per partition (in the MESH folder) containing all the
+      ! mesh partitioning information. Currently, this is done in ASCII format.
+      ! This could be improved by using the hdf5 library and using a single binary file.
+      subroutine WriteMeshPartitioningFile(mesh, no_of_domains, partitions)
+         implicit none
+         !-arguments--------------------------------------------------
+         type(HexMesh), intent(in)  :: mesh
+         integer,       intent(in)  :: no_of_domains
+         type(PartitionedMesh_t), intent(in) :: partitions(no_of_domains)
+         !-local-variables--------------------------------------------
+         character(LINE_LENGTH)     :: pmeshName
+         character(LINE_LENGTH)     :: pID_ch
+         integer                    :: fileID, eID, pID, nID, fID
+         logical                    :: meshIsHOPR
+         !------------------------------------------------------------
+         
+         meshIsHOPR = allocated(mesh % HOPRnodeIDs)
+
+         do pID = 1, no_of_domains
+            write(pID_ch, '(I0)') pID
+
+            pmeshName = "./MESH/" // trim(removePath(getFileName(mesh % meshFileName))) // "_" // trim(pID_ch) // ".partitioning"
+            open(newunit = fileID, file=trim(pmeshName),action='write')
+            
+            write(fileID,*) no_of_domains, pID
+
+            write(fileID,*) partitions % no_of_nodes, partitions % no_of_elements, partitions % no_of_mpifaces
+            ! Write nodeIDs
+            do nID = 1, no_of_nodes
+               write(fileID,*) nodeIDs(nID)
+            end do
+            ! Write elementIDs
+            do eID = 1, no_of_elements
+               write(fileID,*) elementIDs(eID)
+            end do
+            ! Write mpiface_elements
+            do fID = 1, no_of_mpifaces
+               write(fileID,*) mpiface_elements(fID)
+            end do
+            ! Write element_mpifaceSide
+            do fID = 1, no_of_mpifaces
+               write(fileID,*) element_mpifaceSide(fID)
+            end do
+
+            ! Write element_mpifaceSideOther
+            do fID = 1, no_of_mpifaces
+               write(fileID,*) element_mpifaceSideOther(fID)
+            end do
+
+            ! Write mpiface_rotation
+            do fID = 1, no_of_mpifaces
+               write(fileID,*) mpiface_rotation(fID)
+            end do
+
+            ! Write mpiface_elementSide
+            do fID = 1, no_of_mpifaces
+               write(fileID,*) mpiface_elementSide(fID)
+            end do
+
+            ! Write mpiface_sharedDomain
+            do fID = 1, no_of_mpifaces
+               write(fileID,*) mpiface_sharedDomain(fID)
+            end do
+            
+            write(fileID,*) "meshIsHOPR", meshIsHOPR
+
+            if (meshIsHOPR) then
+               ! Write HOPRnodeIDs
+               do nID = 1, no_of_nodes
+                  write(fileID,*) HOPRnodeIDs(nID)
+               end do
+            end if
+
+            close(fileID)
+         end do
+            
+      end subroutine WriteMeshPartitioningFile
          
 end module MeshPartitioning
