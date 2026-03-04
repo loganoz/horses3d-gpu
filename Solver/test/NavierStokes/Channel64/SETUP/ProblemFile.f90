@@ -397,10 +397,10 @@
 #if defined(NAVIERSTOKES)
             INTEGER                            :: iterations(3:7) = [100, 0, 0, 0, 0]
             real(kind=RP), parameter :: residuals(5) = [  0.0000006546361679_RP, &
-                                                          0.0624406739585925_RP, &
-                                                          0.0000012720347859_RP, &
+                                                          0.0624406737288137_RP, &
+                                                          0.0000012717165767_RP, &
                                                           0.0000000005267711_RP, &
-                                                          0.0009699391747517_RP] 
+                                                          0.0009699392006692_RP] 
 
 
             CALL initializeSharedAssertionsManager
