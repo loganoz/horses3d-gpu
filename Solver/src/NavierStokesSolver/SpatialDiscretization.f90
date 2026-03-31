@@ -1357,94 +1357,283 @@ module SpatialDiscretization
          !$omp end do
 
       end subroutine TimeDerivative_VolumetricContribution
+!       subroutine TimeDerivative_VolumetricContribution(mesh)
+!          use HexMeshClass
+!          use ElementClass
+!          use DGIntegrals
+!          implicit none
+!          type(HexMesh), intent (inout)           :: mesh
+! !
+! !        ---------------
+! !        Local variables
+! !        ---------------
+! !
+!          integer            :: i, j, k, l, eq, eID
+!          real(kind=RP)      :: mu, kappa, beta
+
+!          real(kind=RP) :: inviscidFlux(1:NCONS, 1:NDIM)
+!          real(kind=RP) :: viscousFlux(1:NCONS, 1:NDIM)
+! !
+! !        *************************************
+! !        Compute interior contravariant fluxes
+! !        *************************************
+! !
+! !        Compute inviscid - viscous contravariant flux
+! !        ---------------------------------------------
+!          !$omp do schedule(runtime)
+!          !$acc parallel loop gang vector_length(128) num_gangs(9700) present(mesh) async(1)
+!          do eID = 1 , size(mesh % elements)
+
+!             !$acc loop vector collapse(3) private(inviscidFlux, viscousFlux)
+!             do k = 0, mesh % elements(eID) % Nxyz(3) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
+                  
+!                call EulerFlux(mesh % elements(eID) % storage % Q(:,i,j,k), inviscidFlux, mesh % elements(eID) % storage % rho(i,j,k))
+
+!                mu    = mesh % elements(eID) % storage % mu_ns(1,i,j,k)
+!                beta  = 0.0_RP
+!                kappa = mesh % elements(eID) % storage % mu_ns(2,i,j,k)
+
+!                call ViscousFlux_STATE( NCONS, NGRAD, mesh % elements(eID) % storage % Q(:,i,j,k) , mesh % elements(eID) % storage % U_x(:,i,j,k) , & 
+!                                        mesh % elements(eID) % storage % U_y(:,i,j,k) , mesh % elements(eID) % storage % U_z(:,i,j,k), mu, beta, kappa, viscousFlux)
+               
+!                do eq =1, NCONS
+
+!                inviscidFlux(eq,:) = inviscidFlux(eq,:) - viscousFlux(eq,:)
+                  
+!                mesh % elements(eID) % storage % contravariantFlux(eq,i,j,k,IX)  = &
+!                                                            inviscidFlux(eq,IX) * mesh % elements(eID) % geom % jGradXi(IX,i,j,k)  &
+!                                                          + inviscidFlux(eq,IY) * mesh % elements(eID) % geom % jGradXi(IY,i,j,k)  &
+!                                                          + inviscidFlux(eq,IZ) * mesh % elements(eID) % geom % jGradXi(IZ,i,j,k)
+
+!                mesh % elements(eID) % storage % contravariantFlux(eq,i,j,k,IY)  = &
+!                                                            inviscidFlux(eq,IX) * mesh % elements(eID) % geom % jGradEta(IX,i,j,k)  &
+!                                                          + inviscidFlux(eq,IY) * mesh % elements(eID) % geom % jGradEta(IY,i,j,k)  &
+!                                                          + inviscidFlux(eq,IZ) * mesh % elements(eID) % geom % jGradEta(IZ,i,j,k)
+                  
+!                mesh % elements(eID) % storage % contravariantFlux(eq,i,j,k,IZ)  = &
+!                                                            inviscidFlux(eq,IX) * mesh % elements(eID) % geom % jGradZeta(IX,i,j,k)  &
+!                                                          + inviscidFlux(eq,IY) * mesh % elements(eID) % geom % jGradZeta(IY,i,j,k)  &
+!                                                          + inviscidFlux(eq,IZ) * mesh % elements(eID) % geom % jGradZeta(IZ,i,j,k)
+
+!                ! initialize to 0 to accumulate
+!                mesh % elements(eID) % storage % Qdot(eq,i,j,k)  = 0.0_RP
+!                end do
+!             end do               ; end do                ; end do
+
+!             call ScalarWeakIntegrals_StdVolumeGreen( mesh % elements(eID) % Nxyz, NCONS, mesh % elements(eID) % storage % contravariantFlux, &
+!                                                      mesh % elements(eID) % storage % QDot)
+      
+!          end do
+!          !$acc end parallel loop 
+!          !$omp end do
+
+!       end subroutine TimeDerivative_VolumetricContribution
 
 !
 !///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-!
+      subroutine TimeDerivative_VolumetricContribution_Split_StandardDG(mesh)
+         use HexMeshClass
+         use NodalStorageClass,    only: NodalStorage
+         use ElementClass
+         use DGIntegrals
+         use RiemannSolvers_NS, only: twopointflux_selector => StandardDG_TwoPointFlux
+         implicit none
+         type(HexMesh), intent(inout) :: mesh
+         integer       :: i, j, k, l, eq, eID
+         real(kind=RP) :: Flux(1:NCONS, 1:NDIM), Q_acc
+         include 'split_template.inc'
+      end subroutine
+
+      subroutine TimeDerivative_VolumetricContribution_Split_Morinishi(mesh)
+         use HexMeshClass
+         use NodalStorageClass,    only: NodalStorage
+         use ElementClass
+         use DGIntegrals
+         use RiemannSolvers_NS, only: twopointflux_selector => Morinishi_TwoPointFlux
+         implicit none
+         type(HexMesh), intent(inout) :: mesh
+         integer       :: i, j, k, l, eq, eID
+         real(kind=RP) :: Flux(1:NCONS, 1:NDIM), Q_acc
+         include 'split_template.inc'
+      end subroutine
+
+      subroutine TimeDerivative_VolumetricContribution_Split_Ducros(mesh)
+         use HexMeshClass
+         use NodalStorageClass,    only: NodalStorage
+         use ElementClass
+         use DGIntegrals
+         use RiemannSolvers_NS, only: twopointflux_selector => Ducros_TwoPointFlux
+         implicit none
+         type(HexMesh), intent(inout) :: mesh
+         integer       :: i, j, k, l, eq, eID
+         real(kind=RP) :: Flux(1:NCONS, 1:NDIM), Q_acc
+         include 'split_template.inc'
+      end subroutine
+
+      subroutine TimeDerivative_VolumetricContribution_Split_KennedyGruber(mesh)
+         use HexMeshClass
+         use NodalStorageClass,    only: NodalStorage
+         use ElementClass
+         use DGIntegrals
+         use RiemannSolvers_NS, only: twopointflux_selector => KennedyGruber_TwoPointFlux
+         implicit none
+         type(HexMesh), intent(inout) :: mesh
+         integer       :: i, j, k, l, eq, eID
+         real(kind=RP) :: Flux(1:NCONS, 1:NDIM), Q_acc
+         include 'split_template.inc'
+      end subroutine
+
+      subroutine TimeDerivative_VolumetricContribution_Split_Pirozzoli(mesh)
+         use HexMeshClass
+         use NodalStorageClass,    only: NodalStorage
+         use ElementClass
+         use DGIntegrals
+         use RiemannSolvers_NS, only: twopointflux_selector => Pirozzoli_TwoPointFlux
+         implicit none
+         type(HexMesh), intent(inout) :: mesh
+         integer       :: i, j, k, l, eq, eID
+         real(kind=RP) :: Flux(1:NCONS, 1:NDIM), Q_acc
+         include 'split_template.inc'
+      end subroutine
+
+      subroutine TimeDerivative_VolumetricContribution_Split_EntropyConserving(mesh)
+         use HexMeshClass
+         use NodalStorageClass,    only: NodalStorage
+         use ElementClass
+         use DGIntegrals
+         use RiemannSolvers_NS, only: twopointflux_selector => EntropyConserving_TwoPointFlux
+         implicit none
+         type(HexMesh), intent(inout) :: mesh
+         integer       :: i, j, k, l, eq, eID
+         real(kind=RP) :: Flux(1:NCONS, 1:NDIM), Q_acc
+         include 'split_template.inc'
+      end subroutine
+
+      subroutine TimeDerivative_VolumetricContribution_Split_Chandrasekar(mesh)
+         use HexMeshClass
+         use NodalStorageClass,    only: NodalStorage
+         use ElementClass
+         use DGIntegrals
+         use RiemannSolvers_NS, only: twopointflux_selector => Chandrasekar_TwoPointFlux
+         implicit none
+         type(HexMesh), intent(inout) :: mesh
+         integer       :: i, j, k, l, eq, eID
+         real(kind=RP) :: Flux(1:NCONS, 1:NDIM), Q_acc
+         include 'split_template.inc'
+      end subroutine
 
       subroutine TimeDerivative_VolumetricContribution_Split(mesh)
          use HexMeshClass
-         use NodalStorageClass, only: NodalStorage
-         use ElementClass
-         use DGIntegrals
-         use RiemannSolvers_NS
+         use RiemannSolvers_NSKeywordsModule
+         use RiemannSolvers_NS, only : whichAverage
          implicit none
-         type(HexMesh), intent (inout)           :: mesh
-!
-!        ---------------
-!        Local variables
-!        ---------------
-!
-         integer       :: i, j, k,l,eq, eID
-         real(kind=RP) :: Flux(1:NCONS, 1:NDIM)
+         type(HexMesh), intent(inout) :: mesh
 
-         !$acc parallel present(mesh) vector_length(128) num_gangs(9750) async(1)
-         !$acc loop gang
-         do eID = 1 , size(mesh % elements)
+         select case (whichAverage)
+            case (STANDARD_AVG)
+               call TimeDerivative_VolumetricContribution_Split_StandardDG(mesh)
+            case (MORINISHI_AVG)
+               call TimeDerivative_VolumetricContribution_Split_Morinishi(mesh)
+            case (DUCROS_AVG)
+               call TimeDerivative_VolumetricContribution_Split_Ducros(mesh)
+            case (KENNEDYGRUBER_AVG)
+               call TimeDerivative_VolumetricContribution_Split_KennedyGruber(mesh)
+            case (PIROZZOLI_AVG)
+               call TimeDerivative_VolumetricContribution_Split_Pirozzoli(mesh)
+            case (ENTROPYCONS_AVG)
+               call TimeDerivative_VolumetricContribution_Split_EntropyConserving(mesh)
+            case (CHANDRASEKAR_AVG)
+               call TimeDerivative_VolumetricContribution_Split_Chandrasekar(mesh)
+            case default
+               print*, "Averaging not recognized."
+               errorMessage(STD_OUT)
+               error stop
+         end select
+      end subroutine
+
+!       subroutine TimeDerivative_VolumetricContribution_Split(mesh)
+!          use HexMeshClass
+!          use NodalStorageClass, only: NodalStorage
+!          use ElementClass
+!          use DGIntegrals
+!          use RiemannSolvers_NS
+!          implicit none
+!          type(HexMesh), intent (inout)           :: mesh
+! !
+! !        ---------------
+! !        Local variables
+! !        ---------------
+! !
+!          integer       :: i, j, k,l,eq, eID
+!          real(kind=RP) :: Flux(1:NCONS, 1:NDIM)
+
+!          !$acc parallel present(mesh) vector_length(128) num_gangs(9750) async(1)
+!          !$acc loop gang
+!          do eID = 1 , size(mesh % elements)
          
-            !$acc loop vector collapse(3) private(Flux)
-            do k = 0, mesh % elements(eID) % Nxyz(3)  
-               do j = 0, mesh % elements(eID) % Nxyz(2)  
-                  do i = 0, mesh % elements(eID) % Nxyz(1)
+!             !$acc loop vector collapse(3) private(Flux)
+!             do k = 0, mesh % elements(eID) % Nxyz(3)  
+!                do j = 0, mesh % elements(eID) % Nxyz(2)  
+!                   do i = 0, mesh % elements(eID) % Nxyz(1)
 
-                  call ViscousFlux_STATE( NCONS, NGRAD, mesh % elements(eID) % storage % Q(:,i,j,k), mesh % elements(eID) % storage % U_x(:,i,j,k), & 
-                                          mesh % elements(eID) % storage % U_y(:,i,j,k) , mesh % elements(eID) % storage % U_z(:,i,j,k), &
-                                          mesh % elements(eID) % storage % mu_ns(1,i,j,k), 0.0_RP, &
-                                          mesh % elements(eID) % storage % mu_ns(2,i,j,k), Flux)
-                  !$acc loop seq
-                  do eq = 1, NCONS
+!                   call ViscousFlux_STATE( NCONS, NGRAD, mesh % elements(eID) % storage % Q(:,i,j,k), mesh % elements(eID) % storage % U_x(:,i,j,k), & 
+!                                           mesh % elements(eID) % storage % U_y(:,i,j,k) , mesh % elements(eID) % storage % U_z(:,i,j,k), &
+!                                           mesh % elements(eID) % storage % mu_ns(1,i,j,k), 0.0_RP, &
+!                                           mesh % elements(eID) % storage % mu_ns(2,i,j,k), Flux)
+!                   !$acc loop seq
+!                   do eq = 1, NCONS
               
-                     mesh % elements(eID) % storage % contravariantFlux(eq,i,j,k,IX)  = - Flux(eq,IX) * mesh % elements(eID) % geom % jGradXi(IX,i,j,k)  &
-                                                                                        - Flux(eq,IY) * mesh % elements(eID) % geom % jGradXi(IY,i,j,k)  &
-                                                                                        - Flux(eq,IZ) * mesh % elements(eID) % geom % jGradXi(IZ,i,j,k)
+!                      mesh % elements(eID) % storage % contravariantFlux(eq,i,j,k,IX)  = - Flux(eq,IX) * mesh % elements(eID) % geom % jGradXi(IX,i,j,k)  &
+!                                                                                         - Flux(eq,IY) * mesh % elements(eID) % geom % jGradXi(IY,i,j,k)  &
+!                                                                                         - Flux(eq,IZ) * mesh % elements(eID) % geom % jGradXi(IZ,i,j,k)
 
-                     mesh % elements(eID) % storage % contravariantFlux(eq,i,j,k,IY) = - Flux(eq,IX) * mesh % elements(eID) % geom % jGradEta(IX,i,j,k)  &
-                                                                                       - Flux(eq,IY) * mesh % elements(eID) % geom % jGradEta(IY,i,j,k)  &
-                                                                                       - Flux(eq,IZ) * mesh % elements(eID) % geom % jGradEta(IZ,i,j,k)
+!                      mesh % elements(eID) % storage % contravariantFlux(eq,i,j,k,IY) = - Flux(eq,IX) * mesh % elements(eID) % geom % jGradEta(IX,i,j,k)  &
+!                                                                                        - Flux(eq,IY) * mesh % elements(eID) % geom % jGradEta(IY,i,j,k)  &
+!                                                                                        - Flux(eq,IZ) * mesh % elements(eID) % geom % jGradEta(IZ,i,j,k)
                   
-                     mesh % elements(eID) % storage % contravariantFlux(eq,i,j,k,IZ) = - Flux(eq,IX) * mesh % elements(eID) % geom % jGradZeta(IX,i,j,k)  &
-                                                                                       - Flux(eq,IY) * mesh % elements(eID) % geom % jGradZeta(IY,i,j,k)  &
-                                                                                       - Flux(eq,IZ) * mesh % elements(eID) % geom % jGradZeta(IZ,i,j,k)
-                     ! initialize to 0 to accumulate
-                     mesh % elements(eID) % storage % Qdot(eq,i,j,k)  = 0.0_RP
-                  end do
-            end do               ; end do                ; end do
+!                      mesh % elements(eID) % storage % contravariantFlux(eq,i,j,k,IZ) = - Flux(eq,IX) * mesh % elements(eID) % geom % jGradZeta(IX,i,j,k)  &
+!                                                                                        - Flux(eq,IY) * mesh % elements(eID) % geom % jGradZeta(IY,i,j,k)  &
+!                                                                                        - Flux(eq,IZ) * mesh % elements(eID) % geom % jGradZeta(IZ,i,j,k)
+!                      ! initialize to 0 to accumulate
+!                      mesh % elements(eID) % storage % Qdot(eq,i,j,k)  = 0.0_RP
+!                   end do
+!             end do               ; end do                ; end do
 
-         call ScalarWeakIntegrals_StdVolumeGreen( mesh % elements(eID) % Nxyz, NCONS, mesh % elements(eID) % storage % contravariantFlux, &
-                                                  mesh % elements(eID) % storage % QDot)
-!
-!        *************************************
-!        Compute interior contravariant fluxes
-!        *************************************
-!
-!        Compute inviscid contravariant flux
-!        -----------------------------------
-            !$acc loop vector collapse(3) private(Flux)
-            do k = 0, mesh % elements(eID) % Nxyz(3)  
-               do j = 0, mesh % elements(eID) % Nxyz(2)  
-                  do i = 0, mesh % elements(eID) % Nxyz(1)
-                     !$acc loop seq
-                     do l = 0, mesh % elements(eID) % Nxyz(1)
-                        call TwoPointFlux_Selector(mesh % elements(eID) % storage % Q(:,i,j,k), mesh % elements(eID) % storage % Q(:,l,j,k), mesh % elements(eID) % geom % jGradXi(:,i,j,k),  mesh % elements(eID) % geom % jGradXi(:,l,j,k), Flux(:,IX))
-                        call TwoPointFlux_Selector(mesh % elements(eID) % storage % Q(:,i,j,k), mesh % elements(eID) % storage % Q(:,i,l,k), mesh % elements(eID) % geom % jGradEta(:,i,j,k), mesh % elements(eID) % geom % jGradEta(:,i,l,k), Flux(:,IY))
-                        call TwoPointFlux_Selector(mesh % elements(eID) % storage % Q(:,i,j,k), mesh % elements(eID) % storage % Q(:,i,j,l), mesh % elements(eID) % geom % jGradZeta(:,i,j,k), mesh % elements(eID) % geom % jGradZeta(:,i,j,l), Flux(:,IZ))
+!          call ScalarWeakIntegrals_StdVolumeGreen( mesh % elements(eID) % Nxyz, NCONS, mesh % elements(eID) % storage % contravariantFlux, &
+!                                                   mesh % elements(eID) % storage % QDot)
+! !
+! !        *************************************
+! !        Compute interior contravariant fluxes
+! !        *************************************
+! !
+! !        Compute inviscid contravariant flux
+! !        -----------------------------------
+!             !$acc loop vector collapse(3) private(Flux)
+!             do k = 0, mesh % elements(eID) % Nxyz(3)  
+!                do j = 0, mesh % elements(eID) % Nxyz(2)  
+!                   do i = 0, mesh % elements(eID) % Nxyz(1)
+!                      !$acc loop seq
+!                      do l = 0, mesh % elements(eID) % Nxyz(1)
+!                         call TwoPointFlux_Selector(mesh % elements(eID) % storage % Q(:,i,j,k), mesh % elements(eID) % storage % Q(:,l,j,k), mesh % elements(eID) % geom % jGradXi(:,i,j,k),  mesh % elements(eID) % geom % jGradXi(:,l,j,k), Flux(:,IX))
+!                         call TwoPointFlux_Selector(mesh % elements(eID) % storage % Q(:,i,j,k), mesh % elements(eID) % storage % Q(:,i,l,k), mesh % elements(eID) % geom % jGradEta(:,i,j,k), mesh % elements(eID) % geom % jGradEta(:,i,l,k), Flux(:,IY))
+!                         call TwoPointFlux_Selector(mesh % elements(eID) % storage % Q(:,i,j,k), mesh % elements(eID) % storage % Q(:,i,j,l), mesh % elements(eID) % geom % jGradZeta(:,i,j,k), mesh % elements(eID) % geom % jGradZeta(:,i,j,l), Flux(:,IZ))
                         
-                        !$acc loop seq
-                        do eq = 1, NCONS
-                           mesh % elements(eID) % storage % QDot(eq,i,j,k) = mesh % elements(eID) % storage % QDot(eq,i,j,k) &
-                                                                           - NodalStorage(mesh % elements(eID) % Nxyz(1)) % sharpD(i,l) *  Flux(eq,IX) &
-                                                                           - NodalStorage(mesh % elements(eID) % Nxyz(2)) % sharpD(j,l) *  Flux(eq,IY) &
-                                                                           - NodalStorage(mesh % elements(eID) % Nxyz(3)) % sharpD(k,l) *  Flux(eq,IZ)
-                        end do
-                     end do 
+!                         !$acc loop seq
+!                         do eq = 1, NCONS
+!                            mesh % elements(eID) % storage % QDot(eq,i,j,k) = mesh % elements(eID) % storage % QDot(eq,i,j,k) &
+!                                                                            - NodalStorage(mesh % elements(eID) % Nxyz(1)) % sharpD(i,l) *  Flux(eq,IX) &
+!                                                                            - NodalStorage(mesh % elements(eID) % Nxyz(2)) % sharpD(j,l) *  Flux(eq,IY) &
+!                                                                            - NodalStorage(mesh % elements(eID) % Nxyz(3)) % sharpD(k,l) *  Flux(eq,IZ)
+!                         end do
+!                      end do 
 
-            end do               ; end do                ; end do
+!             end do               ; end do                ; end do
 
-         enddo
-         !$acc end parallel loop
+!          enddo
+!          !$acc end parallel loop
 
-      end subroutine TimeDerivative_VolumetricContribution_Split
-!
+!       end subroutine TimeDerivative_VolumetricContribution_Split
+! !
 !///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 !
       subroutine TimeDerivative_FacesContribution(e, mesh)
