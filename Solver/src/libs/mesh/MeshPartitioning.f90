@@ -7,7 +7,7 @@ module MeshPartitioning
    use FileReadingUtilities            , only: RemovePath, getFileName
 
    private
-   public   PerformMeshPartitioning
+   public   PerformMeshPartitioning, ReadMeshPartitioningFile
 
    contains
       subroutine PerformMeshPartitioning(mesh, no_of_allElements, no_of_domains, partitions, useWeights, Nx, Ny, Nz)
@@ -443,7 +443,7 @@ module MeshPartitioning
             pmeshName = "./MESH/" // trim(removePath(getFileName(mesh % meshFileName))) // "_" // trim(pID_ch) // ".partitioning"
             open(newunit = fileID, file=trim(pmeshName),action='write')
             
-            write(fileID,*) no_of_domains, pID
+            write(fileID,*) no_of_domains, pID, MPI_Partitioning
 
             write(fileID,*) partitions(pID) % no_of_nodes, partitions(pID) % no_of_elements, partitions(pID) % no_of_mpifaces
             ! Write nodeIDs
@@ -496,5 +496,115 @@ module MeshPartitioning
          end do
             
       end subroutine WriteMeshPartitioningFile
+
+      ! This routine reads the partitioning files (written by WriteMeshPartitioningFile) in 
+      ! parallel (this routine is called by each rank independently and each rank reads in a 
+      ! file). Currently, this is done in ASCII format.
+      ! This could be improved by using the hdf5 library and using a single binary file.
+      subroutine ReadMeshPartitioningFile(no_of_domains, meshFileName)
+         use MPI_Process_Info
+         use ReadMeshFile, only: MeshFileType
+         implicit none
+         !-arguments--------------------------------------------------
+         !type(HexMesh), intent(in)  :: mesh
+         integer,          intent(in)  :: no_of_domains
+         character(len=*), intent(in)  :: meshFileName
+         !-local-variables--------------------------------------------
+         character(LINE_LENGTH)     :: pmeshName
+         character(LINE_LENGTH)     :: pID_ch
+         integer                    :: fileID, eID, pID, nID, fID
+         integer                    :: no_of_domains_in, pID_in
+         logical :: meshIsHOPR, fileExists, meshIsHOPR_in
+         !------------------------------------------------------------
+         
+         meshIsHOPR = (MeshFileType(meshFileName) == HOPRMESH)
+
+         pID = MPI_Process % rank + 1
+         write(pID_ch, '(I0)') pID
+
+         pmeshName = "./MESH/" // trim(removePath(getFileName(meshFileName))) // "_" // trim(pID_ch) // ".partitioning"
+         ! Throw error if partitioning files do not exist
+         inquire(file=trim(pmeshName), exist=fileExists)
+         if (.not. fileExists) then
+            error stop ':: Partitioning files not present'
+         end if
+         
+         open(newunit = fileID, file=trim(pmeshName),action='read')
+         
+         ! Read in no_of_domains and pID and throw error if inconsistent
+         read(fileID,*) no_of_domains_in, pID_in, MPI_Partitioning
+         if ((no_of_domains_in /= no_of_domains) .or. (pID_in /= pID_in)) then
+            error stop ':: Inconsistent partitioning files (no_of_domains or rank)'
+         end if
+
+         ! Read in the number of nodes, elements and MPI faces and allocate storage
+         read(fileID,*) mpi_partition % no_of_nodes, mpi_partition % no_of_elements, mpi_partition % no_of_mpifaces
+         allocate(mpi_partition % nodeIDs                   (mpi_partition % no_of_nodes   )) 
+         allocate(mpi_partition % elementIDs                (mpi_partition % no_of_elements))
+         allocate(mpi_partition % mpiface_elements          (mpi_partition % no_of_mpifaces))
+         allocate(mpi_partition % element_mpifaceSide       (mpi_partition % no_of_mpifaces))
+         allocate(mpi_partition % element_mpifaceSideOther  (mpi_partition % no_of_mpifaces))
+         allocate(mpi_partition % mpiface_rotation          (mpi_partition % no_of_mpifaces))
+         allocate(mpi_partition % mpiface_elementSide       (mpi_partition % no_of_mpifaces))
+         allocate(mpi_partition % mpiface_sharedDomain      (mpi_partition % no_of_mpifaces))
+
+         ! Read nodeIDs
+         do nID = 1, mpi_partition % no_of_nodes
+            read(fileID,*) mpi_partition % nodeIDs(nID)
+         end do
+         ! Read elementIDs
+         do eID = 1, mpi_partition % no_of_elements
+            read(fileID,*) mpi_partition % elementIDs(eID)
+         end do
+         ! Read mpiface_elements
+         do fID = 1, mpi_partition % no_of_mpifaces
+            read(fileID,*) mpi_partition % mpiface_elements(fID)
+         end do
+         ! Read element_mpifaceSide
+         do fID = 1, mpi_partition % no_of_mpifaces
+            read(fileID,*) mpi_partition % element_mpifaceSide(fID)
+         end do
+
+         ! Read element_mpifaceSideOther
+         do fID = 1, mpi_partition % no_of_mpifaces
+            read(fileID,*) mpi_partition % element_mpifaceSideOther(fID)
+         end do
+
+         ! Read mpiface_rotation
+         do fID = 1, mpi_partition % no_of_mpifaces
+            read(fileID,*) mpi_partition % mpiface_rotation(fID)
+         end do
+
+         ! Read mpiface_elementSide
+         do fID = 1, mpi_partition % no_of_mpifaces
+            read(fileID,*) mpi_partition % mpiface_elementSide(fID)
+         end do
+
+         ! Read mpiface_sharedDomain
+         do fID = 1, mpi_partition % no_of_mpifaces
+            read(fileID,*) mpi_partition % mpiface_sharedDomain(fID)
+         end do
+         
+         ! Read HOPR part
+         ! (throw error if no HOPR information is contained but it is needed!)
+         read(fileID,*) pID_ch, meshIsHOPR_in ! pID_ch is used as a dummy variable
+         if (meshIsHOPR .and. (.not. meshIsHOPR_in)) then
+            error stop ":: Partitioning files should contain HOPR information and they don't"
+         end if
+
+         if (meshIsHOPR) then
+            ! Read HOPRnodeIDs
+            allocate(mpi_partition % HOPRnodeIDs(mpi_partition % no_of_nodes   )) 
+            do nID = 1, mpi_partition % no_of_nodes
+               read(fileID,*) mpi_partition % HOPRnodeIDs(nID)
+            end do
+         end if
+
+         close(fileID)
+
+         mpi_partition % Constructed = .true.
+         mpi_partition % read_from_file = .true.
+            
+      end subroutine ReadMeshPartitioningFile
          
 end module MeshPartitioning

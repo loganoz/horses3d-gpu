@@ -1821,6 +1821,9 @@ slavecoord:             DO l = 1, 4
       end select
       write(STD_OUT,*)
 
+      write(STD_OUT,'(10X,A25,L1)') "Partitioning from files: ", mpi_partition % read_from_file
+      write(STD_OUT,*)
+
       do rank = 1, MPI_Process % nProcs
 
          write(partitionID,'(A,I0)') "Partition ", rank
