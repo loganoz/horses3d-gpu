@@ -420,7 +420,8 @@ module MeshPartitioning
       end subroutine WritePartitionsFile
 
       ! This routine writes one file per partition (in the MESH folder) containing all the
-      ! mesh partitioning information. Currently, this is done in ASCII format.
+      ! mesh partitioning information. The routine should be called by only the master rank 
+      ! after performing the partitioning. Currently, this is done in ASCII format...
       ! This could be improved by using the hdf5 library and using a single binary file.
       subroutine WriteMeshPartitioningFile(mesh, no_of_domains, partitions)
          implicit none
@@ -429,6 +430,7 @@ module MeshPartitioning
          integer,       intent(in)  :: no_of_domains
          type(PartitionedMesh_t), intent(in) :: partitions(no_of_domains)
          !-local-variables--------------------------------------------
+         character(LINE_LENGTH)     :: path
          character(LINE_LENGTH)     :: pmeshName
          character(LINE_LENGTH)     :: pID_ch
          integer                    :: fileID, eID, pID, nID, fID
@@ -437,10 +439,14 @@ module MeshPartitioning
          
          meshIsHOPR = allocated(mesh % HOPRnodeIDs)
 
+         ! Create partitioning folder if not present
+         write(path,'(A,I0,A)') "./MESH/partitioning_", no_of_domains, "_ranks/"
+         call system("mkdir -p " // trim(path))
+
          do pID = 1, no_of_domains
             write(pID_ch, '(I0)') pID
 
-            pmeshName = "./MESH/" // trim(removePath(getFileName(mesh % meshFileName))) // "_" // trim(pID_ch) // ".partitioning"
+            pmeshName = trim(path) // trim(removePath(getFileName(mesh % meshFileName))) // "_" // trim(pID_ch) // ".partitioning"
             open(newunit = fileID, file=trim(pmeshName),action='write')
             
             write(fileID,*) no_of_domains, pID, MPI_Partitioning
@@ -510,7 +516,7 @@ module MeshPartitioning
          integer,          intent(in)  :: no_of_domains
          character(len=*), intent(in)  :: meshFileName
          !-local-variables--------------------------------------------
-         character(LINE_LENGTH)     :: pmeshName
+         character(LINE_LENGTH)     :: pmeshName, path
          character(LINE_LENGTH)     :: pID_ch
          integer                    :: fileID, eID, pID, nID, fID
          integer                    :: no_of_domains_in, pID_in
@@ -521,8 +527,9 @@ module MeshPartitioning
 
          pID = MPI_Process % rank + 1
          write(pID_ch, '(I0)') pID
+         write(path,'(A,I0,A)') "./MESH/partitioning_", no_of_domains, "_ranks/"
 
-         pmeshName = "./MESH/" // trim(removePath(getFileName(meshFileName))) // "_" // trim(pID_ch) // ".partitioning"
+         pmeshName = trim(path) // trim(removePath(getFileName(meshFileName))) // "_" // trim(pID_ch) // ".partitioning"
          ! Throw error if partitioning files do not exist
          inquire(file=trim(pmeshName), exist=fileExists)
          if (.not. fileExists) then
