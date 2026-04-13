@@ -397,6 +397,14 @@ jobs:
           mpirun --oversubscribe -n 3 ./horses3d.ns UniformFlow_HDF5.control
         if: '!cancelled()'
 
+      # Uniform flow test that reads partitioning written by previous test
+      - name: Run NSUniformFlow_parallel_SFC
+        working-directory: ./Solver/test/NavierStokes/UniformFlow
+        run: |
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpirun --oversubscribe -n 3 ./horses3d.ns UniformFlow_HDF5_read_partitions.control
+        if: '!cancelled()'
+
       - name: Run NSUniformFlow_parallel_METIS
         working-directory: ./Solver/test/NavierStokes/UniformFlow
         run: |
