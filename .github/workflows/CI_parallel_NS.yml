@@ -398,7 +398,7 @@ jobs:
         if: '!cancelled()'
 
       # Uniform flow test that reads partitioning written by previous test
-      - name: Run NSUniformFlow_parallel_SFC
+      - name: Run NSUniformFlow_parallel_SFC_read_partitions
         working-directory: ./Solver/test/NavierStokes/UniformFlow
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
