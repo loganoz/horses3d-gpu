@@ -9,7 +9,6 @@ import numpy as np
 RESIDUALS_HEADER_SIZE = 2
 
 def GatherNewResidualsValues(fileName,skip_data):
-	counter = -1
 	iter = []
 	time = []
 	continuity = []
@@ -23,7 +22,7 @@ def GatherNewResidualsValues(fileName,skip_data):
 			next(residuals_fid)
 
 		if ( skip_data > 0 ):
-			for i in range(int(skip_data)-1):
+			for i in range(int(skip_data)):
 				next(residuals_fid)
 
 		for line in residuals_fid:
@@ -35,12 +34,8 @@ def GatherNewResidualsValues(fileName,skip_data):
 			y_momentum.append(float(numbers[5]))
 			z_momentum.append(float(numbers[6]))
 			energy.append(float(numbers[7]))
-			counter = counter + 1
 
-	if ( counter == -1 ):
-		counter = 0
-
-	return (counter,time,continuity,x_momentum,y_momentum,z_momentum,energy)
+	return (len(iter),time,continuity,x_momentum,y_momentum,z_momentum,energy)
 
 def NewResidualsPlot(time, continuity, x_momentum, y_momentum, z_momentum, energy, ax):
 	ax.semilogy(time,continuity,'-',color='#1f77b4', label='continuity',linewidth=1.5)

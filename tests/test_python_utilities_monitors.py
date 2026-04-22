@@ -55,6 +55,13 @@ class _FakeAxis:
 
 
 class TestMonitorsUtilities(unittest.TestCase):
+    def _write_temp_file(self, content):
+        tmp = tempfile.NamedTemporaryFile("w", delete=False)
+        self.addCleanup(lambda: Path(tmp.name).unlink(missing_ok=True))
+        tmp.write(content)
+        tmp.close()
+        return tmp.name
+
     def test_get_which_monitor_type_detects_residuals_and_scalar(self):
         monitors = _import_module("Monitors")
 
@@ -73,14 +80,12 @@ class TestMonitorsUtilities(unittest.TestCase):
             "1 0.1 0 1.1 2.1 3.1 4.1 5.1\n"
             "2 0.2 0 1.2 2.2 3.2 4.2 5.2\n"
         )
-        with tempfile.NamedTemporaryFile("w", delete=False) as tmp:
-            tmp.write(content)
-            path = tmp.name
+        path = self._write_temp_file(content)
 
         counter, time, continuity, x_momentum, y_momentum, z_momentum, energy = (
             residuals.GatherNewResidualsValues(path, 0)
         )
-        self.assertEqual(counter, 1)
+        self.assertEqual(counter, 2)
         self.assertEqual(time, [0.1, 0.2])
         self.assertEqual(continuity, [1.1, 1.2])
         self.assertEqual(x_momentum, [2.1, 2.2])
@@ -97,13 +102,11 @@ class TestMonitorsUtilities(unittest.TestCase):
             "2 0.2 0 1.2 2.2 3.2 4.2 5.2\n"
             "3 0.3 0 1.3 2.3 3.3 4.3 5.3\n"
         )
-        with tempfile.NamedTemporaryFile("w", delete=False) as tmp:
-            tmp.write(content)
-            path = tmp.name
+        path = self._write_temp_file(content)
 
         counter, time, *_ = residuals.GatherNewResidualsValues(path, 2)
         self.assertEqual(counter, 1)
-        self.assertEqual(time, [0.2, 0.3])
+        self.assertEqual(time, [0.3])
 
     def test_gather_new_scalar_values_parses_metadata_and_data(self):
         scalar = _import_module("ScalarMonitor")
@@ -115,14 +118,12 @@ class TestMonitorsUtilities(unittest.TestCase):
             "1 0.1 4.0\n"
             "2 0.2 3.0\n"
         )
-        with tempfile.NamedTemporaryFile("w", delete=False) as tmp:
-            tmp.write(content)
-            path = tmp.name
+        path = self._write_temp_file(content)
 
         counter, time, value, monitor_name, variable = scalar.GatherNewScalarValues(
             path, 0
         )
-        self.assertEqual(counter, 1)
+        self.assertEqual(counter, 2)
         self.assertEqual(time, [0.1, 0.2])
         self.assertEqual(value, [4.0, 3.0])
         self.assertEqual(monitor_name, "LiftMonitor")
@@ -136,15 +137,14 @@ class TestMonitorsUtilities(unittest.TestCase):
             "Iteration Time Value\n"
             "1 0.1 4.0\n"
             "2 0.2 3.0\n"
+            "3 0.3 2.0\n"
         )
-        with tempfile.NamedTemporaryFile("w", delete=False) as tmp:
-            tmp.write(content)
-            path = tmp.name
+        path = self._write_temp_file(content)
 
         counter, time, value, *_ = scalar.GatherNewScalarValues(path, 2)
-        self.assertEqual(counter, 0)
-        self.assertEqual(time, [0.2])
-        self.assertEqual(value, [3.0])
+        self.assertEqual(counter, 1)
+        self.assertEqual(time, [0.3])
+        self.assertEqual(value, [2.0])
 
     def test_new_scalar_plot_inverts_kinetic_energy_rate(self):
         scalar = _import_module("ScalarMonitor")
