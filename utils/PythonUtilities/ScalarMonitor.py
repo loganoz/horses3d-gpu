@@ -34,8 +34,8 @@ def GatherNewScalarValues(fileName,skip_data):
 #	Now skip the requested amount of data
 #	-------------------------------------
 	if ( skip_data > 0 ):
-		for i in xrange(int(skip_data)-1):
-			fid.next()
+		for i in range(int(skip_data)-1):
+			next(fid)
 
 	for line in fid:
 		numbers = line.split()
