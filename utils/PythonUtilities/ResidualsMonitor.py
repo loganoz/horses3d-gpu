@@ -9,7 +9,6 @@ import numpy as np
 RESIDUALS_HEADER_SIZE = 2
 
 def GatherNewResidualsValues(fileName,skip_data):
-	residuals_fid = open(fileName, 'r')
 	counter = -1
 	iter = []
 	time = []
@@ -19,23 +18,24 @@ def GatherNewResidualsValues(fileName,skip_data):
 	z_momentum = []
 	energy = []
 
-	for i in range(RESIDUALS_HEADER_SIZE):
-		next(residuals_fid)
-
-	if ( skip_data > 0 ):
-		for i in range(int(skip_data)-1):
+	with open(fileName, 'r') as residuals_fid:
+		for i in range(RESIDUALS_HEADER_SIZE):
 			next(residuals_fid)
 
-	for line in residuals_fid:
-		numbers = line.split()
-		iter.append(float(numbers[0]))
-		time.append(float(numbers[1]))
-		continuity.append(float(numbers[3]))
-		x_momentum.append(float(numbers[4]))
-		y_momentum.append(float(numbers[5]))
-		z_momentum.append(float(numbers[6]))
-		energy.append(float(numbers[7]))
-		counter = counter + 1
+		if ( skip_data > 0 ):
+			for i in range(int(skip_data)-1):
+				next(residuals_fid)
+
+		for line in residuals_fid:
+			numbers = line.split()
+			iter.append(float(numbers[0]))
+			time.append(float(numbers[1]))
+			continuity.append(float(numbers[3]))
+			x_momentum.append(float(numbers[4]))
+			y_momentum.append(float(numbers[5]))
+			z_momentum.append(float(numbers[6]))
+			energy.append(float(numbers[7]))
+			counter = counter + 1
 
 	if ( counter == -1 ):
 		counter = 0

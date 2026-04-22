@@ -7,42 +7,42 @@ import matplotlib.gridspec as gridspec
 import numpy as np
 
 def GatherNewScalarValues(fileName,skip_data):
-	fid = open(fileName, 'r')
 	counter = -1
 	iter = []
 	time = []
 	value = []
+	with open(fileName, 'r') as fid:
 #
 #	First line is the monitor name
 #	------------------------------
-	line = fid.readline()
-	entries = line.split()
-	monitorName = entries[-1]
+		line = fid.readline()
+		entries = line.split()
+		monitorName = entries[-1]
 #
 #	Navigate until the data beginning
 #	---------------------------------
-	for line in fid:
-		entries = line.split()
-		if ( len(entries) == 0 ):
-			continue
-		if ( "Selected variable:" in line ):
-			variable = line.replace("Selected variable: ","");
-			variable = variable.lower()
-		elif ( entries[0] == "Iteration" ):
-			break 
+		for line in fid:
+			entries = line.split()
+			if ( len(entries) == 0 ):
+				continue
+			if ( "Selected variable:" in line ):
+				variable = line.replace("Selected variable: ","");
+				variable = variable.lower()
+			elif ( entries[0] == "Iteration" ):
+				break 
 #
 #	Now skip the requested amount of data
 #	-------------------------------------
-	if ( skip_data > 0 ):
-		for i in range(int(skip_data)-1):
-			next(fid)
+		if ( skip_data > 0 ):
+			for i in range(int(skip_data)-1):
+				next(fid)
 
-	for line in fid:
-		numbers = line.split()
-		iter.append(float(numbers[0]))
-		time.append(float(numbers[1]))
-		value.append(float(numbers[2]))
-		counter = counter + 1
+		for line in fid:
+			numbers = line.split()
+			iter.append(float(numbers[0]))
+			time.append(float(numbers[1]))
+			value.append(float(numbers[2]))
+			counter = counter + 1
 
 	if ( counter == -1 ):
 		counter = 0

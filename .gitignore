@@ -67,3 +67,6 @@ horsesConverter
 
 #ford
 doc/doc_output
+# Python cache files
+__pycache__/
+*.pyc

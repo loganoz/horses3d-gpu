@@ -47,6 +47,12 @@ class _FakeAxis:
     def plot(self, _x, y, *_args, **_kwargs):
         self.plots.append(list(y))
 
+    def get_legend_handles_labels(self):
+        return [], []
+
+    def legend(self, *_args, **_kwargs):
+        return None
+
 
 class TestMonitorsUtilities(unittest.TestCase):
     def test_get_which_monitor_type_detects_residuals_and_scalar(self):
