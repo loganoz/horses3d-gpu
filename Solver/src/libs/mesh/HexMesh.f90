@@ -1207,6 +1207,7 @@ slavecoord:             DO l = 1, 4
                end do               ; end do
             end do
             !$acc end parallel loop
+
 !
 !           -------------
 !           Send solution
@@ -1435,7 +1436,6 @@ slavecoord:             DO l = 1, 4
 !           **************************************
 !
             if ( self % MPIfaces % faces(domain) % no_of_faces .eq. 0 ) cycle
-
             call self % MPIfaces % faces(domain) % WaitForSolution
 
             !$acc parallel loop gang present(self) copyin(nEqn)
@@ -2374,6 +2374,8 @@ slavecoord:             DO l = 1, 4
 #if defined(NAVIERSTOKES)
             call ConstructMPIFacesStorage(self % MPIfaces, NCONS, NGRAD, MPI_NDOFS)
 #elif defined(INCNS)
+            call ConstructMPIFacesStorage(self % MPIfaces, NCONS, NCONS, MPI_NDOFS)
+#elif defined(MULTIPHASE)
             call ConstructMPIFacesStorage(self % MPIfaces, NCONS, NCONS, MPI_NDOFS)
 #elif defined(CAHNHILLIARD)
             call ConstructMPIFacesStorage(self % MPIfaces, NCOMP, NCOMP, MPI_NDOFS)
@@ -4789,6 +4791,9 @@ slavecoord:             DO l = 1, 4
          !$acc update self(self % elements(eID) % storage % U_z)
          !$acc update self(self % elements(eID) % storage % mu_ns)
          !$acc update self(self % elements(eID) % storage % mu_turb_NS)
+#ifdef CAHNHILLIARD
+         !$acc update self(self % elements(eID) % storage % mu)
+#endif
       enddo
       
       !$acc wait
@@ -4824,6 +4829,10 @@ slavecoord:             DO l = 1, 4
          !$acc update self(self % faces(fID) % storage(2) % u_tau_NS)
          !$acc update self(self % faces(fID) % storage(1) % mu_NS)
          !$acc update self(self % faces(fID) % storage(2) % mu_NS)
+#endif
+#ifdef CAHNHILLIARD
+         !$acc update self(self % faces(fID) % storage(1) % mu)
+         !$acc update self(self % faces(fID) % storage(2) % mu)
 #endif
 #if (defined(CAHNHILLIARD) && (!defined(FLOW)))
          !$acc update self(self % faces(fID) % storage(1) % c_x)
