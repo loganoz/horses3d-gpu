@@ -84,6 +84,7 @@ TEST_CASES="./Euler/BoxAroundCircle \
             ./NavierStokes/ABLBoundaryMapping \
             ./NavierStokes/ActuatorLineController \
             ./NavierStokes/Channel \
+            ./NavierStokes/Channel64 \
             ./IncompressibleNS/Convergence \
             ./IncompressibleNS/Kovasznay \
             ./IncompressibleNS/TaylorGreen \
@@ -92,6 +93,7 @@ TEST_CASES="./Euler/BoxAroundCircle \
             ./IncompressibleNS/Cylinder \
             ./IncompressibleNS/CylinderVreman \
             ./IncompressibleNS/ActuatorLineInterpolation \
+            ./IncompressibleNS/NACA0012 \
             ./CahnHilliard/TJokisaari \
             ./Multiphase/Convergence \
             ./Multiphase/Convergence_cs \

@@ -265,7 +265,7 @@ Module DGSEMClass
 !
 !           Perform the partitioning
 !           ------------------------
-            call PerformMeshPartitioning  (self % mesh, MPI_Process % nProcs, mpi_allPartitions, useWeightsPartition)
+            call PerformMeshPartitioning  (self % mesh, nTotalElem, MPI_Process % nProcs, mpi_allPartitions, useWeightsPartition, Nx, Ny, Nz)
 !
 !           Send the partitions
 !           -------------------
@@ -633,7 +633,7 @@ Module DGSEMClass
       R4 = 0.0_RP
       R5 = 0.0_RP
       R6 = 0.0_RP
-      c    = 0.0_RP
+      c    = 0.0_RP 
 
 !$acc parallel loop gang present(mesh) reduction(max:R1,R2,R3,R4,R5,c)
 !$omp parallel shared(maxResidual, R1, R2, R3, R4, R5, R6, c, mesh) default(private)
@@ -689,11 +689,14 @@ Module DGSEMClass
 #if defined(CAHNHILLIARD) && (!defined(FLOW))
          c    = max(c, localc)
 #endif
+
+      
       END DO
 !$omp end do
 !$omp end parallel
 !$acc end parallel loop
       
+
 #if defined FLOW && (!(SPALARTALMARAS))
       maxResidual(1:NCONS) = [R1, R2, R3, R4, R5]
 #elif defined(SPALARTALMARAS)
@@ -767,7 +770,7 @@ Module DGSEMClass
       TimeStep_Conv = huge(1._RP)
       TimeStep_Visc = huge(1._RP)
       if (present(MaxDtVec)) MaxDtVec = huge(1._RP)
-!$acc parallel loop gang present(self, cfl, dcfl) reduction(min:TimeStep_Conv,TimeStep_Visc)
+!$acc parallel loop gang present(self) copyin(cfl, dcfl) reduction(min:TimeStep_Conv,TimeStep_Visc)
 !$omp parallel shared(self,TimeStep_Conv,TimeStep_Visc,NodalStorage,cfl,dcfl,flowIsNavierStokes,MaxDtVec) default(private)
 !$omp do reduction(min:TimeStep_Conv,TimeStep_Visc) schedule(runtime)
       do eID = 1, SIZE(self % mesh % elements)
