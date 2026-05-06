@@ -441,7 +441,7 @@ MODULE ExplicitMethods
       real(RP), parameter :: c(3) = [1.0_RP, 1.0_RP/4.0_RP, 2.0_RP/3.0_RP]
       real(RP), parameter :: d(3) = [0.0_RP, 1.0_RP,        0.5_RP]
       real(RP) :: tk
-      integer  :: i, j, k, id
+      integer  :: i, j, k, l, m, id
 
 
       if (present(dt_vec)) then
@@ -485,42 +485,64 @@ MODULE ExplicitMethods
 
       else
 
-!$omp parallel do
+         !$acc data copyin(deltaT)
+!
+!        Save initial solution
+!        ---------------------
+!!$omp parallel do
+         !$acc parallel loop gang present(mesh)
          do id = 1, size(mesh % elements)
+            !$acc loop vector collapse(3)
+            do k = 0, mesh % elements(id) % Nxyz(3) ; do j = 0, mesh % elements(id) % Nxyz(2) ; do i = 0, mesh % elements(id) % Nxyz(1)
+               !$acc loop seq
+               do m = 1, NCONS
 #if defined(FLOW)
-            mesh % elements(id) % storage % G_NS = mesh % elements(id) % storage % Q
+                  mesh % elements(id) % storage % G_NS(m,i,j,k) = mesh % elements(id) % storage % Q(m,i,j,k)
 #elif defined(CAHNHILLIARD)
-            mesh % elements(id) % storage % G_CH = mesh % elements(id) % storage % c
+                  mesh % elements(id) % storage % G_CH(m,i,j,k) = mesh % elements(id) % storage % c(m,i,j,k)
 #endif
+               end do
+            end do                ; end do                ; end do
          end do
-!$omp end parallel do
+         !$acc end parallel loop
+!!$omp end parallel do
 
-         do k = 1, 3
-            tk = t + d(k) * deltaT
+         do l = 1, 3
+            tk = t + d(l) * deltaT
             call ComputeTimeDerivative( mesh, particles, tk, CTD_IGNORE_MODE)
             if ( present(dts) ) then
                if (dts) call ComputePseudoTimeDerivative(mesh, tk, global_dt)
             end if
 
-!$omp parallel do
+!!$omp parallel do
+            !$acc parallel loop gang present(mesh, deltaT)
             do id = 1, size( mesh % elements )
+               !$acc loop vector collapse(3)
+               do k = 0, mesh % elements(id) % Nxyz(3) ; do j = 0, mesh % elements(id) % Nxyz(2) ; do i = 0, mesh % elements(id) % Nxyz(1)
+                  !$acc loop seq
+                  do m = 1, NCONS
 #if defined(FLOW)
-               mesh % elements(id) % storage % Q = a(k) * mesh % elements(id) % storage % G_NS &
-                                                 + b(k) * mesh % elements(id) % storage % Q    &
-                                                 + c(k) * deltaT * mesh % elements(id) % storage % Qdot
+                     mesh % elements(id) % storage % Q(m,i,j,k) = a(l) * mesh % elements(id) % storage % G_NS(m,i,j,k) &
+                                                                 + b(l) * mesh % elements(id) % storage % Q(m,i,j,k)    &
+                                                                 + c(l) * deltaT * mesh % elements(id) % storage % Qdot(m,i,j,k)
 #elif defined(CAHNHILLIARD)
-               mesh % elements(id) % storage % c = a(k) * mesh % elements(id) % storage % G_CH &
-                                                 + b(k) * mesh % elements(id) % storage % c    &
-                                                 + c(k) * deltaT * mesh % elements(id) % storage % cDot
+                     mesh % elements(id) % storage % c(m,i,j,k) = a(l) * mesh % elements(id) % storage % G_CH(m,i,j,k) &
+                                                                 + b(l) * mesh % elements(id) % storage % c(m,i,j,k)    &
+                                                                 + c(l) * deltaT * mesh % elements(id) % storage % cDot(m,i,j,k)
 #endif
+                  end do
+               end do                ; end do                ; end do
             end do ! id
-!$omp end parallel do
+            !$acc end parallel loop
+!!$omp end parallel do
 
             if (LIMITED) then
                call stage_limiter(mesh)
             end if
 
-         end do ! k
+         end do ! l
+
+         !$acc end data
 
       end if
 !
@@ -1011,78 +1033,167 @@ MODULE ExplicitMethods
 !     ---------------
 !     Local variables
 !     ---------------
-!
       real(RP)               :: m
-      real(RP)               :: Q(5), Qavg(5)
-      real(RP)               :: rho, minrho
+      real(RP)               :: rho, minrho, rho_limited
+      real(RP)               :: q2, q3, q4, q5
       real(RP)               :: p, pavg, minp
-      real(RP)               :: theta
-      real(RP)               :: gm1
+      real(RP)               :: theta_rho, theta_p
+      real(RP)               :: gm1, lim_min
+      real(RP)               :: wJ
+      real(RP)               :: qavg(5)
+      real(RP)               :: q1sum, q2sum, q3sum, q4sum, q5sum
+      real(RP)               :: vol
       integer                :: eID
-      integer                :: i, j, k
+      integer                :: i, j, k, mEq
+      integer                :: Nx, Ny, Nz
       type(Element), pointer :: e
-      real(RP),      pointer :: wx(:), wy(:), wz(:)
+      real(RP), pointer, contiguous :: Q(:,:,:,:)
 
+      logical                :: do_rho_limit, do_p_limit
 
-      gm1 = thermodynamics % gammaMinus1
+      gm1     = thermodynamics % gammaMinus1
+      lim_min = LIMITER_MIN
 
-!$omp parallel do default(private) shared(mesh, NodalStorage) firstprivate(gm1, LIMITER_MIN)
+      !!$omp parallel do default(private) shared(mesh, NodalStorage) firstprivate(gm1, LIMITER_MIN)
+      !!$omp parallel do default(private) shared(mesh, NodalStorage) firstprivate(gm1, lim_min)
+
+      !$acc parallel loop gang present(mesh)                            &
+      !$acc& firstprivate(gm1, lim_min)                                 &
+      !$acc& private( Nx, Ny, Nz, vol,                                  &
+      !$acc&          q1sum, q2sum, q3sum, q4sum, q5sum, minrho, qavg,  &
+      !$acc&          pavg, minp,                                       &
+      !$acc&          theta_rho, theta_p, m,                            &
+      !$acc&          do_rho_limit, do_p_limit,                         &
+      !$acc&          rho, rho_limited, q2, q3, q4, q5, p, wJ, mEq, e, Q )
       do eID = 1, mesh % no_of_elements
          e  => mesh % elements(eID)
-         wx => NodalStorage(e % Nxyz(1)) % w
-         wy => NodalStorage(e % Nxyz(2)) % w
-         wz => NodalStorage(e % Nxyz(3)) % w
+         Q => e % storage % Q
+         Nx = e % Nxyz(1); Ny = e % Nxyz(2); Nz = e % Nxyz(3)
 
-         ! Compute averages
-         Qavg = 0.0_RP
-         do k = 0, e % Nxyz(3); do j = 0, e % Nxyz(2); do i = 0, e % Nxyz(1)
-            Qavg = Qavg + e % storage % Q(:,i,j,k) * wx(i) * wy(j) * wz(k) * e % geom % jacobian(i,j,k)
-         end do               ; end do               ; end do
-         Qavg = Qavg / e % geom % volume
+         vol = e % geom % volume
 
-         ! Density first
+         ! Pass 1
+         q1sum = 0.0_RP; q2sum = 0.0_RP; q3sum = 0.0_RP
+         q4sum = 0.0_RP; q5sum = 0.0_RP
          minrho = huge(1.0_RP)
-         do k = 0, e % Nxyz(3); do j = 0, e % Nxyz(2); do i = 0, e % Nxyz(1)
-            rho = e % storage % Q(1,i,j,k)
-            if (rho < minrho) minrho = rho
-         end do               ; end do               ; end do
 
-         if (Qavg(1) /= minrho) then
-            m = min(LIMITER_MIN, Qavg(1))
-            theta = abs((Qavg(1) - m) / (Qavg(1) - minrho))
-            if (theta <= 1.0_RP) then
-               e % storage % Q(1,:,:,:) = theta * (e % storage % Q(1,:,:,:) - Qavg(1)) + Qavg(1)
-            end if
+         !$acc loop vector collapse(3)                         &
+         !$acc& reduction(+:q1sum, q2sum, q3sum, q4sum, q5sum) &
+         !$acc& reduction(min:minrho)                          &
+         !$acc& private(rho, wJ)
+         do k = 0, Nz; do j = 0, Ny; do i = 0, Nx
+            rho = Q(1,i,j,k)
+            minrho = min(minrho, rho)
+            wJ = NodalStorage(Nx) % w(i) * &
+                 NodalStorage(Ny) % w(j) * &
+                 NodalStorage(Nz) % w(k) * &
+                 e % geom % jacobian(i,j,k)
+            q1sum = q1sum + Q(1,i,j,k) * wJ
+            q2sum = q2sum + Q(2,i,j,k) * wJ
+            q3sum = q3sum + Q(3,i,j,k) * wJ
+            q4sum = q4sum + Q(4,i,j,k) * wJ
+            q5sum = q5sum + Q(5,i,j,k) * wJ
+         end do; end do; end do
+
+         qavg = [q1sum, q2sum, q3sum, q4sum, q5sum] / vol
+
+         theta_rho   = 1.0_RP
+         do_rho_limit = .false.
+
+         if (qavg(1) /= minrho) then
+            m = min(lim_min, qavg(1))
+            theta_rho = abs((qavg(1) - m) / (qavg(1) - minrho))
+            if (theta_rho <= 1.0_RP) do_rho_limit = .true.
          end if
 
-         ! Pressure now (Jensen's inequality is NOT conservative for the pressure)
-         minp = huge(1.0_RP)
+         ! Pass 2
          pavg = 0.0_RP
-         do k = 0, e % Nxyz(3); do j = 0, e % Nxyz(2); do i = 0, e % Nxyz(1)
-            Q = e % storage % Q(:,i,j,k)
-            p = gm1 * (Q(5) - 0.5_RP * (Q(2)**2 + Q(3)**2 + Q(4)**2) / Q(1))
-            pavg = pavg + p * wx(i) * wy(j) * wz(k) * e % geom % jacobian(i,j,k)
-            if (p < minp) minp = p
-         end do               ; end do               ; end do
-         pavg = pavg / e % geom % volume
+         minp = huge(1.0_RP)
+
+         if (do_rho_limit) then
+            !$acc loop vector collapse(3)                &
+            !$acc& reduction(+:pavg) reduction(min:minp) &
+            !$acc& private(rho, rho_limited, q2, q3, q4, q5, p)
+            do k = 0, Nz; do j = 0, Ny; do i = 0, Nx
+               rho = Q(1,i,j,k)
+               rho_limited = theta_rho * (rho - qavg(1)) + qavg(1)
+
+               q2 = Q(2,i,j,k)
+               q3 = Q(3,i,j,k)
+               q4 = Q(4,i,j,k)
+               q5 = Q(5,i,j,k)
+
+               p = gm1 * (q5 - 0.5_RP * (q2*q2 + q3*q3 + q4*q4) / rho_limited)
+
+               pavg = pavg + p * NodalStorage(Nx) % w(i) * &
+                                 NodalStorage(Ny) % w(j) * &
+                                 NodalStorage(Nz) % w(k) * &
+                                 e % geom % jacobian(i,j,k)
+               minp = min(p, minp)
+            end do; end do; end do
+         else
+            !$acc loop vector collapse(3)                &
+            !$acc& reduction(+:pavg) reduction(min:minp) &
+            !$acc& private(rho, q2, q3, q4, q5, p)
+            do k = 0, Nz ; do j = 0, Ny ; do i = 0, Nx
+               rho = Q(1,i,j,k)
+               q2  = Q(2,i,j,k)
+               q3  = Q(3,i,j,k)
+               q4  = Q(4,i,j,k)
+               q5  = Q(5,i,j,k)
+               p = gm1 * (q5 - 0.5_RP * (q2*q2 + q3*q3 + q4*q4) / rho)
+               pavg = pavg + p * NodalStorage(Nx) % w(i) * &
+                                 NodalStorage(Ny) % w(j) * &
+                                 NodalStorage(Nz) % w(k) * &
+                                 e % geom % jacobian(i,j,k)
+               minp = min(p, minp)
+            end do; end do; end do
+         end if
+
+         pavg = pavg / vol
+
+         theta_p    = 1.0_RP
+         do_p_limit = .false.
 
          if (pavg /= minp) then
-            m = min(LIMITER_MIN, pavg)
-            theta = abs((pavg - m) / (pavg - minp))
-            if (theta <= 1.0_RP) then
-               do k = 0, e % Nxyz(3); do j = 0, e % Nxyz(2); do i = 0, e % Nxyz(1)
-                  e % storage % Q(:,i,j,k) = theta * (e % storage % Q(:,i,j,k) - Qavg) + Qavg
-               end do               ; end do               ; end do
-            end if
+            m = min(lim_min, pavg)
+            theta_p = abs((pavg - m) / (pavg - minp))
+            if (theta_p <= 1.0_RP) do_p_limit = .true.
          end if
 
+         ! Pass 3
+         if (do_rho_limit) then
+            if (do_p_limit) then
+               !$acc loop seq
+               do k = 0, Nz ;do j = 0, Ny; do i = 0, Nx
+                  rho = Q(1,i,j,k)
+                  rho_limited = theta_rho * (rho - qavg(1)) + qavg(1)
+                  Q(1,i,j,k) = theta_p * (rho_limited - qavg(1)) + qavg(1)
+                  !$acc loop seq
+                  do mEq = 2, 5
+                     Q(mEq,i,j,k) = theta_p * (Q(mEq,i,j,k) - qavg(mEq)) + qavg(mEq)
+                  end do
+               end do; end do; end do
+            else
+               !$acc loop seq
+               do k = 0, Nz ;do j = 0, Ny; do i = 0, Nx
+                  rho = Q(1,i,j,k)
+                  Q(1,i,j,k) = theta_rho * (rho - qavg(1)) + qavg(1)
+               end do; end do; end do;
+            end if
+         else if (do_p_limit) then
+            !$acc loop seq
+            do k = 0, Nz ;do j = 0, Ny; do i = 0, Nx
+               Q(1,i,j,k) = theta_p * (Q(1,i,j,k) - qavg(1)) + qavg(1)
+               !$acc loop seq
+               do mEq = 2, 5
+                  Q(mEq,i,j,k) = theta_p * (Q(mEq,i,j,k) - qavg(mEq)) + qavg(mEq)
+               end do
+            end do; end do; end do
+         end if
       end do
-!$omp end parallel do
-
-      nullify(e)
-      nullify(wx)
-      nullify(wy)
-      nullify(wz)
+      !$acc end parallel loop 
+!!$omp end parallel do
 
    end subroutine stage_limiter
 #else
