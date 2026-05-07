@@ -674,7 +674,7 @@ Module DGSEMClass
             localR6 = max(localR6, abs(mesh % elements(id) % storage % QDot(6,i,j,k)))
 #endif
 
-#ifdef CAHNHILLIARD
+#if defined(CAHNHILLIARD) && (!defined(FLOW))
             localc    = max(localc, abs(mesh % elements(id) % storage % cDot(1,i,j,k)))
 #endif
          end do ; end do ; end do
@@ -694,7 +694,7 @@ Module DGSEMClass
          R6 = max(R6,localR6)
 #endif
 
-#ifdef CAHNHILLIARD
+#if defined(CAHNHILLIARD) && (!defined(FLOW))
          c    = max(c, localc)
 #endif
 
