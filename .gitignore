@@ -67,3 +67,10 @@ horsesConverter
 
 #ford
 doc/doc_output
+
+# NVHPC/OpenACC -gpu=keep artifacts
+*.gpu
+*.ptx
+*.cubin
+*.fatbin
+*.fatbin.s

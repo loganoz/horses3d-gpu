@@ -74,15 +74,31 @@ module DGIntegrals
          integer   :: i, j, k, l, eq
 
          !$acc loop vector collapse(4)
-          do k = 0, Nxyz(3) ; do j = 0, Nxyz(2) ; do i = 0, Nxyz(1) ; do eq = 1, NEQ
+         do k = 0, Nxyz(3) ; do j = 0, Nxyz(2) ; do i = 0, Nxyz(1) ; do eq = 1, NEQ
             ! not initialize to 0 to be general for all Physics
             ! volInt(eq,i,j,k) = 0.0_RP
-            !$acc loop seq 
-            do l = 0, Nxyz(1)
-               volInt(eq,i,j,k) = volInt(eq,i,j,k) +  NodalStorage(Nxyz(1)) % hatD(i,l) * F(eq,l,j,k,IX) &
-                                                   +  NodalStorage(Nxyz(2)) % hatD(j,l) * F(eq,i,l,k,IY) &
-                                                   +  NodalStorage(Nxyz(3)) % hatD(k,l) * F(eq,i,j,l,IZ)
-            end do             
+            ! Keep one l-loop per direction.
+            ! 0:Nxyz(1) loop failed CUDA_ERROR_ILLEGAL_ADDRESS 
+            if ( Nxyz(1) > 0 ) then
+               !$acc loop seq
+               do l = 0, Nxyz(1)
+                  volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(1)) % hatD(i,l) * F(eq,l,j,k,IX)
+               end do
+            end if
+
+            if ( Nxyz(2) > 0 ) then
+               !$acc loop seq
+               do l = 0, Nxyz(2)
+                  volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(2)) % hatD(j,l) * F(eq,i,l,k,IY)
+               end do
+            end if
+
+            if ( Nxyz(3) > 0 ) then
+               !$acc loop seq
+               do l = 0, Nxyz(3)
+                  volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(3)) % hatD(k,l) * F(eq,i,j,l,IZ)
+               end do
+            end if
          end do ; end do ; end do ; end do
 
       end subroutine ScalarWeakIntegrals_StdVolumeGreen
@@ -238,19 +254,46 @@ module DGIntegrals
 !        ---------------
 !
          integer            :: iXi, iEta, iZeta,eq
+         real(kind=RP)      :: b_iXi_left,   b_iXi_Right
+         real(kind=RP)      :: b_iEta_left,  b_iEta_Right
+         real(kind=RP)      :: b_iZeta_left, b_iZeta_Right
   
          !$acc loop vector collapse(4)
          do iZeta = 0, Nxyz(3) 
             do iEta = 0, Nxyz(2) 
                do iXi = 0, Nxyz(1)
                   do eq = 1, NEQ
+                     if ( Nxyz(1) > 0 ) then
+                        b_iXi_left  = NodalStorage(Nxyz(1)) % b(iXi, LEFT)
+                        b_iXi_Right = NodalStorage(Nxyz(1)) % b(iXi, RIGHT)
+                     else
+                        b_iXi_left  = 0.0_RP
+                        b_iXi_Right = 0.0_RP
+                     end if
+
+                     if ( Nxyz(2) > 0 ) then
+                        b_iEta_left  = NodalStorage(Nxyz(2)) % b(iEta, LEFT)
+                        b_iEta_Right = NodalStorage(Nxyz(2)) % b(iEta, RIGHT)
+                     else
+                        b_iEta_left  = 0.0_RP
+                        b_iEta_Right = 0.0_RP
+                     end if
+
+                     if ( Nxyz(3) > 0 ) then
+                        b_iZeta_left  = NodalStorage(Nxyz(3)) % b(iZeta, LEFT)
+                        b_iZeta_Right = NodalStorage(Nxyz(3)) % b(iZeta, RIGHT)
+                     else
+                        b_iZeta_left  = 0.0_RP
+                        b_iZeta_Right = 0.0_RP
+                     end if
+
                      intFace(eq,iXi,iEta,iZeta) = intFace(eq,iXi,iEta,iZeta) + sign * ( &
-                                                + F_L(eq, iEta, iZeta) * NodalStorage(Nxyz(1)) % b(iXi, LEFT)    &
-                                                + F_R(eq, iEta, iZeta) * NodalStorage(Nxyz(1)) % b(iXi, RIGHT)   &
-                                                + F_FR(eq, iXi, iZeta) * NodalStorage(Nxyz(2)) % b(iEta, LEFT)   &
-                                                + F_BK(eq, iXi, iZeta) * NodalStorage(Nxyz(2)) % b(iEta, RIGHT)  &
-                                                + F_BOT(eq, iXi, iEta) * NodalStorage(Nxyz(3)) % b(iZeta, LEFT)  &
-                                                + F_T(eq, iXi, iEta)   * NodalStorage(Nxyz(3)) % b(iZeta, RIGHT) ) 
+                                                + F_L(eq, iEta, iZeta) * b_iXi_left   &
+                                                + F_R(eq, iEta, iZeta) * b_iXi_Right  &
+                                                + F_FR(eq, iXi, iZeta) * b_iEta_left  &
+                                                + F_BK(eq, iXi, iZeta) * b_iEta_Right &
+                                                + F_BOT(eq, iXi, iEta) * b_iZeta_left &
+                                                + F_T(eq, iXi, iEta)   * b_iZeta_Right )
                   enddo
                end do                 
             end do                
@@ -379,12 +422,30 @@ module DGIntegrals
          !$acc loop vector collapse(4)
          do iZeta = 0, e%Nxyz(3) ; do iEta = 0, e%Nxyz(2) ; do iXi = 0, e%Nxyz(1)  ; do eq = 1, NEQ           
             
-            b_iXi_left = NodalStorage(e % Nxyz(1)) % b(iXi, LEFT)
-            b_iXi_Right = NodalStorage(e % Nxyz(1)) % b(iXi, RIGHT)
-            b_iEta_left = NodalStorage(e % Nxyz(2)) % b(iEta, LEFT)
-            b_iEta_Right = NodalStorage(e % Nxyz(2)) % b(iEta, RIGHT)
-            b_iZeta_left = NodalStorage(e % Nxyz(3)) % b(iZeta, LEFT)
-            b_iZeta_Right = NodalStorage(e % Nxyz(3)) % b(iZeta, RIGHT)
+            if ( e % Nxyz(1) > 0 ) then
+               b_iXi_left  = NodalStorage(e % Nxyz(1)) % b(iXi, LEFT)
+               b_iXi_Right = NodalStorage(e % Nxyz(1)) % b(iXi, RIGHT)
+            else
+               b_iXi_left  = 0.0_RP
+               b_iXi_Right = 0.0_RP
+            end if
+
+            if ( e % Nxyz(2) > 0 ) then
+               b_iEta_left  = NodalStorage(e % Nxyz(2)) % b(iEta, LEFT)
+               b_iEta_Right = NodalStorage(e % Nxyz(2)) % b(iEta, RIGHT)
+            else
+               b_iEta_left  = 0.0_RP
+               b_iEta_Right = 0.0_RP
+            end if
+
+            if ( e % Nxyz(3) > 0 ) then
+               b_iZeta_left  = NodalStorage(e % Nxyz(3)) % b(iZeta, LEFT)
+               b_iZeta_Right = NodalStorage(e % Nxyz(3)) % b(iZeta, RIGHT)
+            else
+               b_iZeta_left  = 0.0_RP
+               b_iZeta_Right = 0.0_RP
+            end if
+
             inv_jac = e % geom % InvJacobian(iXi,iEta,iZeta)
 
             faceInt_x(eq,iXi,iEta,iZeta) =  faceInt_x(eq,iXi,iEta,iZeta) &
