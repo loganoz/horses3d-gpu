@@ -164,7 +164,7 @@ module SpatialDiscretization
 !
 !           Compute wall distances
 !           ----------------------
-            call mesh % ComputeWallDistances
+            !call mesh % ComputeWallDistances
 
 !
 !           Initialize Cahn--Hilliard discretization

@@ -309,9 +309,9 @@ Module DGSEMClass
 !
 !     Compute wall distances
 !     ----------------------
-#if defined(NAVIERSTOKES)
-      call self % mesh % ComputeWallDistances
-#endif
+!#if defined(NAVIERSTOKES)
+      !call self % mesh % ComputeWallDistances
+!#endif
       IF(.NOT. success) RETURN
 !
 !     construct surfaces mesh
@@ -567,21 +567,21 @@ Module DGSEMClass
 !           Save the initial condition
 !           --------------------------
 !
-            saveGradients = controlVariables % logicalValueForKey(saveGradientsToSolutionKey)
-            saveLES = controlVariables % logicalValueForKey(saveLESToSolutionKey)
-            IF(controlVariables % stringValueForKey(solutionFileNameKey,LINE_LENGTH) /= "none")     THEN           
-               write(solutionName,'(A,A,I10.10,A)') trim(solutionName), "_", initial_iteration, ".hsol"
-               call self % mesh % SaveSolution(initial_iteration, initial_time, solutionName, saveGradients, withSensor, saveLES)
-               !TDG: ADD PARTICLES WRITE WITH IFDEF
-            END IF 
+            !saveGradients = controlVariables % logicalValueForKey(saveGradientsToSolutionKey)
+            !saveLES = controlVariables % logicalValueForKey(saveLESToSolutionKey)
+            !IF(controlVariables % stringValueForKey(solutionFileNameKey,LINE_LENGTH) /= "none")     THEN           
+            !   write(solutionName,'(A,A,I10.10,A)') trim(solutionName), "_", initial_iteration, ".hsol"
+            !   call self % mesh % SaveSolution(initial_iteration, initial_time, solutionName, saveGradients, withSensor, saveLES)
+            !   !TDG: ADD PARTICLES WRITE WITH IFDEF
+            !END IF 
          END IF
 
-         IF(controlVariables % stringValueForKey(solutionFileNameKey,LINE_LENGTH) /= "none")     THEN
-            write(solutionName,'(A,A,I10.10)') trim(solutionName), "_", initial_iteration
-            call self % mesh % Export( trim(solutionName) )
+         !IF(controlVariables % stringValueForKey(solutionFileNameKey,LINE_LENGTH) /= "none")     THEN
+         !   write(solutionName,'(A,A,I10.10)') trim(solutionName), "_", initial_iteration
+         !   call self % mesh % Export( trim(solutionName) )
 
-            call surfacesMesh % saveAllMesh(self % mesh, initial_iteration, controlVariables)
-         END IF 
+         !   call surfacesMesh % saveAllMesh(self % mesh, initial_iteration, controlVariables)
+         !END IF 
 
       end subroutine DGSEM_SetInitialCondition
 !

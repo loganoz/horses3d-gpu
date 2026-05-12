@@ -47,12 +47,12 @@ OBJS_HORSES_BUILD=$(foreach obj,$(OBJS_HORSES),./build/$(obj).o)
 ./build/%.o: ./%.f90
 	@echo
 	@echo $<
-	$(FC) $(FFLAGS) -I./include $(INCLUDE) $(INCLUDE)_mu $(MACROS) $(EXTLIB_MU) -c $< -o $@ $(MOD_FLAG) ./include
+	$(FC) $(FFLAGS) -I./include $(INCLUDE) $(INCLUDE)_mu $(MACROS) $(EXTLIB_INC) -c $< -o $@ $(MOD_FLAG) ./include
 
 ./build/%.o: ./**/%.f90
 	@echo
 	@echo $<
-	$(FC) $(FFLAGS) -I./include $(INCLUDE) $(INCLUDE)_mu $(MACROS) $(EXTLIB_MU) -c $< -o $@ $(MOD_FLAG) ./include
+	$(FC) $(FFLAGS) -I./include $(INCLUDE) $(INCLUDE)_mu $(MACROS) $(EXTLIB_INC) -c $< -o $@ $(MOD_FLAG) ./include
 
 $(PROG): header mkdirs $(OBJS_HORSES_BUILD)
 	@echo

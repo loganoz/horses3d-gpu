@@ -186,16 +186,16 @@
 !     Save the results to the solution file
 !     -------------------------------------
 !
-      IF(controlVariables % stringValueForKey(solutionFileNameKey,LINE_LENGTH) /= "none")     THEN
-         solutionFileName = trim(getFileName(controlVariables % stringValueForKey(solutionFileNameKey,LINE_LENGTH))) // ".hsol"
-         saveGradients    = controlVariables % logicalValueForKey(saveGradientsToSolutionKey)
-         saveSensor       = controlVariables % logicalValueForKey(saveSensorToSolutionKey)
-         saveLES = controlVariables % logicalValueForKey(saveLESToSolutionKey)
-         CALL sem % mesh % SaveSolution(sem % numberOfTimeSteps, timeIntegrator % time, solutionFileName, saveGradients, saveSensor, saveLES)
-         if ( sem % particles % active ) then
-            call sem % particles % ExportToVTK ( sem % numberOfTimeSteps, sem % monitors % solution_file )
-         end if
-      END IF
+      !IF(controlVariables % stringValueForKey(solutionFileNameKey,LINE_LENGTH) /= "none")     THEN
+      !   solutionFileName = trim(getFileName(controlVariables % stringValueForKey(solutionFileNameKey,LINE_LENGTH))) // ".hsol"
+      !   saveGradients    = controlVariables % logicalValueForKey(saveGradientsToSolutionKey)
+      !   saveSensor       = controlVariables % logicalValueForKey(saveSensorToSolutionKey)
+      !   saveLES = controlVariables % logicalValueForKey(saveLESToSolutionKey)
+      !   CALL sem % mesh % SaveSolution(sem % numberOfTimeSteps, timeIntegrator % time, solutionFileName, saveGradients, saveSensor, saveLES)
+      !   if ( sem % particles % active ) then
+      !      call sem % particles % ExportToVTK ( sem % numberOfTimeSteps, sem % monitors % solution_file )
+      !   end if
+      !END IF
       call Stopwatch % WriteSummaryFile(getFileName(controlVariables % stringValueForKey(solutionFileNameKey,LINE_LENGTH)))
 
 !

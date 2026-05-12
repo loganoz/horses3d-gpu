@@ -564,7 +564,8 @@ contains
 !
 !   Create output files
 !   -------------------
-    if (MPI_Process % isRoot) then
+    !if (MPI_Process % isRoot) then
+    if (.false.) then
       do k=1, self%num_turbines
         write(file_id, '(I3.3)') k
 
@@ -1028,7 +1029,8 @@ contains
    end if
 
    ! for last iteration save average values only, all calculations and comunications were done before
-   if (isLast) then
+   !if (isLast) then
+    if (.false.) then
       if ( .not. self % save_average ) return
       if ( .not. MPI_Process % isRoot ) return
       do kk=1, self%num_turbines
@@ -1110,6 +1112,7 @@ contains
 
    ! save in memory the time step forces for each element blade and the whole blades
    call FarmUpdateBladeForces(self)
+   return
 
 !write output torque thrust to file
       do kk=1, self%num_turbines
@@ -1317,7 +1320,8 @@ end subroutine WriteFarmForces
 !        Save average variables
 !        ----------------------
 !
-    if (self % save_average) then
+    !if (self % save_average) then
+    if (.false.) then
       do kk = 1, self%num_turbines
          self % turbine_t(kk) % average_conditions = self % turbine_t(kk) % average_conditions * real(self % number_iterations,RP)
 
