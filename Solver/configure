@@ -56,12 +56,12 @@ TEST_CASES="./Euler/BoxAroundCircle \
             ./NavierStokes/CylinderWALE \
             ./NavierStokes/CylinderVreman \
             ./NavierStokes/CylinderChandrasekarRoe \
-            ./NavierStokes/CylinderEntropyConservingCentral
-            ./NavierStokes/CylinderStandardCentral
-            ./NavierStokes/CylinderKennedyGruberLaxFriedrichs
-            ./NavierStokes/CylinderMorinishiLowDissipationRoe
-            ./NavierStokes/CylinderDucrosMatrixDissipation
-            ./NavierStokes/CylinderPirozzoliRoe
+            ./NavierStokes/CylinderEntropyConservingCentral \
+            ./NavierStokes/CylinderStandardCentral \
+            ./NavierStokes/CylinderKennedyGruberLaxFriedrichs \
+            ./NavierStokes/CylinderMorinishiLowDissipationRoe \
+            ./NavierStokes/CylinderDucrosMatrixDissipation \
+            ./NavierStokes/CylinderPirozzoliRoe \
             ./NavierStokes/IBM_Cylinder \
             ./NavierStokes/DualTimeStepping \
             ./NavierStokes/EntropyConservingTest \
