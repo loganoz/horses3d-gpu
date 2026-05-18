@@ -270,10 +270,10 @@ module StatsAveragingModule
          !-------------------------------------------------------------
 
          if (hasGradients) then
-             no_of_stats_variables = NO_OF_VARIABLES_Sij + NCONS + NCONS*NDIM
+             no_of_stats_variables = NO_OF_VARIABLES_Sij + NCONS + NGRAD*NDIM
          else
-             no_of_stats_variables = NO_OF_VARIABLES_Sij
-         end if 
+             no_of_stats_variables = NO_OF_VARIABLES_Sij + NCONS
+         end if
 !
 !        Create new file
 !        ---------------
