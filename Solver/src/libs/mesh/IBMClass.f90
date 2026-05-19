@@ -1093,6 +1093,16 @@ module IBMClass
 !$omp end do
 !$omp end parallel
 
+      !$acc wait
+      !Update CPU variables
+      !$acc update self(this % BandRegion(STLNum)% Q )
+      if( gradients ) then
+         !$acc update self(this % BandRegion(STLNum)% U_x )
+         !$acc update self(this % BandRegion(STLNum)% U_y )
+         !$acc update self(this % BandRegion(STLNum)% U_z )
+      end if
+      !$acc wait
+
 #ifdef _HAS_MPI_
       if( MPI_Process% doMPIAction ) then     
          NumOfObjs = this% BandRegion(STLNum)% NumOfObjs

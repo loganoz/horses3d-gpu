@@ -805,37 +805,37 @@ jobs:
 # ------------------------------------------------
 
   # GPU
-      # - name: Build ForwardFacingStep_SSPRK33
-      #   working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK33/SETUP
-      #   run: |
-      #     # source /opt/intel/oneapi/setvars.sh || true
-      #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
-      #   if: '!cancelled()'
+      - name: Build ForwardFacingStep_SSPRK33
+        working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK33/SETUP
+        run: |
+          # source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
+        if: '!cancelled()'
 
-      # - name: Run ForwardFacingStep_SSPRK33
-      #   working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK33
-      #   run: |
-      #     # source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec --oversubscribe -n 8 ./horses3d.ns FFS_SSPRK33.control
-      #   if: '!cancelled()'
+      - name: Run ForwardFacingStep_SSPRK33
+        working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK33
+        run: |
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns FFS_SSPRK33.control
+        if: '!cancelled()'
 
 #
 # 24) Forward facing step with SSPRK43
 # ------------------------------------
   # GPU
-      # - name: Build ForwardFacingStep_SSPRK43
-      #   working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK43/SETUP
-      #   run: |
-      #     # source /opt/intel/oneapi/setvars.sh || true
-      #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
-      #   if: '!cancelled()'
+      - name: Build ForwardFacingStep_SSPRK43
+        working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK43/SETUP
+        run: |
+          # source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
+        if: '!cancelled()'
 
-      # - name: Run ForwardFacingStep_SSPRK43
-      #   working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK43
-      #   run: |
-      #     # source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec --oversubscribe -n 8 ./horses3d.ns FFS_SSPRK43.control
-      #   if: '!cancelled()'
+      - name: Run ForwardFacingStep_SSPRK43
+        working-directory: ./Solver/test/NavierStokes/ForwardFacingStep_SSPRK43
+        run: |
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns FFS_SSPRK43.control
+        if: '!cancelled()'
 
 #
 # 25) Taylor-Green vortex with SVV-LES
@@ -1114,9 +1114,30 @@ jobs:
           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
         if: '!cancelled()'
 
-      - name: Run Channel
+      - name: Run Channel - Serial
+        working-directory: ./Solver/test/NavierStokes/Channel
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec -n 1 ./horses3d.ns Channel.control
+        if: '!cancelled()'  
+
+      - name: Run Channel - Parallel 8
         working-directory: ./Solver/test/NavierStokes/Channel
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
           mpiexec --oversubscribe -n 8 ./horses3d.ns Channel.control
         if: '!cancelled()'  
+
+      - name: Build Channel 64
+        working-directory: ./Solver/test/NavierStokes/Channel64/SETUP
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+        if: '!cancelled()'
+
+      - name: Run Channel - Parallel 64
+        working-directory: ./Solver/test/NavierStokes/Channel64
+        run: |
+          source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 64 ./horses3d.ns Channel.control
+        if: '!cancelled()'
