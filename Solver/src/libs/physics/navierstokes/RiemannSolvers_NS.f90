@@ -750,6 +750,7 @@ module RiemannSolvers_NS
          real(kind=RP)  :: a_bar, h_bar
          real(kind=RP)  :: R1(5,5), T(5), Lambda(5)
          real(kind=RP)  :: stab(5)
+         real(kind=RP)  :: flux_rot(5)
          real(kind=RP)  :: rhoLogMean, betaLogMean, pMean, uMean, vMean, wMean, V2abs
          real(kind=RP)  :: uL, vL, wL, uR, vR, wR, vtotL, vtotR, pL, pR
          real(kind=RP)  :: invRhoL, invRhoR
@@ -759,7 +760,7 @@ module RiemannSolvers_NS
 !        Perform the rotation
 !        ********************
 !
-         !$acc loop vector collapse(2) private(QLRot, QRRot, EVL, EVR, dQ, R1, T, Lambda, stab)
+         !$acc loop vector collapse(2) private(QLRot, QRRot, EVL, EVR, dQ, R1, T, Lambda, stab, flux_rot)
          do j = 0, Ny
          do i = 0, Nx  
          
@@ -837,7 +838,7 @@ module RiemannSolvers_NS
 !
 !        Perform the average using the averaging function
 !        ------------------------------------------------
-         call AveragedState_Selector(QLRot, QRRot, pL, pR, invRhoL, invRhoR, flux(:,i,j))
+         call AveragedState_Selector(QLRot, QRRot, pL, pR, invRhoL, invRhoR, flux_rot)
 !
 !        Compute the Roe stabilization
 !        -----------------------------
@@ -862,13 +863,18 @@ module RiemannSolvers_NS
 !
 !        Compute the flux: apply the lambda stabilization here.
 !        ----------------
-         flux(:,i,j) = flux(:,i,j) - lambdaStab * stab
+         flux_rot = flux_rot - lambdaStab * stab
 !
 !        ************************************************
 !        Return momentum equations to the cartesian frame
 !        ************************************************
 !
-         flux(2:4,i,j) = nHat(:,i,j)*flux(2,i,j) + t1(:,i,j)*flux(3,i,j) + t2(:,i,j)*flux(4,i,j)
+         flux(1,i,j) = flux_rot(1)
+         flux(5,i,j) = flux_rot(5)
+
+         flux(2,i,j) = nHat(1,i,j)*flux_rot(2) + t1(1,i,j)*flux_rot(3) + t2(1,i,j)*flux_rot(4)
+         flux(3,i,j) = nHat(2,i,j)*flux_rot(2) + t1(2,i,j)*flux_rot(3) + t2(2,i,j)*flux_rot(4)
+         flux(4,i,j) = nHat(3,i,j)*flux_rot(2) + t1(3,i,j)*flux_rot(3) + t2(3,i,j)*flux_rot(4)
 
          enddo
          enddo

@@ -589,7 +589,7 @@ MODULE ExplicitMethods
       real(RP), parameter :: c(4) = [0.5_RP, 0.5_RP, 1.0_RP/6.0_RP, 0.5_RP]
       real(RP), parameter :: d(4) = [0.0_RP, 0.5_RP, 1.0_RP,        0.5_RP]
       real(RP) :: tk
-      integer  :: i, j, k, id
+      integer  :: i, j, k, l, m, id
 
 
       if (present(dt_vec)) then
@@ -633,43 +633,65 @@ MODULE ExplicitMethods
 
       else
 
-!$omp parallel do
+         !$acc data copyin(deltaT)
+!
+!        Save initial solution
+!        ---------------------
+!!$omp parallel do
+         !$acc parallel loop gang present(mesh)
          do id = 1, size(mesh % elements)
+            !$acc loop vector collapse(3)
+            do k = 0, mesh % elements(id) % Nxyz(3) ; do j = 0, mesh % elements(id) % Nxyz(2) ; do i = 0, mesh % elements(id) % Nxyz(1)
+               !$acc loop seq
+               do m = 1, NCONS
 #if defined(FLOW)
-            mesh % elements(id) % storage % G_NS = mesh % elements(id) % storage % Q
+                  mesh % elements(id) % storage % G_NS(m,i,j,k) = mesh % elements(id) % storage % Q(m,i,j,k)
 #elif defined(CAHNHILLIARD)
-            mesh % elements(id) % storage % G_CH = mesh % elements(id) % storage % c
+                  mesh % elements(id) % storage % G_CH(m,i,j,k) = mesh % elements(id) % storage % c(m,i,j,k)
 #endif
+               end do
+            end do                ; end do                ; end do
          end do
-!$omp end parallel do
+         !$acc end parallel loop
+!!$omp end parallel do
 
-         do k = 1, 4
-            tk = t + d(k) * deltaT
+         do l = 1, 4
+            tk = t + d(l) * deltaT
             call ComputeTimeDerivative( mesh, particles, tk, CTD_IGNORE_MODE)
             if ( present(dts) ) then
                if (dts) call ComputePseudoTimeDerivative(mesh, tk, global_dt)
             end if
 
-!$omp parallel do
+!!$omp parallel do
+            !$acc parallel loop gang present(mesh, deltaT)
             do id = 1, size( mesh % elements )
+               !$acc loop vector collapse(3)
+               do k = 0, mesh % elements(id) % Nxyz(3) ; do j = 0, mesh % elements(id) % Nxyz(2) ; do i = 0, mesh % elements(id) % Nxyz(1)
+                  !$acc loop seq
+                  do m = 1, NCONS
 #if defined(FLOW)
-               mesh % elements(id) % storage % Q = a(k) * mesh % elements(id) % storage % G_NS &
-                                                 + b(k) * mesh % elements(id) % storage % Q    &
-                                                 + c(k) * deltaT * mesh % elements(id) % storage % Qdot
+                     mesh % elements(id) % storage % Q(m,i,j,k) = a(l) * mesh % elements(id) % storage % G_NS(m,i,j,k) &
+                                                                 + b(l) * mesh % elements(id) % storage % Q(m,i,j,k)    &
+                                                                 + c(l) * deltaT * mesh % elements(id) % storage % Qdot(m,i,j,k)
 #elif defined(CAHNHILLIARD)
-               mesh % elements(id) % storage % c = a(k) * mesh % elements(id) % storage % G_CH &
-                                                 + b(k) * mesh % elements(id) % storage % c    &
-                                                 + c(k) * deltaT * mesh % elements(id) % storage % cDot
+                     mesh % elements(id) % storage % c(m,i,j,k) = a(l) * mesh % elements(id) % storage % G_CH(m,i,j,k) &
+                                                                 + b(l) * mesh % elements(id) % storage % c(m,i,j,k)    &
+                                                                 + c(l) * deltaT * mesh % elements(id) % storage % cDot(m,i,j,k)
 #endif
+                  end do
+               end do                ; end do                ; end do
 
             end do ! id
-!$omp end parallel do
+            !$acc end parallel loop
+!!$omp end parallel do
 
             if (LIMITED) then
                call stage_limiter(mesh)
             end if
 
-         end do ! k
+         end do ! l
+
+         !$acc end data
 
       end if
 !
