@@ -14,6 +14,7 @@ module PartitionedMeshClass
 
    type PartitionedMesh_t
       logical              :: Constructed
+      logical              :: read_from_file = .false.
       integer              :: ID
       integer              :: no_of_nodes
       integer              :: no_of_elements
@@ -39,7 +40,7 @@ module PartitionedMeshClass
    type(PartitionedMesh_t), public :: mpi_partition
    type(PartitionedMesh_t), allocatable, public :: mpi_allPartitions(:)
    
-   integer, protected, public :: MPI_Partitioning
+   integer, public :: MPI_Partitioning
    integer, parameter, public :: METIS_PARTITIONING = 1
    integer, parameter, public :: SFC_PARTITIONING   = 2
 
