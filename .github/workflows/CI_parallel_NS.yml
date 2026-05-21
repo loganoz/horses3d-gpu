@@ -654,19 +654,19 @@ jobs:
 # 14) CYLINDER DIFFERENT ORDERS
 # ----------------------------
 #GPU
-      # - name: Build NSCylinderDifferentOrders
-      #   working-directory: ./Solver/test/NavierStokes/CylinderDifferentOrders/SETUP
-      #   run: |
-      #     # source /opt/intel/oneapi/setvars.sh || true
-      #     make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
-      #   if: '!cancelled()'
+      - name: Build NSCylinderDifferentOrders
+        working-directory: ./Solver/test/NavierStokes/CylinderDifferentOrders/SETUP
+        run: |
+          # source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
+        if: '!cancelled()'
 
-      # - name: Run NSCylinderDifferentOrders
-      #   working-directory: ./Solver/test/NavierStokes/CylinderDifferentOrders
-      #   run: |
-      #     # source /opt/intel/oneapi/setvars.sh || true
-      #     mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderDifferentOrders.control
-      #   if: '!cancelled()'
+      - name: Run NSCylinderDifferentOrders
+        working-directory: ./Solver/test/NavierStokes/CylinderDifferentOrders
+        run: |
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderDifferentOrders.control
+        if: '!cancelled()'
 
 #
 # 15) ENTROPY CONSERVING TEST
