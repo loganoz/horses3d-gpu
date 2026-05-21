@@ -290,6 +290,11 @@
          if ( .not. associated(obj) ) then
             call controlVariables % addValueForKey("Ducros",splitFormKey)
          end if
+
+         obj => controlVariables % objectForKey(readPartitioningKey)
+         if ( .not. associated(obj) ) then
+            call controlVariables % addValueForKey(".false.",readPartitioningKey)
+         end if
 !
 !        Check for inconsistencies in the input variables
 !        ------------------------------------------------
