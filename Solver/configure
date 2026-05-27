@@ -62,6 +62,8 @@ TEST_CASES="./Euler/BoxAroundCircle \
             ./NavierStokes/CylinderMorinishiLowDissipationRoe \
             ./NavierStokes/CylinderDucrosMatrixDissipation \
             ./NavierStokes/CylinderPirozzoliRoe \
+            ./NavierStokes/Cylinderssprk33 \
+            ./NavierStokes/Cylinderssprk43 \
             ./NavierStokes/IBM_Cylinder \
             ./NavierStokes/DualTimeStepping \
             ./NavierStokes/EntropyConservingTest \
