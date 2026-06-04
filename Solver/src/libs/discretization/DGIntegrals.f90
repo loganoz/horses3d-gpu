@@ -412,29 +412,12 @@ module DGIntegrals
          !$acc loop vector collapse(4)
          do iZeta = 0, e%Nxyz(3) ; do iEta = 0, e%Nxyz(2) ; do iXi = 0, e%Nxyz(1)  ; do eq = 1, NEQ           
             
-            if ( e % Nxyz(1) > 0 ) then
-               b_iXi_left  = NodalStorage(e % Nxyz(1)) % b(iXi, LEFT)
-               b_iXi_Right = NodalStorage(e % Nxyz(1)) % b(iXi, RIGHT)
-            else
-               b_iXi_left  = 0.0_RP
-               b_iXi_Right = 0.0_RP
-            end if
-
-            if ( e % Nxyz(2) > 0 ) then
-               b_iEta_left  = NodalStorage(e % Nxyz(2)) % b(iEta, LEFT)
-               b_iEta_Right = NodalStorage(e % Nxyz(2)) % b(iEta, RIGHT)
-            else
-               b_iEta_left  = 0.0_RP
-               b_iEta_Right = 0.0_RP
-            end if
-
-            if ( e % Nxyz(3) > 0 ) then
-               b_iZeta_left  = NodalStorage(e % Nxyz(3)) % b(iZeta, LEFT)
-               b_iZeta_Right = NodalStorage(e % Nxyz(3)) % b(iZeta, RIGHT)
-            else
-               b_iZeta_left  = 0.0_RP
-               b_iZeta_Right = 0.0_RP
-            end if
+            b_iXi_left = NodalStorage(e % Nxyz(1)) % b(iXi, LEFT)
+            b_iXi_Right = NodalStorage(e % Nxyz(1)) % b(iXi, RIGHT)
+            b_iEta_left = NodalStorage(e % Nxyz(2)) % b(iEta, LEFT)
+            b_iEta_Right = NodalStorage(e % Nxyz(2)) % b(iEta, RIGHT)
+            b_iZeta_left = NodalStorage(e % Nxyz(3)) % b(iZeta, LEFT)
+            b_iZeta_Right = NodalStorage(e % Nxyz(3)) % b(iZeta, RIGHT)
 
             inv_jac = e % geom % InvJacobian(iXi,iEta,iZeta)
 
