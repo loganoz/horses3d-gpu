@@ -79,26 +79,20 @@ module DGIntegrals
             ! volInt(eq,i,j,k) = 0.0_RP
             ! Keep one l-loop per direction.
             ! 0:Nxyz(1) loop failed CUDA_ERROR_ILLEGAL_ADDRESS 
-            if ( Nxyz(1) > 0 ) then
-               !$acc loop seq
-               do l = 0, Nxyz(1)
-                  volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(1)) % hatD(i,l) * F(eq,l,j,k,IX)
-               end do
-            end if
+            !$acc loop seq
+            do l = 0, Nxyz(1)
+               volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(1)) % hatD(i,l) * F(eq,l,j,k,IX)
+            end do
 
-            if ( Nxyz(2) > 0 ) then
-               !$acc loop seq
-               do l = 0, Nxyz(2)
-                  volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(2)) % hatD(j,l) * F(eq,i,l,k,IY)
-               end do
-            end if
+            !$acc loop seq
+            do l = 0, Nxyz(2)
+               volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(2)) % hatD(j,l) * F(eq,i,l,k,IY)
+            end do
 
-            if ( Nxyz(3) > 0 ) then
-               !$acc loop seq
-               do l = 0, Nxyz(3)
-                  volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(3)) % hatD(k,l) * F(eq,i,j,l,IZ)
-               end do
-            end if
+            !$acc loop seq
+            do l = 0, Nxyz(3)
+               volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(3)) % hatD(k,l) * F(eq,i,j,l,IZ)
+            end do
          end do ; end do ; end do ; end do
 
       end subroutine ScalarWeakIntegrals_StdVolumeGreen
