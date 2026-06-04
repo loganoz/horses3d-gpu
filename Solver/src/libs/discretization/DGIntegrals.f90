@@ -248,10 +248,6 @@ module DGIntegrals
 !        ---------------
 !
          integer            :: iXi, iEta, iZeta,eq
-         real(kind=RP)      :: b_iXi_left,   b_iXi_Right
-         real(kind=RP)      :: b_iEta_left,  b_iEta_Right
-         real(kind=RP)      :: b_iZeta_left, b_iZeta_Right
-  
          !$acc loop vector collapse(4)
          do iZeta = 0, Nxyz(3) 
             do iEta = 0, Nxyz(2) 
