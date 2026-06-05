@@ -253,37 +253,13 @@ module DGIntegrals
             do iEta = 0, Nxyz(2) 
                do iXi = 0, Nxyz(1)
                   do eq = 1, NEQ
-                     if ( Nxyz(1) > 0 ) then
-                        b_iXi_left  = NodalStorage(Nxyz(1)) % b(iXi, LEFT)
-                        b_iXi_Right = NodalStorage(Nxyz(1)) % b(iXi, RIGHT)
-                     else
-                        b_iXi_left  = 0.0_RP
-                        b_iXi_Right = 0.0_RP
-                     end if
-
-                     if ( Nxyz(2) > 0 ) then
-                        b_iEta_left  = NodalStorage(Nxyz(2)) % b(iEta, LEFT)
-                        b_iEta_Right = NodalStorage(Nxyz(2)) % b(iEta, RIGHT)
-                     else
-                        b_iEta_left  = 0.0_RP
-                        b_iEta_Right = 0.0_RP
-                     end if
-
-                     if ( Nxyz(3) > 0 ) then
-                        b_iZeta_left  = NodalStorage(Nxyz(3)) % b(iZeta, LEFT)
-                        b_iZeta_Right = NodalStorage(Nxyz(3)) % b(iZeta, RIGHT)
-                     else
-                        b_iZeta_left  = 0.0_RP
-                        b_iZeta_Right = 0.0_RP
-                     end if
-
                      intFace(eq,iXi,iEta,iZeta) = intFace(eq,iXi,iEta,iZeta) + sign * ( &
-                                                + F_L(eq, iEta, iZeta) * b_iXi_left   &
-                                                + F_R(eq, iEta, iZeta) * b_iXi_Right  &
-                                                + F_FR(eq, iXi, iZeta) * b_iEta_left  &
-                                                + F_BK(eq, iXi, iZeta) * b_iEta_Right &
-                                                + F_BOT(eq, iXi, iEta) * b_iZeta_left &
-                                                + F_T(eq, iXi, iEta)   * b_iZeta_Right )
+                                                + F_L(eq, iEta, iZeta) * NodalStorage(Nxyz(1)) % b(iXi, LEFT)    &
+                                                + F_R(eq, iEta, iZeta) * NodalStorage(Nxyz(1)) % b(iXi, RIGHT)   &
+                                                + F_FR(eq, iXi, iZeta) * NodalStorage(Nxyz(2)) % b(iEta, LEFT)   &
+                                                + F_BK(eq, iXi, iZeta) * NodalStorage(Nxyz(2)) % b(iEta, RIGHT)  &
+                                                + F_BOT(eq, iXi, iEta) * NodalStorage(Nxyz(3)) % b(iZeta, LEFT)  &
+                                                + F_T(eq, iXi, iEta)   * NodalStorage(Nxyz(3)) % b(iZeta, RIGHT) )
                   enddo
                end do                 
             end do                
