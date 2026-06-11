@@ -179,17 +179,15 @@ jobs:
           
          # Initialize as empty for RELEASE mode
          EXTRA_FORTRAN_FLAGS=""
-         EXTRA_LINK_FLAGS=""
           
          # Assign safely without nested single-quote traps
          if [ "${{ matrix.mode }}" = "DEBUG" ]; then
            EXTRA_FORTRAN_FLAGS="-fprofile-arcs -ftest-coverage"
-           EXTRA_LINK_FLAGS="-fprofile-arcs -ftest-coverage"
          fi
           
          # Pass them explicitly wrapped in double quotes
          make allclean MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="$EXTRA_FORTRAN_FLAGS" EXTRA_LDFLAGS="$EXTRA_LINK_FLAGS"
-         make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="$EXTRA_FORTRAN_FLAGS" EXTRA_LDFLAGS="$EXTRA_LINK_FLAGS"
+         make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="$EXTRA_FORTRAN_FLAGS"
           
          cp -r $HDF5_ROOT/lib/\* lib/
          ldd ./bin/horses3d.ns
