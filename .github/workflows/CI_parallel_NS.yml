@@ -27,7 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         compiler: ['gfortran']
-        mode: ['RELEASE']
+        mode: ['RELEASE', 'DEBUG']
         comm: ['PARALLEL']
         enable_threads: ['NO']
         mkl: ['NO']
@@ -171,10 +171,17 @@ jobs:
         working-directory: ./Solver
         run: |
          export OMPI_FCFLAGS="-DOMPI_SKIP_MPIF08" # deactivate mpi_f08 interface to avoid compilation problems
-         # source /opt/intel/oneapi/setvars.sh || true
-         make allclean MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
-         make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
-         cp -r $HDF5_ROOT/lib/* lib/ # Copy hdf5 libraty files to local lib
+
+         # 1. Dynamically set coverage flags if running a DEBUG matrix job
+           COV_FLAGS=""
+         if [ "${{ matrix.mode }}" = "DEBUG" ]; then
+           COV_FLAGS="EXTRA_FFLAGS='-fprofile-arcs -ftest-coverage' EXTRA_LDFLAGS='-fprofile-arcs -ftest-coverage'"
+         fi
+
+         # 2. Pass $COV_FLAGS to your make instructions
+         make allclean MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} $COV_FLAGS
+         make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} $COV_FLAGS
+         cp -r $HDF5_ROOT/lib/\* lib/ # Copy hdf5 library files to local lib
          ldd ./bin/horses3d.ns
 
 
@@ -1256,3 +1263,22 @@ jobs:
           # source /opt/intel/oneapi/setvars.sh || true
           mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderPirozzoliRoe.control
         if: '!cancelled()'
+
+      - name: Install gcovr
+        if: matrix.mode == 'DEBUG' && !cancelled()
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcovr
+
+      - name: Generate Coverage Report
+        if: matrix.mode == 'DEBUG' && !cancelled()
+        run: |
+          # gcovr scans recursively from the root to find all generated .gcda and .gcno files
+          gcovr --root . --print-summary --xml coverage.xml
+
+      - name: Upload Coverage to Codecov
+        if: matrix.mode == 'DEBUG' && !cancelled()
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: false
