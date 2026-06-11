@@ -22,6 +22,11 @@ jobs:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
+    # Permissions for codecov
+    permissions:
+      id-token: write
+      contents: read
+
     # Define strategy matrix
     strategy:
       fail-fast: false
@@ -170,18 +175,23 @@ jobs:
       - name: Compile horses3d
         working-directory: ./Solver
         run: |
-         export OMPI_FCFLAGS="-DOMPI_SKIP_MPIF08" # deactivate mpi_f08 interface to avoid compilation problems
-
-         # 1. Dynamically set coverage flags if running a DEBUG matrix job
-           COV_FLAGS=""
+         export OMPI_FCFLAGS="-DOMPI_SKIP_MPIF08"
+          
+         # Initialize as empty for RELEASE mode
+         EXTRA_FORTRAN_FLAGS=""
+         EXTRA_LINK_FLAGS=""
+          
+         # Assign safely without nested single-quote traps
          if [ "${{ matrix.mode }}" = "DEBUG" ]; then
-           COV_FLAGS="EXTRA_FFLAGS='-fprofile-arcs -ftest-coverage' EXTRA_LDFLAGS='-fprofile-arcs -ftest-coverage'"
+           EXTRA_FORTRAN_FLAGS="-fprofile-arcs -ftest-coverage"
+           EXTRA_LINK_FLAGS="-fprofile-arcs -ftest-coverage"
          fi
-
-         # 2. Pass $COV_FLAGS to your make instructions
-         make allclean MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} $COV_FLAGS
-         make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} $COV_FLAGS
-         cp -r $HDF5_ROOT/lib/\* lib/ # Copy hdf5 library files to local lib
+          
+         # Pass them explicitly wrapped in double quotes
+         make allclean MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="$EXTRA_FORTRAN_FLAGS" EXTRA_LDFLAGS="$EXTRA_LINK_FLAGS"
+         make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="$EXTRA_FORTRAN_FLAGS" EXTRA_LDFLAGS="$EXTRA_LINK_FLAGS"
+          
+         cp -r $HDF5_ROOT/lib/\* lib/
          ldd ./bin/horses3d.ns
 
 
@@ -1264,6 +1274,10 @@ jobs:
           mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderPirozzoliRoe.control
         if: '!cancelled()'
 
+#
+# CHECK CODE COVERAGE
+# -------------------------
+
       - name: Install gcovr
         if: matrix.mode == 'DEBUG' && !cancelled()
         run: |
@@ -1278,7 +1292,7 @@ jobs:
 
       - name: Upload Coverage to Codecov
         if: matrix.mode == 'DEBUG' && !cancelled()
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
-          file: ./coverage.xml
-          fail_ci_if_error: false
+          files: ./coverage.xml
+          use_oidc: true
