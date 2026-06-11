@@ -177,19 +177,19 @@ jobs:
         run: |
          export OMPI_FCFLAGS="-DOMPI_SKIP_MPIF08"
           
-         # Initialize as empty for RELEASE mode
+         # Initialize additional compile flags
          EXTRA_FORTRAN_FLAGS=""
           
-         # Assign safely without nested single-quote traps
+         # Assign flags for code coverage
          if [ "${{ matrix.mode }}" = "DEBUG" ]; then
            EXTRA_FORTRAN_FLAGS="-fprofile-arcs -ftest-coverage"
          fi
           
-         # Pass them explicitly wrapped in double quotes
+         # Compile the code
          make allclean MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="$EXTRA_FORTRAN_FLAGS" EXTRA_LDFLAGS="$EXTRA_LINK_FLAGS"
          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="$EXTRA_FORTRAN_FLAGS"
           
-         cp -r $HDF5_ROOT/lib/\* lib/
+         cp -r $HDF5_ROOT/lib/* lib/ # Copy hdf5 libraty files to local lib
          ldd ./bin/horses3d.ns
 
 
