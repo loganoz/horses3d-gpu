@@ -22,12 +22,17 @@ jobs:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
+    # Permissions for codecov
+    permissions:
+      id-token: write
+      contents: read
+
     # Define strategy matrix
     strategy:
       fail-fast: false
       matrix:
         compiler: ['gfortran']
-        mode: ['RELEASE']
+        mode: ['RELEASE', 'DEBUG']
         comm: ['PARALLEL']
         enable_threads: ['NO']
 
@@ -41,6 +46,14 @@ jobs:
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v3
+
+      - name: Set Coverage Flags
+        run: |
+          if [ "${{ matrix.mode }}" = "DEBUG" ]; then
+            echo "EXTRA_COV=-Og -fprofile-arcs -ftest-coverage" >> $GITHUB_ENV
+          else
+            echo "EXTRA_COV=" >> $GITHUB_ENV
+          fi
 
       # IF COMPILER = GFORTRAN -> INSTALL OPEN-MPI #
       - name: install openmpi
@@ -133,8 +146,8 @@ jobs:
         working-directory: ./Solver
         run: |
          source /opt/intel/oneapi/setvars.sh || true
-         make allclean MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
-         make ins MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
+         make allclean MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
+         make ins MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
 
 
 # ########################################################################
@@ -148,10 +161,33 @@ jobs:
         working-directory: ./Solver/test/IncompressibleNS/NACA0012/SETUP
         run: |
           source /opt/intel/oneapi/setvars.sh || true
-          make ins MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=Yes
+          make ins MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=Yes EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
 
       - name: Run iNS-NACA0012
         working-directory: ./Solver/test/IncompressibleNS/NACA0012
         run: |
           source /opt/intel/oneapi/setvars.sh || true
           mpiexec -n 64 ./horses3d.ins NACA0012.control
+
+#
+# CHECK CODE COVERAGE
+# -------------------------
+
+      - name: Install gcovr
+        if: matrix.mode == 'DEBUG' && !cancelled()
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcovr
+
+      - name: Generate Coverage Report
+        if: matrix.mode == 'DEBUG' && !cancelled()
+        run: |
+          # gcovr scans recursively from the root to find all generated .gcda and .gcno files
+          gcovr --root . --print-summary --xml coverage.xml
+
+      - name: Upload Coverage to Codecov
+        if: matrix.mode == 'DEBUG' && !cancelled()
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          use_oidc: true
