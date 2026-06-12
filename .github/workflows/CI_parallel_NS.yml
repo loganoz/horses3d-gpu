@@ -51,7 +51,7 @@ jobs:
       - name: Set Coverage Flags
         run: |
           if [ "${{ matrix.mode }}" = "DEBUG" ]; then
-            echo "EXTRA_COV=-fprofile-arcs -ftest-coverage" >> $GITHUB_ENV
+            echo "EXTRA_COV=-Og -fprofile-arcs -ftest-coverage" >> $GITHUB_ENV
           else
             echo "EXTRA_COV=" >> $GITHUB_ENV
           fi
@@ -185,17 +185,9 @@ jobs:
         run: |
          export OMPI_FCFLAGS="-DOMPI_SKIP_MPIF08"
           
-         # Initialize additional compile flags
-         EXTRA_FORTRAN_FLAGS=""
-          
-         # Assign compile flags for code coverage
-         if [ "${{ matrix.mode }}" = "DEBUG" ]; then
-           EXTRA_FORTRAN_FLAGS="-fprofile-arcs -ftest-coverage"
-         fi
-          
          # Compile the code
-         make allclean MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="$EXTRA_FORTRAN_FLAGS" EXTRA_LDFLAGS="$EXTRA_LINK_FLAGS"
-         make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="$EXTRA_FORTRAN_FLAGS"
+         make allclean MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}" EXTRA_LDFLAGS="$EXTRA_LINK_FLAGS"
+         make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
           
          cp -r $HDF5_ROOT/lib/* lib/ # Copy hdf5 libraty files to local lib
          ldd ./bin/horses3d.ns
