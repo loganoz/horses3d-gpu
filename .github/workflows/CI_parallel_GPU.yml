@@ -27,6 +27,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Fix ownership so the SLURM job user can read all checked-out files.
+      # Root (or the runner service account) owns files after checkout; a.ballout
+      # needs read access to mesh files, binaries, and control files at runtime.
+      - name: Fix workspace ownership
+        run: sudo chown -R a.ballout:a.ballout $GITHUB_WORKSPACE
+
       # Install METIS library (required for parallel partitioning)
       - name: Install METIS
         run: |
@@ -111,6 +117,10 @@ jobs:
           make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
         if: '!cancelled()'
 
+      - name: Fix test directory ownership
+        run: sudo chown -R a.ballout:a.ballout $GITHUB_WORKSPACE
+        if: '!cancelled()'
+        
       - name: Run NSCylinder
         working-directory: ./Solver/test/NavierStokes/Cylinder
         run: |
@@ -147,7 +157,7 @@ jobs:
           mpirun -np 2 --bind-to none ./horses3d.ns Cylinder.control
           EOF
           
-          job_id=$(sbatch --parsable run_test.sh)
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
           
           cat slurm-${job_id}.out
@@ -217,7 +227,7 @@ jobs:
           mpirun -np 2 --bind-to none ./horses3d.ns CylinderSmagorinsky.control
           EOF
           
-          job_id=$(sbatch --parsable run_test.sh)
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
           
           cat slurm-${job_id}.out
@@ -287,7 +297,7 @@ jobs:
           mpirun -np 2 --bind-to none ./horses3d.ns CylinderWALE.control
           EOF
 
-          job_id=$(sbatch --parsable run_test.sh)
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
 
           cat slurm-${job_id}.out
@@ -356,7 +366,7 @@ jobs:
           mpirun -np 2 --bind-to none ./horses3d.ns CylinderVreman.control
           EOF
 
-          job_id=$(sbatch --parsable run_test.sh)
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
 
           cat slurm-${job_id}.out
@@ -425,7 +435,7 @@ jobs:
           mpirun -np 2 --bind-to none ./horses3d.ns CylinderChandrasekarRoe.control
           EOF
 
-          job_id=$(sbatch --parsable run_test.sh)
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
 
           cat slurm-${job_id}.out
@@ -494,7 +504,7 @@ jobs:
           mpirun -np 2 --bind-to none ./horses3d.ns TaylorGreen.control
           EOF
           
-          job_id=$(sbatch --parsable run_test.sh)
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
           
           cat slurm-${job_id}.out
@@ -564,7 +574,7 @@ jobs:
           mpirun -np 2 --bind-to none ./horses3d.ns DualTimeStepping.control
           EOF
 
-          job_id=$(sbatch --parsable run_test.sh)
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
 
           cat slurm-${job_id}.out
@@ -771,7 +781,7 @@ jobs:
           mpirun -np 2 --bind-to none ./horses3d.ns IBMCylinder.control
           EOF
 
-          job_id=$(sbatch --parsable run_test.sh)
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
 
           cat slurm-${job_id}.out
@@ -835,7 +845,7 @@ jobs:
           export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
           mpirun -np 2 --bind-to none ./horses3d.ns CylinderEntropyConservingCentral.control
           EOF
-          job_id=$(sbatch --parsable run_test.sh)
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
           cat slurm-${job_id}.out
           exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
@@ -896,7 +906,7 @@ jobs:
           export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
           mpirun -np 2 --bind-to none ./horses3d.ns CylinderStandardCentral.control
           EOF
-          job_id=$(sbatch --parsable run_test.sh)
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
           cat slurm-${job_id}.out
           exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
@@ -957,7 +967,7 @@ jobs:
           export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
           mpirun -np 2 --bind-to none ./horses3d.ns CylinderKennedyGruberLaxFriedrichs.control
           EOF
-          job_id=$(sbatch --parsable run_test.sh)
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
           cat slurm-${job_id}.out
           exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
@@ -1018,7 +1028,7 @@ jobs:
           export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
           mpirun -np 2 --bind-to none ./horses3d.ns CylinderMorinishiLowDissipationRoe.control
           EOF
-          job_id=$(sbatch --parsable run_test.sh)
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
           cat slurm-${job_id}.out
           exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
@@ -1079,7 +1089,7 @@ jobs:
           export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
           mpirun -np 2 --bind-to none ./horses3d.ns CylinderDucrosMatrixDissipation.control
           EOF
-          job_id=$(sbatch --parsable run_test.sh)
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
           cat slurm-${job_id}.out
           exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
@@ -1140,7 +1150,7 @@ jobs:
           export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
           mpirun -np 2 --bind-to none ./horses3d.ns CylinderPirozzoliRoe.control
           EOF
-          job_id=$(sbatch --parsable run_test.sh)
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
           cat slurm-${job_id}.out
           exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
@@ -1334,7 +1344,7 @@ jobs:
       #     mpirun -np 2 --bind-to none ./horses3d.ins NACA0012.control
       #     EOF
 
-      #     job_id=$(sbatch --parsable run_test.sh)
+      #     job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
       #     while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
 
       #     cat slurm-${job_id}.out
@@ -1408,7 +1418,7 @@ jobs:
           mpirun -np 2 --bind-to none ./horses3d.mu EntropyConservingTest.control
           EOF
 
-          job_id=$(sbatch --parsable run_test.sh)
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
 
           cat slurm-${job_id}.out
