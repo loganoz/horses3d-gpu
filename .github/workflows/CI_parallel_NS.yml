@@ -22,12 +22,17 @@ jobs:
     # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
+    # Permissions for codecov
+    permissions:
+      id-token: write
+      contents: read
+
     # Define strategy matrix
     strategy:
       fail-fast: false
       matrix:
         compiler: ['gfortran']
-        mode: ['RELEASE']
+        mode: ['DEBUG']
         comm: ['PARALLEL']
         enable_threads: ['NO']
         mkl: ['NO']
@@ -42,6 +47,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+
+      - name: Set Coverage Flags
+        run: |
+          if [ "${{ matrix.mode }}" = "DEBUG" ]; then
+            echo "EXTRA_COV=-Og -fprofile-arcs -ftest-coverage" >> $GITHUB_ENV
+          else
+            echo "EXTRA_COV=" >> $GITHUB_ENV
+          fi
 
       # Install OpenMPI (gfortran case)
       - name: Install OpenMPI
@@ -171,9 +184,11 @@ jobs:
         working-directory: ./Solver
         run: |
          export OMPI_FCFLAGS="-DOMPI_SKIP_MPIF08" # deactivate mpi_f08 interface to avoid compilation problems
-         # source /opt/intel/oneapi/setvars.sh || true
-         make allclean MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
-         make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          
+         # Compile the code
+         make allclean MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}" EXTRA_LDFLAGS="$EXTRA_LINK_FLAGS"
+         make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
+          
          cp -r $HDF5_ROOT/lib/* lib/ # Copy hdf5 libraty files to local lib
          ldd ./bin/horses3d.ns
 
@@ -387,7 +402,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/UniformFlow/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run NSUniformFlow_parallel_SFC
@@ -427,7 +442,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/Cylinder/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run NSCylinder
@@ -483,7 +498,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/CylinderDucros/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run NSCylinderDucros
@@ -501,7 +516,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/CylinderSmagorinsky/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run NSCylinderSmagorinsky
@@ -519,7 +534,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/CylinderWALE/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run NSCylinderWALE
@@ -537,7 +552,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/CylinderVreman/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run NSCylinderVreman
@@ -555,7 +570,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/CylinderChandrasekarRoe/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run NSCylinderChandrasekarRoe
@@ -573,7 +588,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/TaylorGreen/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run TaylorGreen
@@ -732,7 +747,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/DualTimeStepping/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run DualTimeStepping
@@ -872,7 +887,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/IBM_Cylinder/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
      
       - name: Run IBM_Cylinder
@@ -1119,7 +1134,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/Channel/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run Channel - Serial
@@ -1140,7 +1155,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/Channel64/SETUP
         run: |
           source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run Channel - Parallel 64
@@ -1157,7 +1172,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/CylinderEntropyConservingCentral/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run NSCylinderEntropyConservingCentral
@@ -1175,7 +1190,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/CylinderStandardCentral/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run NSCylinderStandardCentral
@@ -1193,7 +1208,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/CylinderKennedyGruberLaxFriedrichs/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run NSCylinderKennedyGruberLaxFriedrichs
@@ -1211,7 +1226,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/CylinderMorinishiLowDissipationRoe/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run NSCylinderMorinishiLowDissipationRoe
@@ -1229,7 +1244,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/CylinderDucrosMatrixDissipation/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run NSCylinderDucrosMatrixDissipation
@@ -1247,7 +1262,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/CylinderPirozzoliRoe/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}}
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run NSCylinderPirozzoliRoe
@@ -1256,3 +1271,26 @@ jobs:
           # source /opt/intel/oneapi/setvars.sh || true
           mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderPirozzoliRoe.control
         if: '!cancelled()'
+
+#
+# CHECK CODE COVERAGE
+# -------------------------
+
+      - name: Install gcovr
+        if: matrix.mode == 'DEBUG' && !cancelled()
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcovr
+
+      - name: Generate Coverage Report
+        if: matrix.mode == 'DEBUG' && !cancelled()
+        run: |
+          # gcovr scans recursively from the root to find all generated .gcda and .gcno files
+          gcovr --root . --print-summary --xml coverage.xml
+
+      - name: Upload Coverage to Codecov
+        if: matrix.mode == 'DEBUG' && !cancelled()
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          use_oidc: true
