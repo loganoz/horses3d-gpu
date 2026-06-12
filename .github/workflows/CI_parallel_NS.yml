@@ -188,7 +188,7 @@ jobs:
          # Initialize additional compile flags
          EXTRA_FORTRAN_FLAGS=""
           
-         # Assign flags for code coverage
+         # Assign compile flags for code coverage
          if [ "${{ matrix.mode }}" = "DEBUG" ]; then
            EXTRA_FORTRAN_FLAGS="-fprofile-arcs -ftest-coverage"
          fi
