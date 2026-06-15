@@ -725,7 +725,7 @@ module RiemannSolvers_NS
         
       end subroutine StdRoeRiemannSolver
 
-      subroutine MatrixDissipationRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
+subroutine MatrixDissipationRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
          use RiemannSolvers_NSKeywordsModule
          use Utilities, only: logarithmicMean
          !$acc routine vector
@@ -747,6 +747,7 @@ module RiemannSolvers_NS
          real(kind=RP)  :: a_bar, h_bar
          real(kind=RP)  :: R1(5,5), T(5), Lambda(5)
          real(kind=RP)  :: stab(5)
+         real(kind=RP)  :: flux_rot(5)
          real(kind=RP)  :: rhoLogMean, betaLogMean, pMean, uMean, vMean, wMean, V2abs
          real(kind=RP)  :: uL, vL, wL, uR, vR, wR, vtotL, vtotR, pL, pR
          real(kind=RP)  :: invRhoL, invRhoR
@@ -756,10 +757,10 @@ module RiemannSolvers_NS
 !        Perform the rotation
 !        ********************
 !
-         !$acc loop vector collapse(2) private(QLRot, QRRot, EVL, EVR, dQ, R1, T, Lambda, stab)
+         !$acc loop vector collapse(2) private(QLRot, QRRot, EVL, EVR, dQ, R1, T, Lambda, stab, flux_rot)
          do j = 0, Ny
-         do i = 0, Nx  
-         
+         do i = 0, Nx
+
          QLRot(1) = QLeft(1,i,j)  ; QRRot(1) = QRight(1,i,j)
 
          QLRot(2) = QLeft (2,i,j) * nHat(1,i,j) + QLeft (3,i,j) * nHat(2,i,j) + QLeft (4,i,j) * nHat(3,i,j)
@@ -780,7 +781,7 @@ module RiemannSolvers_NS
          call NSGradientVariables_ENTROPY(NCONS,NGRAD,QLRot,EVL)
          call NSGradientVariables_ENTROPY(NCONS,NGRAD,QRRot,EVR)
 
-         invRhoL = 1.0_RP / QLRot(IRHO) ; invrhoR = 1.0_RP / QRRot(IRHO)
+         invRhoL = 1.0_RP / QLRot(IRHO) ; invRhoR = 1.0_RP / QRRot(IRHO)
          uL      = QLRot(IRHOU)*invRhoL ; uR      = QRRot(IRHOU)*invRhoR
          vL      = QLRot(IRHOV)*invRhoL ; vR      = QRRot(IRHOV)*invRhoR
          wL      = QLRot(IRHOW)*invRhoL ; wR      = QRRot(IRHOW)*invRhoR
@@ -865,11 +866,14 @@ module RiemannSolvers_NS
 !        Return momentum equations to the cartesian frame
 !        ************************************************
 !
-         flux(2:4,i,j) = nHat(:,i,j)*flux(2,i,j) + t1(:,i,j)*flux(3,i,j) + t2(:,i,j)*flux(4,i,j)
+         flux_rot    = flux(:,i,j)
+         flux(2,i,j) = nHat(1,i,j)*flux_rot(2) + t1(1,i,j)*flux_rot(3) + t2(1,i,j)*flux_rot(4)
+         flux(3,i,j) = nHat(2,i,j)*flux_rot(2) + t1(2,i,j)*flux_rot(3) + t2(2,i,j)*flux_rot(4)
+         flux(4,i,j) = nHat(3,i,j)*flux_rot(2) + t1(3,i,j)*flux_rot(3) + t2(3,i,j)*flux_rot(4)
 
          enddo
          enddo
-         
+
       end subroutine MatrixDissipationRiemannSolver
 
       subroutine RoePikeRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
@@ -886,7 +890,7 @@ module RiemannSolvers_NS
 !        Local variables
 !        ---------------
 !
-         real(kind=RP)  :: QLRot(5), QRRot(5), VL(NPRIM), VR(NPRIM), aL, aR
+         real(kind=RP)  :: QLRot(5), QRRot(5), VL(NPRIM), VR(NPRIM), aL, aR, flux_rot(5)
          real(kind=RP)  :: dQ(5), lambda(5), K(5,5), V2abs, alpha(5), dLambda
          real(kind=RP)  :: rho, u, v, w, V2, H, a
          real(kind=RP)  :: stab(5)
@@ -896,7 +900,7 @@ module RiemannSolvers_NS
 !        Perform the rotation
 !        ********************
 !
-         !$acc loop vector collapse(2) private(QLRot, QRRot, VL, VR, dQ, lambda, K, alpha, stab)
+         !$acc loop vector collapse(2) private(QLRot, QRRot, VL, VR, dQ, lambda, K, alpha, stab, flux_rot)
          do j = 0, Ny
          do i = 0, Nx  
          
@@ -1014,8 +1018,11 @@ module RiemannSolvers_NS
 !        Return momentum equations to the cartesian frame
 !        ************************************************
 !
-         flux(2:4,i,j) = nHat(:,i,j)*flux(2,i,j) + t1(:,i,j)*flux(3,i,j) + t2(:,i,j)*flux(4,i,j)
-         
+         flux_rot    = flux(:,i,j)
+         flux(2,i,j) = nHat(1,i,j)*flux_rot(2) + t1(1,i,j)*flux_rot(3) + t2(1,i,j)*flux_rot(4)
+         flux(3,i,j) = nHat(2,i,j)*flux_rot(2) + t1(2,i,j)*flux_rot(3) + t2(2,i,j)*flux_rot(4)
+         flux(4,i,j) = nHat(3,i,j)*flux_rot(2) + t1(3,i,j)*flux_rot(3) + t2(3,i,j)*flux_rot(4)
+               
          enddo
          enddo
       end subroutine RoePikeRiemannSolver
@@ -1059,13 +1066,13 @@ module RiemannSolvers_NS
          real(kind=RP)  :: sqrtRhoL, sqrtRhoR, invSumSqrtRhoLR
          real(kind=RP)  :: invSqrtRhoL, invSqrtRhoR, invRhoL, invRhoR
          real(kind=RP)  :: rho, u, v, w, H, a, dQ(5), lambda(5), K(5,5), V2abs, alpha(5)
-         real(kind=RP)  :: stab(5)
+         real(kind=RP)  :: stab(5), flux_rot(5)
          integer :: i,j,l
 !
 !        Rotate the variables to the face local frame using normal and tangent vectors
 !        -----------------------------------------------------------------------------
 
-         !$acc loop vector collapse(2) private(QLRot, QRRot, dQ, lambda, K, alpha, stab)
+         !$acc loop vector collapse(2) private(QLRot, QRRot, dQ, lambda, K, alpha, stab, flux_rot)
          do j = 0, Ny
          do i = 0, Nx    
          
@@ -1216,8 +1223,10 @@ module RiemannSolvers_NS
 !        Return momentum equations to the cartesian frame
 !        ************************************************
 !
-         flux(2:4,i,j) = nHat(:,i,j)*flux(2,i,j) + t1(:,i,j)*flux(3,i,j) + t2(:,i,j)*flux(4,i,j)
-
+         flux_rot    = flux(:,i,j)
+         flux(2,i,j) = nHat(1,i,j)*flux_rot(2) + t1(1,i,j)*flux_rot(3) + t2(1,i,j)*flux_rot(4)
+         flux(3,i,j) = nHat(2,i,j)*flux_rot(2) + t1(2,i,j)*flux_rot(3) + t2(2,i,j)*flux_rot(4)
+         flux(4,i,j) = nHat(3,i,j)*flux_rot(2) + t1(3,i,j)*flux_rot(3) + t2(3,i,j)*flux_rot(4)
          enddo
          enddo
 
@@ -1251,14 +1260,14 @@ module RiemannSolvers_NS
          real(kind=RP)  :: sqrtRhoL, sqrtRhoR, invSumSqrtRhoLR
          real(kind=RP)  :: invSqrtRhoL, invSqrtRhoR, invRhoL, invRhoR
          real(kind=RP)  :: rho, u, v, w, H, a, lambda(5), V2abs, tau(5,5)
-         real(kind=RP)  :: stab(5), kappa
+         real(kind=RP)  :: stab(5), kappa, flux_rot(5)
          real(kind=RP)  :: divV
          integer :: i,j
 !
 !        Rotate the variables to the face local frame using normal and tangent vectors
 !        -----------------------------------------------------------------------------
 
-         !$acc loop vector collapse(2) private(QLRot, QRRot, lambda, tau, stab)
+         !$acc loop vector collapse(2) private(QLRot, QRRot, lambda, tau, stab, flux_rot)
          do j = 0, Ny
          do i = 0, Nx    
 
@@ -1407,7 +1416,11 @@ module RiemannSolvers_NS
 !        Return momentum equations to the cartesian frame
 !        ************************************************
 !
-         flux(2:4,i,j) = nHat(:,i,j)*flux(2,i,j) + t1(:,i,j)*flux(3,i,j) + t2(:,i,j)*flux(4,i,j)
+         flux_rot    = flux(:,i,j)
+         flux(2,i,j) = nHat(1,i,j)*flux_rot(2) + t1(1,i,j)*flux_rot(3) + t2(1,i,j)*flux_rot(4)
+         flux(3,i,j) = nHat(2,i,j)*flux_rot(2) + t1(2,i,j)*flux_rot(3) + t2(2,i,j)*flux_rot(4)
+         flux(4,i,j) = nHat(3,i,j)*flux_rot(2) + t1(3,i,j)*flux_rot(3) + t2(3,i,j)*flux_rot(4)
+
 !
 !        Compute the flux: apply the lambda stabilization here.
 !        ----------------
@@ -1539,13 +1552,13 @@ module RiemannSolvers_NS
          real(kind=RP)  :: rhoR, rhouR, rhovR, rhowR, rhoeR, pR, aR, rhoV2R
          real(kind=RP)  :: QLRot(5), QRRot(5)
          real(kind=RP)  :: invRhoL, invRhoR
-         real(kind=RP)  :: lambda, stab(5)
+         real(kind=RP)  :: lambda, stab(5), flux_rot(5)
          integer :: i,j
 !
 !        Rotate the variables to the face local frame using normal and tangent vectors
 !        -----------------------------------------------------------------------------
          
-         !$acc loop vector collapse(2) private(QLRot, QRRot, stab)
+         !$acc loop vector collapse(2) private(QLRot, QRRot, stab, flux_rot)
          do j = 0, Ny
          do i = 0, Nx     
          
@@ -1598,8 +1611,10 @@ module RiemannSolvers_NS
 !        Return momentum equations to the cartesian frame
 !        ************************************************
 !
-         flux(2:4,i,j) = nHat(:,i,j)*flux(2,i,j) + t1(:,i,j)*flux(3,i,j) + t2(:,i,j)*flux(4,i,j)
-         
+         flux_rot    = flux(:,i,j)
+         flux(2,i,j) = nHat(1,i,j)*flux_rot(2) + t1(1,i,j)*flux_rot(3) + t2(1,i,j)*flux_rot(4)
+         flux(3,i,j) = nHat(2,i,j)*flux_rot(2) + t1(2,i,j)*flux_rot(3) + t2(2,i,j)*flux_rot(4)
+         flux(4,i,j) = nHat(3,i,j)*flux_rot(2) + t1(3,i,j)*flux_rot(3) + t2(3,i,j)*flux_rot(4)         
          enddo
          enddo
 
