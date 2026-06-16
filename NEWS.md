@@ -10,5 +10,7 @@ This file documents notable changes in the repository.
   partition the mesh at each run.
 
 #### Changed
+- The horses3d and horses3d-gpu repositories are now hosted in a GitHub organization
+  https://github.com/horses-framework/
 - Modified the preprocessing of HOPR HDF5 meshes. The read-in is now MPI-parallel
   when choosing `partitioning = SFC`
