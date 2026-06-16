@@ -3,7 +3,7 @@ project: HORSES3D
 summary: 
 src_dir: ../Solver/src/libs/monitors
 output_dir: ./doc_output
-project_github: https://github.com/loganoz/horses3d
+project_github: https://github.com/horses-framework/horses3d-gpu
 project_website: 
 summary: 
 author: HORSES3D developers
