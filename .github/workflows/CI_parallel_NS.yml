@@ -1323,4 +1323,6 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
+          flags: parallel_ns
+          slug: horses-framework/horses3d-gpu
           use_oidc: true
