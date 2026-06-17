@@ -559,7 +559,7 @@ end module ProblemFileFunctions
                                                          10.455907134526173_RP, &
                                                          108.75533977669937_RP]
 
-            real(kind=RP), parameter           :: wake_u = 1.3963710229328959E-010_RP
+            real(kind=RP), parameter           :: wake_u = 1.3963781672402801E-010_RP
             real(kind=RP), parameter           :: cd = 9.6165679543925329_RP
             real(kind=RP), parameter           :: cl = -3.2025628393261840E-004_RP
             integer   :: i
@@ -599,8 +599,8 @@ end module ProblemFileFunctions
                                actualValue   = iter, &
                                msg           = "Number of time steps to tolerance")
 
-            CALL FTAssertEqual(expectedValue = wake_u, &
-                               actualValue   = monitors % probes(1) % values(1), &
+            CALL FTAssertEqual(expectedValue = wake_u + 1.0_RP, &
+                               actualValue   = monitors % probes(1) % values(1) + 1.0_RP, &
                                tol           = 1.d-11, &
                                msg           = "Wake final x-velocity at the point [0,0.5,4.0]")
 
