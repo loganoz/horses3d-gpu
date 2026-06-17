@@ -351,7 +351,7 @@
       type(Face),   intent(inout)              :: self
       integer,       intent(in)                :: nEqn
       integer,       intent(in)                :: Nelx, Nely
-      real(kind=RP), intent(in)                :: Qe(1:NCONS, 0:Nelx, 0:Nely)
+      real(kind=RP), intent(in)                :: Qe(1:NCONS, 0:self % NfRight(1), 0:self % NfRight(2))
       integer,       intent(in)                :: side
 !
 !     ---------------

@@ -79,9 +79,15 @@ module DGIntegrals
             ! volInt(eq,i,j,k) = 0.0_RP
             !$acc loop seq 
             do l = 0, Nxyz(1)
-               volInt(eq,i,j,k) = volInt(eq,i,j,k) +  NodalStorage(Nxyz(1)) % hatD(i,l) * F(eq,l,j,k,IX) &
-                                                   +  NodalStorage(Nxyz(2)) % hatD(j,l) * F(eq,i,l,k,IY) &
-                                                   +  NodalStorage(Nxyz(3)) % hatD(k,l) * F(eq,i,j,l,IZ)
+               volInt(eq,i,j,k) = volInt(eq,i,j,k) +  NodalStorage(Nxyz(1)) % hatD(i,l) * F(eq,l,j,k,IX)
+            end do  
+            !$acc loop seq 
+            do l = 0, Nxyz(2)
+               volInt(eq,i,j,k) = volInt(eq,i,j,k) +  NodalStorage(Nxyz(2)) % hatD(j,l) * F(eq,i,l,k,IY)
+            end do  
+            !$acc loop seq 
+            do l = 0, Nxyz(3)
+               volInt(eq,i,j,k) = volInt(eq,i,j,k) +  NodalStorage(Nxyz(3)) % hatD(k,l) * F(eq,i,j,l,IZ)
             end do             
          end do ; end do ; end do ; end do
 
