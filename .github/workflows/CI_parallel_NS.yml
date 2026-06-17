@@ -1286,7 +1286,7 @@ jobs:
         if: matrix.mode == 'DEBUG' && !cancelled()
         run: |
           # gcovr scans recursively from the root to find all generated .gcda and .gcno files
-          gcovr --root . --print-summary --xml coverage.xml
+          gcovr --root . --print-summary --xml coverage.xml --exclude-branches
 
       - name: Upload Coverage to Codecov
         if: matrix.mode == 'DEBUG' && !cancelled()
