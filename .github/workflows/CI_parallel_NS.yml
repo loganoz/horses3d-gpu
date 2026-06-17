@@ -673,7 +673,7 @@ jobs:
         working-directory: ./Solver/test/NavierStokes/CylinderDifferentOrders/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
       - name: Run NSCylinderDifferentOrders
