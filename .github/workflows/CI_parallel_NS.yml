@@ -51,7 +51,7 @@ jobs:
       - name: Set Coverage Flags
         run: |
           if [ "${{ matrix.mode }}" = "DEBUG" ]; then
-            echo "EXTRA_COV=-fprofile-arcs -ftest-coverage" >> $GITHUB_ENV
+            echo "EXTRA_COV=-Og -fprofile-arcs -ftest-coverage" >> $GITHUB_ENV
           else
             echo "EXTRA_COV=" >> $GITHUB_ENV
           fi
