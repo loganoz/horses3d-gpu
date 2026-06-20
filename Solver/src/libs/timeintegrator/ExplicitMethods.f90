@@ -234,14 +234,12 @@ MODULE ExplicitMethods
       REAL(KIND=RP), DIMENSION(3) :: b = (/0.0_RP       ,  1.0_RP /3.0_RP ,    3.0_RP/4.0_RP  /)
       REAL(KIND=RP), DIMENSION(3) :: c = (/1.0_RP/3.0_RP,  15.0_RP/16.0_RP,    8.0_RP/15.0_RP /)
 
-      INTEGER :: i, j, k, l, m, id
+      INTEGER :: i, j, k, m, id, stage
 
-      !$acc enter data copyin(a,b,c)
+      if (present(dt_vec)) then
 
-      if (present(dt_vec)) then   
-         
-         do k = 1,3
-            tk = t + b(k)*deltaT
+         do stage = 1,3
+            tk = t + b(stage)*deltaT
             call ComputeTimeDerivative( mesh, particles, tk, CTD_IGNORE_MODE)
             if ( present(dts) ) then
                if (dts) call ComputePseudoTimeDerivative(mesh, tk, global_dt)
@@ -250,57 +248,55 @@ MODULE ExplicitMethods
 !$omp parallel do schedule(runtime)
             do id = 1, SIZE( mesh % elements )
 #ifdef FLOW
-                  mesh % elements(id) % storage % G_NS = a(k)* mesh % elements(id) % storage % G_NS  +              mesh % elements(id) % storage % QDot
-                  mesh % elements(id) % storage % Q =       mesh % elements(id) % storage % Q  + c(k)*dt_vec(id)* mesh % elements(id) % storage % G_NS
+                  mesh % elements(id) % storage % G_NS = a(stage)* mesh % elements(id) % storage % G_NS  +              mesh % elements(id) % storage % QDot
+                  mesh % elements(id) % storage % Q =       mesh % elements(id) % storage % Q  + c(stage)*dt_vec(id)* mesh % elements(id) % storage % G_NS
 #endif
 
 #if (defined(CAHNHILLIARD)) && (!defined(FLOW))
-                  mesh % elements(id) % storage % G_CH = a(k)*mesh % elements(id) % storage % G_CH + mesh % elements(id) % storage % cDot
-                  mesh % elements(id) % storage % c    = mesh % elements(id) % storage % c         + c(k)*dt_vec(id)* mesh % elements(id) % storage % G_CH
+                  mesh % elements(id) % storage % G_CH = a(stage)*mesh % elements(id) % storage % G_CH + mesh % elements(id) % storage % cDot
+                  mesh % elements(id) % storage % c    = mesh % elements(id) % storage % c         + c(stage)*dt_vec(id)* mesh % elements(id) % storage % G_CH
 #endif
             end do ! id
 !$omp end parallel do
 
-         end do ! l
+         end do ! stage
 
       else
 
-         !$acc data copyin(deltaT)
+         !$acc data copyin(deltaT, a, b, c)
 
-         do l = 1,3
-            tk = t + b(l)*deltaT
+         do stage = 1,3
+            tk = t + b(stage)*deltaT
             call ComputeTimeDerivative( mesh, particles, tk, CTD_IGNORE_MODE)
             if ( present(dts) ) then
                if (dts) call ComputePseudoTimeDerivative(mesh, tk, global_dt)
             end if
 
-!!$omp parallel do schedule(runtime)
             !$acc parallel loop gang present(mesh,a,b,c,deltaT)
             do id = 1, SIZE( mesh % elements )
                !$acc loop vector collapse(3)
-               do k = 0, mesh % elements(id) % Nxyz(3) 
-                   do j = 0, mesh % elements(id) % Nxyz(2) 
+               do k = 0, mesh % elements(id) % Nxyz(3)
+                   do j = 0, mesh % elements(id) % Nxyz(2)
                       do i = 0, mesh % elements(id) % Nxyz(1)
 #ifdef FLOW
                         !$acc loop seq
                         do m = 1, NCONS
-                           mesh % elements(id) % storage % G_NS(m,i,j,k) = a(l)* mesh % elements(id) % storage % G_NS(m,i,j,k)  +              mesh % elements(id) % storage % QDot(m,i,j,k)
-                           mesh % elements(id) % storage % Q(m,i,j,k)    =       mesh % elements(id) % storage % Q(m,i,j,k)     + c(l)*deltaT* mesh % elements(id) % storage % G_NS(m,i,j,k)
+                           mesh % elements(id) % storage % G_NS(m,i,j,k) = a(stage)* mesh % elements(id) % storage % G_NS(m,i,j,k)  +                mesh % elements(id) % storage % QDot(m,i,j,k)
+                           mesh % elements(id) % storage % Q(m,i,j,k)    =           mesh % elements(id) % storage % Q(m,i,j,k)     + c(stage)*deltaT* mesh % elements(id) % storage % G_NS(m,i,j,k)
                         enddo
 #endif
 
 #if (defined(CAHNHILLIARD)) && (!defined(FLOW))
-                        mesh % elements(id) % storage % G_CH = a(l)*mesh % elements(id) % storage % G_CH + mesh % elements(id) % storage % cDot
-                        mesh % elements(id) % storage % c    = mesh % elements(id) % storage % c         + c(l)*deltaT* mesh % elements(id) % storage % G_CH
+                        mesh % elements(id) % storage % G_CH = a(stage)*mesh % elements(id) % storage % G_CH + mesh % elements(id) % storage % cDot
+                        mesh % elements(id) % storage % c    = mesh % elements(id) % storage % c         + c(stage)*deltaT* mesh % elements(id) % storage % G_CH
 #endif
-                     end do              
-                  end do                
+                     end do
+                  end do
                end do
             end do ! id
             !$acc end parallel loop
-!!$omp end parallel do
 
-         end do ! l
+         end do ! stage
 
          !$acc end data
 
@@ -312,8 +308,7 @@ MODULE ExplicitMethods
       call checkForNan(mesh, t)
 
    END SUBROUTINE TakeRK3Step
-
-   SUBROUTINE TakeRK5Step( mesh, particles, t, deltaT, ComputeTimeDerivative , dt_vec, dts, global_dt, iter)
+SUBROUTINE TakeRK5Step( mesh, particles, t, deltaT, ComputeTimeDerivative , dt_vec, dts, global_dt, iter)
 !
 !        *****************************************************************************************
 !           These coefficients have been extracted from the paper: "Fourth-Order 2N-Storage
@@ -338,18 +333,18 @@ MODULE ExplicitMethods
 !     Local variables
 !     ---------------
 !
-      integer                    :: id, i, j, k
+      integer                    :: id, i, j, k, m, stage
       integer, parameter         :: N_STAGES = 5
       real(kind=RP), parameter  :: a(N_STAGES) = [0.0_RP , -0.4178904745_RP, -1.192151694643_RP ,     -1.697784692471_RP , -1.514183444257_RP ]
       real(kind=RP), parameter  :: b(N_STAGES) = [0.0_RP , 0.1496590219993_RP , 0.3704009573644_RP , 0.6222557631345_RP , 0.9582821306748_RP ]
       real(kind=RP), parameter  :: c(N_STAGES) = [0.1496590219993_RP , 0.3792103129999_RP , 0.8229550293869_RP , 0.6994504559488_RP , 0.1530572479681_RP]
 
 
-      if (present(dt_vec)) then 
+      if (present(dt_vec)) then
 
-      DO k = 1, N_STAGES
+      DO stage = 1, N_STAGES
 
-         tk = t + b(k)*deltaT
+         tk = t + b(stage)*deltaT
          CALL ComputeTimeDerivative( mesh, particles, tk, CTD_IGNORE_MODE)
          if ( present(dts) ) then
             if (dts) call ComputePseudoTimeDerivative(mesh, tk, global_dt)
@@ -358,13 +353,13 @@ MODULE ExplicitMethods
 !$omp parallel do schedule(runtime)
          DO id = 1, SIZE( mesh % elements )
 #ifdef FLOW
-             mesh % elements(id) % storage % G_NS = a(k)* mesh % elements(id) % storage % G_NS  +              mesh % elements(id) % storage % QDot
-             mesh % elements(id) % storage % Q =       mesh % elements(id) % storage % Q  + c(k)*dt_vec(id)* mesh % elements(id) % storage % G_NS
+             mesh % elements(id) % storage % G_NS = a(stage)* mesh % elements(id) % storage % G_NS  +              mesh % elements(id) % storage % QDot
+             mesh % elements(id) % storage % Q =       mesh % elements(id) % storage % Q  + c(stage)*dt_vec(id)* mesh % elements(id) % storage % G_NS
 #endif
 
 #if (defined(CAHNHILLIARD)) && (!defined(FLOW))
-            mesh % elements(id) % storage % G_CH = a(k)*mesh % elements(id) % storage % G_CH + mesh % elements(id) % storage % cDot
-            mesh % elements(id) % storage % c    = mesh % elements(id) % storage % c         + c(k)*dt_vec(id)* mesh % elements(id) % storage % G_CH
+            mesh % elements(id) % storage % G_CH = a(stage)*mesh % elements(id) % storage % G_CH + mesh % elements(id) % storage % cDot
+            mesh % elements(id) % storage % c    = mesh % elements(id) % storage % c         + c(stage)*dt_vec(id)* mesh % elements(id) % storage % G_CH
 #endif
          END DO
 !$omp end parallel do
@@ -373,36 +368,50 @@ MODULE ExplicitMethods
 
       else
 
-      DO k = 1, N_STAGES
+         !$acc data copyin(deltaT, a, b, c)
 
-         tk = t + b(k)*deltaT
-         CALL ComputeTimeDerivative( mesh, particles, tk, CTD_IGNORE_MODE)
-         if ( present(dts) ) then
-            if (dts) call ComputePseudoTimeDerivative(mesh, tk, global_dt)
-         end if
+         DO stage = 1, N_STAGES
 
-!$omp parallel do schedule(runtime)
-         DO id = 1, SIZE( mesh % elements )
+            tk = t + b(stage)*deltaT
+            CALL ComputeTimeDerivative( mesh, particles, tk, CTD_IGNORE_MODE)
+            if ( present(dts) ) then
+               if (dts) call ComputePseudoTimeDerivative(mesh, tk, global_dt)
+            end if
+
+            !$acc parallel loop gang present(mesh, a, b, c, deltaT)
+            do id = 1, SIZE( mesh % elements )
+               !$acc loop vector collapse(3)
+               do k = 0, mesh % elements(id) % Nxyz(3)
+                  do j = 0, mesh % elements(id) % Nxyz(2)
+                     do i = 0, mesh % elements(id) % Nxyz(1)
 #ifdef FLOW
-             mesh % elements(id) % storage % G_NS = a(k)* mesh % elements(id) % storage % G_NS  +              mesh % elements(id) % storage % QDot
-             mesh % elements(id) % storage % Q =       mesh % elements(id) % storage % Q  + c(k)*deltaT* mesh % elements(id) % storage % G_NS
+                        !$acc loop seq
+                        do m = 1, NCONS
+                           mesh % elements(id) % storage % G_NS(m,i,j,k) = a(stage)* mesh % elements(id) % storage % G_NS(m,i,j,k)  +                mesh % elements(id) % storage % QDot(m,i,j,k)
+                           mesh % elements(id) % storage % Q(m,i,j,k)    =           mesh % elements(id) % storage % Q(m,i,j,k)     + c(stage)*deltaT* mesh % elements(id) % storage % G_NS(m,i,j,k)
+                        end do
 #endif
 
 #if (defined(CAHNHILLIARD)) && (!defined(FLOW))
-            mesh % elements(id) % storage % G_CH = a(k)*mesh % elements(id) % storage % G_CH + mesh % elements(id) % storage % cDot
-            mesh % elements(id) % storage % c    = mesh % elements(id) % storage % c         + c(k)*deltaT* mesh % elements(id) % storage % G_CH
+                        mesh % elements(id) % storage % G_CH = a(stage)*mesh % elements(id) % storage % G_CH + mesh % elements(id) % storage % cDot
+                        mesh % elements(id) % storage % c    = mesh % elements(id) % storage % c         + c(stage)*deltaT* mesh % elements(id) % storage % G_CH
 #endif
-         END DO
-!$omp end parallel do
+                     end do
+                  end do
+               end do
+            end do
+            !$acc end parallel loop
 
-      END DO
+         END DO
+
+         !$acc end data
 
       end if
 
       call checkForNan(mesh, t)
 !
 !     To obtain the updated residuals
-      if ( CTD_AFTER_STEPS ) CALL ComputeTimeDerivative( mesh, particles, tk, CTD_IGNORE_MODE)
+      if ( CTD_AFTER_STEPS ) CALL ComputeTimeDerivative( mesh, particles, t+deltaT, CTD_IGNORE_MODE)
 
    end subroutine TakeRK5Step
 !
@@ -657,13 +666,11 @@ MODULE ExplicitMethods
       call checkForNan(mesh, t)
 
    END SUBROUTINE TakeSSPRK43Step
-
-   SUBROUTINE TakeExplicitEulerStep( mesh, particles, t, deltaT, ComputeTimeDerivative , dt_vec, dts, global_dt, iter)
+SUBROUTINE TakeExplicitEulerStep( mesh, particles, t, deltaT, ComputeTimeDerivative , dt_vec, dts, global_dt, iter)
 !
-!        *****************************************************************************************
-!           These coefficients have been extracted from the paper: "Fourth-Order 2N-Storage
-!          Runge-Kutta Schemes", written by Mark H. Carpented and Christopher A. Kennedy
-!        *****************************************************************************************
+!     ------------------------------
+!     Explicit forward Euler step
+!     ------------------------------
 !
       implicit none
       type(HexMesh)                   :: mesh
@@ -683,11 +690,13 @@ MODULE ExplicitMethods
 !     Local variables
 !     ---------------
 !
-      integer                    :: id, k
+      integer :: id, i, j, k, m
+
+      tk = t
 
       CALL ComputeTimeDerivative( mesh, particles, t, CTD_IGNORE_MODE)
       if ( present(dts) ) then
-         if (dts) call ComputePseudoTimeDerivative(mesh, tk, global_dt)
+         if (dts) call ComputePseudoTimeDerivative(mesh, t, global_dt)
       end if
 
       if (present(dt_vec)) then
@@ -697,17 +706,38 @@ MODULE ExplicitMethods
          END DO
 !$omp end parallel do
       else
-!$omp parallel do schedule(runtime)
-         DO id = 1, SIZE( mesh % elements )
-            mesh % elements(id) % storage % Q = mesh % elements(id) % storage % Q + deltaT*mesh % elements(id) % storage % QDot
-         END DO
-!$omp end parallel do
+
+         !$acc data copyin(deltaT)
+         !$acc parallel loop gang present(mesh, deltaT)
+         do id = 1, SIZE( mesh % elements )
+            !$acc loop vector collapse(3)
+            do k = 0, mesh % elements(id) % Nxyz(3)
+               do j = 0, mesh % elements(id) % Nxyz(2)
+                  do i = 0, mesh % elements(id) % Nxyz(1)
+#ifdef FLOW
+                     !$acc loop seq
+                     do m = 1, NCONS
+                        mesh % elements(id) % storage % Q(m,i,j,k) =   mesh % elements(id) % storage % Q(m,i,j,k) &
+                                                                     + deltaT * mesh % elements(id) % storage % QDot(m,i,j,k)
+                     end do
+#endif
+
+#if (defined(CAHNHILLIARD)) && (!defined(FLOW))
+                     mesh % elements(id) % storage % c = mesh % elements(id) % storage % c + deltaT * mesh % elements(id) % storage % cDot
+#endif
+                  end do
+               end do
+            end do
+         end do
+         !$acc end parallel loop
+         !$acc end data
+
       end if
 
       call checkForNan(mesh, t)
 !
 !     To obtain the updated residuals
-      if ( CTD_AFTER_STEPS ) CALL ComputeTimeDerivative( mesh, particles, tk, CTD_IGNORE_MODE)
+      if ( CTD_AFTER_STEPS ) CALL ComputeTimeDerivative( mesh, particles, t+deltaT, CTD_IGNORE_MODE)
 
    end subroutine TakeExplicitEulerStep
 
