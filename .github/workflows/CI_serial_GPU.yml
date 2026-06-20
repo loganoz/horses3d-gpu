@@ -620,10 +620,10 @@ jobs:
           fi
         if: '!cancelled()'
 #
-# 41) CYLINDER RoePikePirozzoli 
+# 41) CYLINDER RoePikePirozzoli
 # ----------------------------
-      - name: Build NSCylinderRoePikePirozzoli 
-        working-directory: ./Solver/test/NavierStokes/CylinderRoePikePirozzoli /SETUP
+      - name: Build NSCylinderRoePikePirozzoli
+        working-directory: ./Solver/test/NavierStokes/CylinderRoePikePirozzoli/SETUP
         run: |
           module purge
           module load hpc_sdk
@@ -636,8 +636,8 @@ jobs:
           make clean || true
           make ns COMPILER=nvfortran COMM=SERIAL ENABLE_THREADS=NO
         if: '!cancelled()'
-      - name: Run NSCylinderRoePikePirozzoli 
-        working-directory: ./Solver/test/NavierStokes/CylinderRoePikePirozzoli 
+      - name: Run NSCylinderRoePikePirozzoli
+        working-directory: ./Solver/test/NavierStokes/CylinderRoePikePirozzoli
         run: |
           module purge
           module load hpc_sdk
@@ -649,7 +649,7 @@ jobs:
           export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
           cat > run_test.sh << 'EOF'
           #!/bin/bash
-          #SBATCH --job-name=NSCylinderRoePikePirozzoli 
+          #SBATCH --job-name=NSCylinderRoePikePirozzoli
           #SBATCH --ntasks=1
           #SBATCH --mem=20G
           #SBATCH --partition=gpu
@@ -663,7 +663,7 @@ jobs:
           export CUDA_PATH=$NVHPC_CUDA_HOME
           export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
           export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
-          ./horses3d.ns CylinderRoePikePirozzoli .control
+          ./horses3d.ns CylinderRoePikePirozzoli.control
           EOF
           job_id=$(sbatch --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done

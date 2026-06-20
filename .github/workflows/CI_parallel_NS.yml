@@ -1183,21 +1183,21 @@ jobs:
         if: '!cancelled()'
 
 #
-# 41) CYLINDER RoePikePirozzoli 
+# 41) CYLINDER RoePikePirozzoli
 # ----------------------------
 
-      - name: Build NSCylinderRoePikePirozzoli 
-        working-directory: ./Solver/test/NavierStokes/CylinderRoePikePirozzoli /SETUP
+      - name: Build NSCylinderRoePikePirozzoli
+        working-directory: ./Solver/test/NavierStokes/CylinderRoePikePirozzoli/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
-      - name: Run NSCylinderRoePikePirozzoli 
-        working-directory: ./Solver/test/NavierStokes/CylinderRoePikePirozzoli 
+      - name: Run NSCylinderRoePikePirozzoli
+        working-directory: ./Solver/test/NavierStokes/CylinderRoePikePirozzoli
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderRoePikePirozzoli .control
+          mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderRoePikePirozzoli.control
         if: '!cancelled()'
 
 #
