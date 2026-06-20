@@ -752,6 +752,7 @@ module RiemannSolvers_NS
          real(kind=RP)  :: dQ(5)
          real(kind=RP)  :: a_bar, h_bar
          real(kind=RP)  :: R1(5,5), T(5), Lambda(5)
+         real(kind=RP)  :: proj(5)        
          real(kind=RP)  :: stab(5)
          real(kind=RP)  :: flux_rot(5)
          real(kind=RP)  :: rhoLogMean, betaLogMean, pMean, uMean, vMean, wMean, V2abs
@@ -763,7 +764,7 @@ module RiemannSolvers_NS
 !        Perform the rotation
 !        ********************
 !
-         !$acc loop vector collapse(2) private(QLRot, QRRot, EVL, EVR, dQ, R1, T, Lambda, stab, flux_rot)
+         !$acc loop vector collapse(2) private(QLRot, QRRot, EVL, EVR, dQ, R1, T, Lambda, stab, flux_rot, proj)
          do j = 0, Ny
          do i = 0, Nx
 
@@ -841,7 +842,7 @@ module RiemannSolvers_NS
 !
 !        Perform the average using the averaging function
 !        ------------------------------------------------
-         call AveragedState_Selector(QLRot, QRRot, pL, pR, invRhoL, invRhoR, flux(:,i,j))
+         call AveragedState_Selector(QLRot, QRRot, pL, pR, invRhoL, invRhoR, flux_rot)
 !
 !        Compute the Roe stabilization
 !        -----------------------------
@@ -857,22 +858,31 @@ module RiemannSolvers_NS
             lambda(1) = lambda(5)
          end select
 
+!       this reduces flops 
+         do m = 1, 5
+            proj(m) = 0.0_RP
+            do n = 1, 5
+               proj(m) = proj(m) + R1(n,m) * (EVR(n) - EVL(n))
+            end do
+         end do
+
          stab = 0.0_RP
          do l = 1, 5
-            do m = 1, 5 ; do n = 1, 5
-               stab(l) = stab(l) + 0.5_RP * R1(l,m) * lambda(m) * T(m) * R1(n,m) * (EVR(n) - EVL(n))
-            end do      ; end do
+            do m = 1, 5
+               stab(l) = stab(l) + 0.5_RP * R1(l,m) * lambda(m) * T(m) * proj(m)
+            end do
          end do
 !
 !        Compute the flux: apply the lambda stabilization here.
 !        ----------------
-         flux(:,i,j) = flux(:,i,j) - lambdaStab * stab
+         flux_rot = flux_rot - lambdaStab * stab
 !
 !        ************************************************
 !        Return momentum equations to the cartesian frame
 !        ************************************************
 !
-         flux_rot    = flux(:,i,j)
+         flux(1,i,j) = flux_rot(1)
+         flux(5,i,j) = flux_rot(5)
          flux(2,i,j) = nHat(1,i,j)*flux_rot(2) + t1(1,i,j)*flux_rot(3) + t2(1,i,j)*flux_rot(4)
          flux(3,i,j) = nHat(2,i,j)*flux_rot(2) + t1(2,i,j)*flux_rot(3) + t2(2,i,j)*flux_rot(4)
          flux(4,i,j) = nHat(3,i,j)*flux_rot(2) + t1(3,i,j)*flux_rot(3) + t2(3,i,j)*flux_rot(4)
@@ -994,7 +1004,7 @@ module RiemannSolvers_NS
 !
 !        Perform the average using the averaging function
 !        ------------------------------------------------
-         call AveragedState_Selector(QLRot, QRRot, VL(IPP), VR(IPP), VL(IPIRHO), VR(IPIRHO), flux(:,i,j))
+         call AveragedState_Selector(QLRot, QRRot, VL(IPP), VR(IPP), VL(IPIRHO), VR(IPIRHO), flux_rot)
 
 !
 !        Compute the Roe stabilization
@@ -1018,13 +1028,14 @@ module RiemannSolvers_NS
 !
 !        Compute the flux: apply the lambda stabilization here.
 !        ----------------
-         flux(:,i,j) = flux(:,i,j) - lambdaStab * stab
+         flux_rot = flux_rot - lambdaStab * stab
 !
 !        ************************************************
 !        Return momentum equations to the cartesian frame
 !        ************************************************
 !
-         flux_rot    = flux(:,i,j)
+         flux(1,i,j) = flux_rot(1)
+         flux(5,i,j) = flux_rot(5)
          flux(2,i,j) = nHat(1,i,j)*flux_rot(2) + t1(1,i,j)*flux_rot(3) + t2(1,i,j)*flux_rot(4)
          flux(3,i,j) = nHat(2,i,j)*flux_rot(2) + t1(2,i,j)*flux_rot(3) + t2(2,i,j)*flux_rot(4)
          flux(4,i,j) = nHat(3,i,j)*flux_rot(2) + t1(3,i,j)*flux_rot(3) + t2(3,i,j)*flux_rot(4)
@@ -1200,7 +1211,7 @@ module RiemannSolvers_NS
 !        ------------------------------------------------
          QLRot = (/ rhoL, rhouL, rhovL, rhowL, rhoeL /)
          QRRot = (/ rhoR, rhouR, rhovR, rhowR, rhoeR /)
-         call AveragedState_Selector(QLRot, QRRot, pL, pR, invRhoL, invRhoR, flux(:,i,j))
+         call AveragedState_Selector(QLRot, QRRot, pL, pR, invRhoL, invRhoR, flux_rot)
 !
 !        Compute the Roe stabilization
 !        -----------------------------
@@ -1223,13 +1234,14 @@ module RiemannSolvers_NS
 !
 !        Compute the flux: apply the lambda stabilization here.
 !        ----------------
-         flux(:,i,j) = flux(:,i,j) - lambdaStab * stab
+         flux_rot = flux_rot - lambdaStab * stab
 !
 !        ************************************************
 !        Return momentum equations to the cartesian frame
 !        ************************************************
 !
-         flux_rot    = flux(:,i,j)
+         flux(1,i,j) = flux_rot(1)
+         flux(5,i,j) = flux_rot(5)
          flux(2,i,j) = nHat(1,i,j)*flux_rot(2) + t1(1,i,j)*flux_rot(3) + t2(1,i,j)*flux_rot(4)
          flux(3,i,j) = nHat(2,i,j)*flux_rot(2) + t1(2,i,j)*flux_rot(3) + t2(2,i,j)*flux_rot(4)
          flux(4,i,j) = nHat(3,i,j)*flux_rot(2) + t1(3,i,j)*flux_rot(3) + t2(3,i,j)*flux_rot(4)
@@ -1610,7 +1622,7 @@ module RiemannSolvers_NS
 !        ------------------------------------------------
          QLRot = (/ rhoL, rhouL, rhovL, rhowL, rhoeL /)
          QRRot = (/ rhoR, rhouR, rhovR, rhowR, rhoeR /)
-         call AveragedState_Selector(QLRot, QRRot, pL, pR, invRhoL, invRhoR, flux(:,i,j))
+         call AveragedState_Selector(QLRot, QRRot, pL, pR, invRhoL, invRhoR, flux_rot)
 !
 !        Compute the Lax-Friedrichs stabilization
 !        ----------------------------------------
@@ -1618,13 +1630,14 @@ module RiemannSolvers_NS
 !
 !        Compute the flux: apply the lambda stabilization here.
 !        ----------------
-         flux(:,i,j) = flux(:,i,j) - lambdaStab * stab
+         flux_rot = flux_rot - lambdaStab * stab
 !
 !        ************************************************
 !        Return momentum equations to the cartesian frame
 !        ************************************************
 !
-         flux_rot    = flux(:,i,j)
+         flux(1,i,j) = flux_rot(1)
+         flux(5,i,j) = flux_rot(5)
          flux(2,i,j) = nHat(1,i,j)*flux_rot(2) + t1(1,i,j)*flux_rot(3) + t2(1,i,j)*flux_rot(4)
          flux(3,i,j) = nHat(2,i,j)*flux_rot(2) + t1(2,i,j)*flux_rot(3) + t2(2,i,j)*flux_rot(4)
          flux(4,i,j) = nHat(3,i,j)*flux_rot(2) + t1(3,i,j)*flux_rot(3) + t2(3,i,j)*flux_rot(4)         
