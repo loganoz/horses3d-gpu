@@ -524,7 +524,7 @@ end module ProblemFileFunctions
 !           Local variables
 !           ---------------
 !
-            CHARACTER(LEN=29)                  :: testName           = "Cylinder Standard Central"
+            CHARACTER(LEN=29)                  :: testName           = "Cylinder U-diss Standard"
             REAL(KIND=RP)                      :: maxError
             REAL(KIND=RP), ALLOCATABLE         :: QExpected(:,:,:,:)
             INTEGER                            :: eID
@@ -532,15 +532,15 @@ end module ProblemFileFunctions
             TYPE(FTAssertionsManager), POINTER :: sharedManager
             LOGICAL                            :: success
             integer                            :: rank, io
-            real(kind=RP), parameter           :: cd =  28.805599476649469_RP
-            real(kind=RP), parameter           :: cl =  -1.5883118237667304E-3_RP
-            real(kind=RP), parameter           :: wake_u = 1.2659185030528810E-12_RP
-            real(kind=RP), parameter           :: res(5) = [  19.084233164528808_RP, &
-                                                              46.217035929298568_RP, &
-                                                              0.84940638223556375_RP, &
-                                                              56.536819235670350_RP, &
-                                                              568.29482399737981_RP]
-
+            real(kind=RP), parameter :: cd = 31.572883994371818_RP
+            real(kind=RP), parameter :: cl = -2.5587558594963866E-004_RP
+            real(kind=RP), parameter :: wake_u = -3.5182411183062162E-014_RP
+            real(kind=RP), parameter :: res(5) = [  9.7583650055644924_RP, &
+                                                    19.938676004915948_RP, &
+                                                    0.38411513450932799_RP, &
+                                                    28.901782850441940_RP, &
+                                                    290.09389602634769_RP ]
+                     
 #if defined(NAVIERSTOKES)
 
             CALL initializeSharedAssertionsManager

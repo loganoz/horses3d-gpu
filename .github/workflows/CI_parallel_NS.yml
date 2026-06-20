@@ -1183,21 +1183,21 @@ jobs:
         if: '!cancelled()'
 
 #
-# 41) CYLINDER StandardCentral
+# 41) CYLINDER RoePikePirozzoli 
 # ----------------------------
 
-      - name: Build NSCylinderStandardCentral
-        working-directory: ./Solver/test/NavierStokes/CylinderStandardCentral/SETUP
+      - name: Build NSCylinderRoePikePirozzoli 
+        working-directory: ./Solver/test/NavierStokes/CylinderRoePikePirozzoli /SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
-      - name: Run NSCylinderStandardCentral
-        working-directory: ./Solver/test/NavierStokes/CylinderStandardCentral
+      - name: Run NSCylinderRoePikePirozzoli 
+        working-directory: ./Solver/test/NavierStokes/CylinderRoePikePirozzoli 
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderStandardCentral.control
+          mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderRoePikePirozzoli .control
         if: '!cancelled()'
 
 #
@@ -1255,22 +1255,59 @@ jobs:
         if: '!cancelled()'
 
 #
-# 45) CYLINDER PirozzoliRoe
+# 45) CYLINDER ViscousStandard
 # -------------------------
 
-      - name: Build NSCylinderPirozzoliRoe
-        working-directory: ./Solver/test/NavierStokes/CylinderPirozzoliRoe/SETUP
+      - name: Build NSCylinderViscousStandard
+        working-directory: ./Solver/test/NavierStokes/CylinderViscousStandard/SETUP
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
           make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
         if: '!cancelled()'
 
-      - name: Run NSCylinderPirozzoliRoe
-        working-directory: ./Solver/test/NavierStokes/CylinderPirozzoliRoe
+      - name: Run NSCylinderViscousStandard
+        working-directory: ./Solver/test/NavierStokes/CylinderViscousStandard
         run: |
           # source /opt/intel/oneapi/setvars.sh || true
-          mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderPirozzoliRoe.control
+          mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderViscousStandard.control
         if: '!cancelled()'
+
+#
+# 46) CYLINDER RusanovStandard
+# -------------------------
+
+      - name: Build NSCylinderRusanovStandard
+        working-directory: ./Solver/test/NavierStokes/CylinderRusanovStandard/SETUP
+        run: |
+          # source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
+        if: '!cancelled()'
+
+      - name: Run NSCylinderRusanovStandard
+        working-directory: ./Solver/test/NavierStokes/CylinderRusanovStandard
+        run: |
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderRusanovStandard.control
+        if: '!cancelled()'
+
+#
+# 47) CYLINDER UdissStandard
+# -------------------------
+
+      - name: Build NSCylinderUdissStandard
+        working-directory: ./Solver/test/NavierStokes/CylinderUdissStandard/SETUP
+        run: |
+          # source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
+        if: '!cancelled()'
+
+      - name: Run NSCylinderUdissStandard
+        working-directory: ./Solver/test/NavierStokes/CylinderUdissStandard
+        run: |
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderUdissStandard.control
+        if: '!cancelled()'
+
 
 #
 # CHECK CODE COVERAGE
