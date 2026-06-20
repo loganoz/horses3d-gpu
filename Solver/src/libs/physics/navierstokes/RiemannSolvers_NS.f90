@@ -731,11 +731,7 @@ module RiemannSolvers_NS
         
       end subroutine StdRoeRiemannSolver
 
-<<<<<<< HEAD
-        subroutine MatrixDissipationRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
-=======
       subroutine MatrixDissipationRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
->>>>>>> d707f632 (Added four new Riemann Solvers. Updated tests to include them.)
          use RiemannSolvers_NSKeywordsModule
          use Utilities, only: logarithmicMean
          !$acc routine vector
