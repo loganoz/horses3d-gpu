@@ -251,7 +251,6 @@ MODULE ExplicitMethods
                   mesh % elements(id) % storage % G_NS = a(stage)* mesh % elements(id) % storage % G_NS  +              mesh % elements(id) % storage % QDot
                   mesh % elements(id) % storage % Q =       mesh % elements(id) % storage % Q  + c(stage)*dt_vec(id)* mesh % elements(id) % storage % G_NS
 #endif
-
 #if (defined(CAHNHILLIARD)) && (!defined(FLOW))
                   mesh % elements(id) % storage % G_CH = a(stage)*mesh % elements(id) % storage % G_CH + mesh % elements(id) % storage % cDot
                   mesh % elements(id) % storage % c    = mesh % elements(id) % storage % c         + c(stage)*dt_vec(id)* mesh % elements(id) % storage % G_CH
@@ -285,10 +284,12 @@ MODULE ExplicitMethods
                            mesh % elements(id) % storage % Q(m,i,j,k)    =           mesh % elements(id) % storage % Q(m,i,j,k)     + c(stage)*deltaT* mesh % elements(id) % storage % G_NS(m,i,j,k)
                         enddo
 #endif
-
 #if (defined(CAHNHILLIARD)) && (!defined(FLOW))
-                        mesh % elements(id) % storage % G_CH = a(stage)*mesh % elements(id) % storage % G_CH + mesh % elements(id) % storage % cDot
-                        mesh % elements(id) % storage % c    = mesh % elements(id) % storage % c         + c(stage)*deltaT* mesh % elements(id) % storage % G_CH
+                        !$acc loop seq
+                        do m = 1, NCOMP
+                           mesh % elements(id) % storage % G_CH(m,i,j,k) = a(stage)* mesh % elements(id) % storage % G_CH(m,i,j,k) + mesh % elements(id) % storage % cDot(m,i,j,k)
+                           mesh % elements(id) % storage % c(m,i,j,k)    =           mesh % elements(id) % storage % c(m,i,j,k)    + c(stage)*deltaT* mesh % elements(id) % storage % G_CH(m,i,j,k)
+                        end do
 #endif
                      end do
                   end do
@@ -308,11 +309,11 @@ MODULE ExplicitMethods
       call checkForNan(mesh, t)
 
    END SUBROUTINE TakeRK3Step
+
 SUBROUTINE TakeRK5Step( mesh, particles, t, deltaT, ComputeTimeDerivative , dt_vec, dts, global_dt, iter)
 !
 !        *****************************************************************************************
-!           These coefficients have been extracted from the paper: "Fourth-Order 2N-Storage
-!          Runge-Kutta Schemes", written by Mark H. Carpented and Christopher A. Kennedy
+!           2N-storage 4th-order, 5-stage RK (Carpenter & Kennedy).
 !        *****************************************************************************************
 !
       implicit none
@@ -356,7 +357,6 @@ SUBROUTINE TakeRK5Step( mesh, particles, t, deltaT, ComputeTimeDerivative , dt_v
              mesh % elements(id) % storage % G_NS = a(stage)* mesh % elements(id) % storage % G_NS  +              mesh % elements(id) % storage % QDot
              mesh % elements(id) % storage % Q =       mesh % elements(id) % storage % Q  + c(stage)*dt_vec(id)* mesh % elements(id) % storage % G_NS
 #endif
-
 #if (defined(CAHNHILLIARD)) && (!defined(FLOW))
             mesh % elements(id) % storage % G_CH = a(stage)*mesh % elements(id) % storage % G_CH + mesh % elements(id) % storage % cDot
             mesh % elements(id) % storage % c    = mesh % elements(id) % storage % c         + c(stage)*dt_vec(id)* mesh % elements(id) % storage % G_CH
@@ -391,10 +391,12 @@ SUBROUTINE TakeRK5Step( mesh, particles, t, deltaT, ComputeTimeDerivative , dt_v
                            mesh % elements(id) % storage % Q(m,i,j,k)    =           mesh % elements(id) % storage % Q(m,i,j,k)     + c(stage)*deltaT* mesh % elements(id) % storage % G_NS(m,i,j,k)
                         end do
 #endif
-
 #if (defined(CAHNHILLIARD)) && (!defined(FLOW))
-                        mesh % elements(id) % storage % G_CH = a(stage)*mesh % elements(id) % storage % G_CH + mesh % elements(id) % storage % cDot
-                        mesh % elements(id) % storage % c    = mesh % elements(id) % storage % c         + c(stage)*deltaT* mesh % elements(id) % storage % G_CH
+                        !$acc loop seq
+                        do m = 1, NCOMP
+                           mesh % elements(id) % storage % G_CH(m,i,j,k) = a(stage)* mesh % elements(id) % storage % G_CH(m,i,j,k) + mesh % elements(id) % storage % cDot(m,i,j,k)
+                           mesh % elements(id) % storage % c(m,i,j,k)    =           mesh % elements(id) % storage % c(m,i,j,k)    + c(stage)*deltaT* mesh % elements(id) % storage % G_CH(m,i,j,k)
+                        end do
 #endif
                      end do
                   end do
@@ -702,7 +704,12 @@ SUBROUTINE TakeExplicitEulerStep( mesh, particles, t, deltaT, ComputeTimeDerivat
       if (present(dt_vec)) then
 !$omp parallel do schedule(runtime)
          DO id = 1, SIZE( mesh % elements )
+#ifdef FLOW
             mesh % elements(id) % storage % Q = mesh % elements(id) % storage % Q + dt_vec(id)*mesh % elements(id) % storage % QDot
+#endif
+#if (defined(CAHNHILLIARD)) && (!defined(FLOW))
+            mesh % elements(id) % storage % c = mesh % elements(id) % storage % c + dt_vec(id)*mesh % elements(id) % storage % cDot
+#endif
          END DO
 !$omp end parallel do
       else
@@ -721,9 +728,12 @@ SUBROUTINE TakeExplicitEulerStep( mesh, particles, t, deltaT, ComputeTimeDerivat
                                                                      + deltaT * mesh % elements(id) % storage % QDot(m,i,j,k)
                      end do
 #endif
-
 #if (defined(CAHNHILLIARD)) && (!defined(FLOW))
-                     mesh % elements(id) % storage % c = mesh % elements(id) % storage % c + deltaT * mesh % elements(id) % storage % cDot
+                     !$acc loop seq
+                     do m = 1, NCOMP
+                        mesh % elements(id) % storage % c(m,i,j,k) =   mesh % elements(id) % storage % c(m,i,j,k) &
+                                                                     + deltaT * mesh % elements(id) % storage % cDot(m,i,j,k)
+                     end do
 #endif
                   end do
                end do
