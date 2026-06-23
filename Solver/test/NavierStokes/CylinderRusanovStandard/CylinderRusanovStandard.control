@@ -20,6 +20,8 @@ Discretization nodes    = Gauss-Lobatto
 inviscid discretization = Split-Form
 averaging               = Standard
 Viscous discretization  = BR1
+Time integration = Explicit
+Explicit method = rk5
 
 #define boundary InnerCylinder
       type = NoSlipWall

@@ -532,15 +532,14 @@ end module ProblemFileFunctions
             TYPE(FTAssertionsManager), POINTER :: sharedManager
             LOGICAL                            :: success
             integer                            :: rank, io
-            real(kind=RP), parameter :: cd = 35.643231345261853_RP
-            real(kind=RP), parameter :: cl = -8.5572623788809921E-004_RP
-            real(kind=RP), parameter :: wake_u = -5.4462061660731850E-015_RP
-            real(kind=RP), parameter :: res(5) = [  9.2292315490396817_RP, &
-                                                    20.810422961035105_RP, &
-                                                    0.26020470421996017_RP, &
-                                                    24.188542011262196_RP, &
-                                                    251.73276410073819_RP ]
-
+            real(kind=RP), parameter :: cd = 35.643153909477363_RP
+            real(kind=RP), parameter :: cl = -8.5568873311947513E-004_RP
+            real(kind=RP), parameter :: wake_u = -4.2075495950949453E-015_RP
+            real(kind=RP), parameter :: res(5) = [  9.2676340584107297_RP, &
+                                                    20.570953248056536_RP, &
+                                                    0.26015846361685352_RP, &
+                                                    24.346451210177229_RP, &
+                                                    252.88270489220270_RP ]
 #if defined(NAVIERSTOKES)
 
             CALL initializeSharedAssertionsManager
