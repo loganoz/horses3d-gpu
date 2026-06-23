@@ -680,7 +680,8 @@
                case (EULER_RK3_KEY)
                   CALL TakeEulerRK3Step(sem % mesh, sem % particles, t, dt, ComputeTimeDerivative, iter=k)
                case default
-                  error stop "TimeIntegrator :: Unknown explicit time integration method."
+                  write(STD_OUT,'(A)') "TimeIntegrator :: Unknown explicit time integration method. Defaulting to RK3."
+                  CALL TakeRK3Step(sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
             end select
 #if defined(NAVIERSTOKES)
             if( sem % mesh % IBM % active ) call sem % mesh % IBM % SemiImplicitCorrection( sem % mesh % elements, dt )
