@@ -1017,6 +1017,7 @@ MODULE ExplicitMethods
       real(RP)               :: p, pavg, minp
       real(RP)               :: theta
       real(RP)               :: gm1
+      real(RP)               :: wijk, Qval
       integer                :: eID
       integer                :: i, j, k, eq
       integer                :: N(3)
@@ -1031,15 +1032,13 @@ MODULE ExplicitMethods
 
          ! Compute averages
          Qavg = 0.0_RP
-!$acc loop vector collapse(3) reduction(+:Qavg)
+!$acc loop vector collapse(3) reduction(+:Qavg) private(wijk)
          do k = 0, N(3); do j = 0, N(2); do i = 0, N(1)
+            wijk = NodalStorage(N(1)) % w(i) * NodalStorage(N(2)) % w(j) &
+                 * NodalStorage(N(3)) % w(k) * mesh % elements(eID) % geom % jacobian(i,j,k)
 !$acc loop seq
             do eq = 1, NCONS
-               Qavg(eq) = Qavg(eq) + mesh % elements(eID) % storage % Q(eq,i,j,k) &
-                                   * NodalStorage(N(1)) % w(i) &
-                                   * NodalStorage(N(2)) % w(j) &
-                                   * NodalStorage(N(3)) % w(k) &
-                                   * mesh % elements(eID) % geom % jacobian(i,j,k)
+               Qavg(eq) = Qavg(eq) + mesh % elements(eID) % storage % Q(eq,i,j,k) * wijk
             end do
          end do               ; end do               ; end do
          Qavg = Qavg / mesh % elements(eID) % geom % volume
@@ -1055,9 +1054,10 @@ MODULE ExplicitMethods
             m = min(LIMITER_MIN, Qavg(1))
             theta = abs((Qavg(1) - m) / (Qavg(1) - minrho))
             if (theta <= 1.0_RP) then
-!$acc loop vector collapse(3)
+!$acc loop vector collapse(3) private(Qval)
                do k = 0, N(3); do j = 0, N(2); do i = 0, N(1)
-                  mesh % elements(eID) % storage % Q(1,i,j,k) = theta * (mesh % elements(eID) % storage % Q(1,i,j,k) - Qavg(1)) + Qavg(1)
+                  Qval = mesh % elements(eID) % storage % Q(1,i,j,k)
+                  mesh % elements(eID) % storage % Q(1,i,j,k) = theta * (Qval - Qavg(1)) + Qavg(1)
                end do               ; end do               ; end do
             end if
          end if
@@ -1065,14 +1065,13 @@ MODULE ExplicitMethods
          ! Pressure now (Jensen's inequality is NOT conservative for the pressure)
          minp = huge(1.0_RP)
          pavg = 0.0_RP
-!$acc loop vector collapse(3) reduction(+:pavg) reduction(min:minp) private(Q, p)
+!$acc loop vector collapse(3) reduction(+:pavg) reduction(min:minp) private(Q, p, wijk)
          do k = 0, N(3); do j = 0, N(2); do i = 0, N(1)
             Q = mesh % elements(eID) % storage % Q(:,i,j,k)
             p = gm1 * (Q(5) - 0.5_RP * (Q(2)**2 + Q(3)**2 + Q(4)**2) / Q(1))
-            pavg = pavg + p * NodalStorage(N(1)) % w(i) &
-                            * NodalStorage(N(2)) % w(j) &
-                            * NodalStorage(N(3)) % w(k) &
-                            * mesh % elements(eID) % geom % jacobian(i,j,k)
+            wijk = NodalStorage(N(1)) % w(i) * NodalStorage(N(2)) % w(j) &
+                 * NodalStorage(N(3)) % w(k) * mesh % elements(eID) % geom % jacobian(i,j,k)
+            pavg = pavg + p * wijk
             minp = min(minp, p)
          end do               ; end do               ; end do
          pavg = pavg / mesh % elements(eID) % geom % volume
@@ -1081,11 +1080,12 @@ MODULE ExplicitMethods
             m = min(LIMITER_MIN, pavg)
             theta = abs((pavg - m) / (pavg - minp))
             if (theta <= 1.0_RP) then
-!$acc loop vector collapse(3)
+!$acc loop vector collapse(3) private(Qval)
                do k = 0, N(3); do j = 0, N(2); do i = 0, N(1)
 !$acc loop seq
                   do eq = 1, NCONS
-                     mesh % elements(eID) % storage % Q(eq,i,j,k) = theta * (mesh % elements(eID) % storage % Q(eq,i,j,k) - Qavg(eq)) + Qavg(eq)
+                     Qval = mesh % elements(eID) % storage % Q(eq,i,j,k)
+                     mesh % elements(eID) % storage % Q(eq,i,j,k) = theta * (Qval - Qavg(eq)) + Qavg(eq)
                   end do
                end do               ; end do               ; end do
             end if
