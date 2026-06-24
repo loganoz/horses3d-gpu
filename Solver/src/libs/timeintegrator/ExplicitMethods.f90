@@ -10,10 +10,10 @@
 !    TakeExplicitEulerStep ..... GPU-ported, VALIDATED
 !    TakeRK3Step ............... GPU-ported, VALIDATED  
 !    TakeRK5Step ............... GPU-ported, VALIDATED
-!    TakeRKOptStep ............. GPU-ported, PENDING validation
-!    TakeSSPRK33Step ........... GPU-ported (unlimited path), PENDING validation
-!    TakeSSPRK43Step ........... GPU-ported (unlimited path), PENDING validation
-!    stage_limiter ............. GPU-ported, PENDING validation
+!    TakeRKOptStep ............. GPU-ported, pending validation
+!    TakeSSPRK33Step ........... GPU-ported (unlimited path), VALIDATED
+!    TakeSSPRK43Step ........... GPU-ported (unlimited path), VALIDATED
+!    stage_limiter ............. GPU-ported, VALIDATED
 !    TakeEulerRK3Step .......... NOT GPU-ported 
 !    TakeExplicitBDFStep ....... NOT GPU-ported
 
