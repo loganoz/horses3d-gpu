@@ -1019,6 +1019,7 @@ MODULE ExplicitMethods
       real(RP)               :: gm1
       integer                :: eID
       integer                :: i, j, k, eq
+      integer                :: N(3)
 
 
       gm1 = thermodynamics % gammaMinus1
@@ -1026,17 +1027,18 @@ MODULE ExplicitMethods
 !$omp parallel do default(private) shared(mesh, NodalStorage) firstprivate(gm1, LIMITER_MIN)
 !$acc parallel loop gang default(present) firstprivate(gm1, LIMITER_MIN)
       do eID = 1, mesh % no_of_elements
+         N = mesh % elements(eID) % Nxyz
 
          ! Compute averages
          Qavg = 0.0_RP
 !$acc loop vector collapse(3) reduction(+:Qavg)
-         do k = 0, mesh % elements(eID) % Nxyz(3); do j = 0, mesh % elements(eID) % Nxyz(2); do i = 0, mesh % elements(eID) % Nxyz(1)
+         do k = 0, N(3); do j = 0, N(2); do i = 0, N(1)
 !$acc loop seq
             do eq = 1, NCONS
                Qavg(eq) = Qavg(eq) + mesh % elements(eID) % storage % Q(eq,i,j,k) &
-                                   * NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) &
-                                   * NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) &
-                                   * NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) &
+                                   * NodalStorage(N(1)) % w(i) &
+                                   * NodalStorage(N(2)) % w(j) &
+                                   * NodalStorage(N(3)) % w(k) &
                                    * mesh % elements(eID) % geom % jacobian(i,j,k)
             end do
          end do               ; end do               ; end do
@@ -1045,7 +1047,7 @@ MODULE ExplicitMethods
          ! Density first
          minrho = huge(1.0_RP)
 !$acc loop vector collapse(3) reduction(min:minrho)
-         do k = 0, mesh % elements(eID) % Nxyz(3); do j = 0, mesh % elements(eID) % Nxyz(2); do i = 0, mesh % elements(eID) % Nxyz(1)
+         do k = 0, N(3); do j = 0, N(2); do i = 0, N(1)
             minrho = min(minrho, mesh % elements(eID) % storage % Q(1,i,j,k))
          end do               ; end do               ; end do
 
@@ -1054,7 +1056,7 @@ MODULE ExplicitMethods
             theta = abs((Qavg(1) - m) / (Qavg(1) - minrho))
             if (theta <= 1.0_RP) then
 !$acc loop vector collapse(3)
-               do k = 0, mesh % elements(eID) % Nxyz(3); do j = 0, mesh % elements(eID) % Nxyz(2); do i = 0, mesh % elements(eID) % Nxyz(1)
+               do k = 0, N(3); do j = 0, N(2); do i = 0, N(1)
                   mesh % elements(eID) % storage % Q(1,i,j,k) = theta * (mesh % elements(eID) % storage % Q(1,i,j,k) - Qavg(1)) + Qavg(1)
                end do               ; end do               ; end do
             end if
@@ -1064,12 +1066,12 @@ MODULE ExplicitMethods
          minp = huge(1.0_RP)
          pavg = 0.0_RP
 !$acc loop vector collapse(3) reduction(+:pavg) reduction(min:minp) private(Q, p)
-         do k = 0, mesh % elements(eID) % Nxyz(3); do j = 0, mesh % elements(eID) % Nxyz(2); do i = 0, mesh % elements(eID) % Nxyz(1)
+         do k = 0, N(3); do j = 0, N(2); do i = 0, N(1)
             Q = mesh % elements(eID) % storage % Q(:,i,j,k)
             p = gm1 * (Q(5) - 0.5_RP * (Q(2)**2 + Q(3)**2 + Q(4)**2) / Q(1))
-            pavg = pavg + p * NodalStorage(mesh % elements(eID) % Nxyz(1)) % w(i) &
-                            * NodalStorage(mesh % elements(eID) % Nxyz(2)) % w(j) &
-                            * NodalStorage(mesh % elements(eID) % Nxyz(3)) % w(k) &
+            pavg = pavg + p * NodalStorage(N(1)) % w(i) &
+                            * NodalStorage(N(2)) % w(j) &
+                            * NodalStorage(N(3)) % w(k) &
                             * mesh % elements(eID) % geom % jacobian(i,j,k)
             minp = min(minp, p)
          end do               ; end do               ; end do
@@ -1080,7 +1082,7 @@ MODULE ExplicitMethods
             theta = abs((pavg - m) / (pavg - minp))
             if (theta <= 1.0_RP) then
 !$acc loop vector collapse(3)
-               do k = 0, mesh % elements(eID) % Nxyz(3); do j = 0, mesh % elements(eID) % Nxyz(2); do i = 0, mesh % elements(eID) % Nxyz(1)
+               do k = 0, N(3); do j = 0, N(2); do i = 0, N(1)
 !$acc loop seq
                   do eq = 1, NCONS
                      mesh % elements(eID) % storage % Q(eq,i,j,k) = theta * (mesh % elements(eID) % storage % Q(eq,i,j,k) - Qavg(eq)) + Qavg(eq)
