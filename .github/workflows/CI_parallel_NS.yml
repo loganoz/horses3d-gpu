@@ -1271,6 +1271,36 @@ jobs:
           # source /opt/intel/oneapi/setvars.sh || true
           mpiexec --oversubscribe -n 8 ./horses3d.ns CylinderPirozzoliRoe.control
         if: '!cancelled()'
+#
+# 46) CYLINDER sprk33
+# -------------------
+      - name: Build NSCylinderssprk33
+        working-directory: ./Solver/test/NavierStokes/Cylinderssprk33/SETUP
+        run: |
+          # source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
+        if: '!cancelled()'
+      - name: Run NSCylinderssprk33
+        working-directory: ./Solver/test/NavierStokes/Cylinderssprk33
+        run: |
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns Cylinderssprk33.control
+        if: '!cancelled()'
+#
+# 47) CYLINDER sprk43
+# -------------------
+      - name: Build NSCylinderssprk43
+        working-directory: ./Solver/test/NavierStokes/Cylinderssprk43/SETUP
+        run: |
+          # source /opt/intel/oneapi/setvars.sh || true
+          make ns MODE=${{matrix.mode}} COMPILER=${{matrix.compiler}} COMM=${{matrix.comm}} ENABLE_THREADS=${{matrix.enable_threads}} WITH_METIS=YES WITH_MKL=${{matrix.mkl}} WITH_HDF5=${{matrix.hdf5}} EXTRA_FFLAGS="${{ env.EXTRA_COV }}"
+        if: '!cancelled()'
+      - name: Run NSCylinderssprk43
+        working-directory: ./Solver/test/NavierStokes/Cylinderssprk43
+        run: |
+          # source /opt/intel/oneapi/setvars.sh || true
+          mpiexec --oversubscribe -n 8 ./horses3d.ns Cylinderssprk43.control
+        if: '!cancelled()'
 
 #
 # CHECK CODE COVERAGE

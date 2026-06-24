@@ -666,8 +666,21 @@
 #if defined(NAVIERSTOKES)
             if( sem % mesh % IBM % active ) call sem % mesh % IBM % SemiImplicitCorrection( sem % mesh % elements, dt )
 #endif
-            ! Need to fix this, Nvfortran does not like the pointer here - select function might solve the problem
-            CALL TakeRK3Step( sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
+            ! Need to fix this, Nvfortran does not like the pointer here - select function might solve the problem: Fixed
+            select case (self % RKStep_key)
+               case (EULER_KEY)
+                  CALL TakeExplicitEulerStep(sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
+               case (RK3_KEY)
+                  CALL TakeRK3Step(sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
+               case (RK5_KEY)
+                  CALL TakeRK5Step(sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
+               case (SSPRK33_KEY)
+                  CALL TakeSSPRK33Step(sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
+               case (SSPRK43_KEY)
+                  CALL TakeSSPRK43Step(sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
+               case (EULER_RK3_KEY)
+                  CALL TakeEulerRK3Step(sem % mesh, sem % particles, t, dt, ComputeTimeDerivative, iter=k)
+            end select
 #if defined(NAVIERSTOKES)
             if( sem % mesh % IBM % active ) call sem % mesh % IBM % SemiImplicitCorrection( sem % mesh % elements, dt )
 #endif
