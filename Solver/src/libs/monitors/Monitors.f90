@@ -740,6 +740,170 @@ readloop:do
 
 end subroutine getNoOfMonitors
 
+!
+!///////////////////////////////////////////////////////////////////////////////////
+!
+!     Probes-from-file auxiliary routines
+!
+!     The probes file is a plain text file. Blank lines and lines starting
+!     with "#" are ignored. The first remaining line lists the variables
+!     to sample (shared by every probe in the file):
+!
+!        variable1 [variable2 ...]
+!
+!     Every remaining line holds the coordinates of one probe:
+!
+!        x  y  z
+!
+!     A separate output file "<solution_file>.probe_<N>.probe" is created for
+!     each probe, with one column per variable, and one row written per
+!     saved time step.
+!
+!///////////////////////////////////////////////////////////////////////////////////
+!
+   subroutine countProbesInFile(fileName, n)
+      implicit none
+      character(len=*), intent(in)  :: fileName
+      integer,          intent(out) :: n
+!
+!     ---------------
+!     Local variables
+!     ---------------
+!
+      integer                    :: fID, io
+      logical                    :: headerRead
+      character(len=LINE_LENGTH) :: line
+
+      n = 0
+      headerRead = .false.
+      open ( newunit = fID , file = fileName , status = "old" , action = "read" )
+
+      do
+         read ( fID , '(A)' , iostat = io ) line
+         if ( io .ne. 0 ) exit
+
+         line = adjustl(line)
+         if ( len_trim(line) .eq. 0 ) cycle
+         if ( line(1:1) .eq. '#' )    cycle
+!
+!        The first non-blank, non-comment line lists the variable names
+!        shared by every probe and is not itself a probe
+!        ----------------------------------------------------------------
+         if ( .not. headerRead ) then
+            headerRead = .true.
+            cycle
+         end if
+
+         n = n + 1
+      end do
+
+      close(fID)
+
+   end subroutine countProbesInFile
+
+   subroutine splitIntoTokens(line, tokens, n)
+      implicit none
+      character(len=*),                              intent(in)  :: line
+      character(len=STR_LEN_MONITORS), allocatable,   intent(out) :: tokens(:)
+      integer,                                        intent(out) :: n
+!
+!     ---------------
+!     Local variables
+!     ---------------
+!
+      character(len=LINE_LENGTH)      :: auxline
+      character(len=STR_LEN_MONITORS) :: buffer(64)
+      integer                         :: pos
+
+      auxline = adjustl(line)
+      n = 0
+
+      do while ( len_trim(auxline) .gt. 0 )
+         pos = index(trim(auxline), " ")
+         n = n + 1
+
+         if ( pos .eq. 0 ) then
+            buffer(n) = trim(auxline)
+            auxline   = ""
+         else
+            buffer(n) = auxline(1:pos-1)
+            auxline   = adjustl(auxline(pos+1:))
+         end if
+      end do
+
+      allocate( tokens(n) )
+      tokens(1:n) = buffer(1:n)
+
+   end subroutine splitIntoTokens
+
+#ifdef FLOW
+   subroutine InitializeProbesFromFile(fileName, probes, offset, mesh, solution_file, FirstCall)
+      implicit none
+      character(len=*),   intent(in)    :: fileName
+      class(Probe_t),     intent(inout) :: probes(:)
+      integer,            intent(in)    :: offset
+      class(HexMesh),     intent(in)    :: mesh
+      character(len=*),   intent(in)    :: solution_file
+      logical,            intent(in)    :: FirstCall
+!
+!     ---------------
+!     Local variables
+!     ---------------
+!
+      integer                                      :: fID, io, idx, nTok
+      logical                                      :: headerRead
+      character(len=LINE_LENGTH)                   :: line
+      real(kind=RP)                                :: x(NDIM)
+      character(len=STR_LEN_MONITORS), allocatable  :: tokens(:)
+      character(len=STR_LEN_MONITORS), allocatable  :: variables(:)
+      character(len=STR_LEN_MONITORS)               :: pname
+
+      idx = offset
+      headerRead = .false.
+      open ( newunit = fID , file = fileName , status = "old" , action = "read" )
+
+      do
+         read ( fID , '(A)' , iostat = io ) line
+         if ( io .ne. 0 ) exit
+
+         line = adjustl(line)
+         if ( len_trim(line) .eq. 0 ) cycle
+         if ( line(1:1) .eq. '#' )    cycle
+!
+!        The first non-blank, non-comment line is the shared variable list
+!        ------------------------------------------------------------------
+         if ( .not. headerRead ) then
+            call splitIntoTokens(line, variables, nTok)
+            headerRead = .true.
+            cycle
+         end if
+
+         call splitIntoTokens(line, tokens, nTok)
+
+         if ( nTok .lt. 3 ) then
+            deallocate(tokens)
+            cycle
+         end if
+
+         read(tokens(1),*) x(1)
+         read(tokens(2),*) x(2)
+         read(tokens(3),*) x(3)
+
+         idx = idx + 1
+         write(pname,'(A,I0)') "probe_", idx
+
+         call probes(idx) % Initialization( mesh, idx, solution_file, FirstCall, &
+                                             x_in = x, variables_in = variables, name_in = trim(pname) )
+
+         deallocate(tokens)
+      end do
+
+      if ( allocated(variables) ) deallocate(variables)
+      close(fID)
+
+   end subroutine InitializeProbesFromFile
+#endif
+
 end module MonitorsClass
 !
 !///////////////////////////////////////////////////////////////////////////////////
