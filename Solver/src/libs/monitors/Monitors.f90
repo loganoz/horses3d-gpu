@@ -85,6 +85,8 @@ module MonitorsClass
          character(len=STR_LEN_MONITORS) :: solution_file                                            
          logical, save                   :: FirstCall = .TRUE.
          logical                         :: saveGradients
+         character(len=LINE_LENGTH)      :: probesFileName
+         integer                         :: no_of_fileProbes
 !
 !        Setup the buffer
 !        ----------------
@@ -108,6 +110,7 @@ module MonitorsClass
 !
 !        Search in case file for probes, surface monitors, and volume monitors
 !        ---------------------------------------------------------------------
+         no_of_fileProbes = 0
          if (mesh % child) then ! Return doing nothing if this is a child mesh
             Monitors % no_of_probes = 0
             Monitors % no_of_surfaceMonitors = 0
@@ -115,6 +118,17 @@ module MonitorsClass
             Monitors % no_of_loadBalancingMonitors = 0
          else
             call getNoOfMonitors( Monitors % no_of_probes, Monitors % no_of_surfaceMonitors, Monitors % no_of_volumeMonitors, Monitors % no_of_loadBalancingMonitors )
+!
+!           Check for an additional probes definition file (one probe per
+!           line: "x y z variable1 [variable2 ...]"), allowing several
+!           variables to be sampled and saved for the same probe location
+!           ---------------------------------------------------------------
+#ifdef FLOW
+            if ( controlVariables % containsKey("probes file") ) then
+               probesFileName = controlVariables % stringValueForKey("probes file", requestedLength = LINE_LENGTH)
+               call countProbesInFile( trim(probesFileName), no_of_fileProbes )
+            end if
+#endif
          end if
 !
 !        Initialize the Monitors class in the GPU
@@ -142,11 +156,18 @@ module MonitorsClass
          end do
 
 #ifdef FLOW
-         allocate ( Monitors % probes ( Monitors % no_of_probes )  )
+         allocate ( Monitors % probes ( Monitors % no_of_probes + no_of_fileProbes )  )
          !$acc update device(Monitors)
          do i = 1 , Monitors % no_of_probes
             call Monitors % probes(i) % Initialization ( mesh , i, solution_file , FirstCall )
          end do
+
+         if ( no_of_fileProbes .gt. 0 ) then
+            call InitializeProbesFromFile( trim(probesFileName), Monitors % probes, Monitors % no_of_probes, &
+                                            mesh, solution_file, FirstCall )
+         end if
+
+         Monitors % no_of_probes = Monitors % no_of_probes + no_of_fileProbes
 #endif
 
 #if defined(NAVIERSTOKES) || defined(INCNS)

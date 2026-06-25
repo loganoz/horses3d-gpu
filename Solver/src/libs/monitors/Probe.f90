@@ -27,14 +27,15 @@ module ProbeClass
       integer                         :: rank
       integer                         :: ID
       integer                         :: eID
+      integer                         :: nVars
       real(kind=RP)                   :: x(NDIM)
       real(kind=RP)                   :: xi(NDIM)
-      real(kind=RP), allocatable      :: values(:)
+      real(kind=RP), allocatable      :: values(:,:)
       real(kind=RP), allocatable      :: lxi(:) , leta(:), lzeta(:)
       real(kind=RP), allocatable      :: var(:,:,:)
       character(len=STR_LEN_MONITORS) :: fileName
       character(len=STR_LEN_MONITORS) :: monitorName
-      character(len=STR_LEN_MONITORS) :: variable
+      character(len=STR_LEN_MONITORS), allocatable :: variableNames(:)
       contains
          procedure   :: Initialization => Probe_Initialization
          procedure   :: Update         => Probe_Update
@@ -49,7 +50,7 @@ module ProbeClass
 
    contains
 
-      subroutine Probe_Initialization(self, mesh, ID, solution_file, FirstCall)
+      subroutine Probe_Initialization(self, mesh, ID, solution_file, FirstCall, x_in, variables_in, name_in)
          use ParamfileRegions
          use MPI_Process_Info
          use Utilities, only: toLower
@@ -59,45 +60,67 @@ module ProbeClass
          integer                 :: ID
          character(len=*)        :: solution_file
          logical, intent(in)     :: FirstCall
+         real(kind=RP),     intent(in), optional :: x_in(NDIM)
+         character(len=*),  intent(in), optional :: variables_in(:)
+         character(len=*),  intent(in), optional :: name_in
 !
 !        ---------------
 !        Local variables
 !        ---------------
 !
-         integer                          :: i, j, k, fid
+         integer                          :: i, j, k, v, fid
          character(len=STR_LEN_MONITORS)  :: in_label
          character(len=STR_LEN_MONITORS)  :: fileName
          character(len=STR_LEN_MONITORS)  :: paramFile
          character(len=STR_LEN_MONITORS)  :: coordinates
-         
+         character(len=STR_LEN_MONITORS)  :: variable
+
          if (FirstCall) then
-!
-!           Allocate memory
-!           ---------------
-            allocate ( self % values(BUFFER_SIZE) )
 !
 !           Get monitor ID
 !           --------------
             self % ID = ID
 !
-!           Search for the parameters in the case file
-!           ------------------------------------------
-            write(in_label , '(A,I0)') "#define probe " , self % ID
-         
-            call get_command_argument(1, paramFile)
-            call readValueInRegion(trim(paramFile), "name"    , self % monitorName, in_label, "# end" )
-            call readValueInRegion(trim(paramFile), "variable", self % variable   , in_label, "# end" )
-            call readValueInRegion(trim(paramFile), "position", coordinates       , in_label, "# end" )
-!
-!           Get the coordinates
-!           -------------------
-            self % x = getRealArrayFromString(coordinates)
-!
-!           Check the variable
-!           ------------------
-            call tolower(self % variable)
+!           Get the probe definition, either from a probes file (x_in/variables_in
+!           provided) or from a "#define probe" block in the case file
+!           ------------------------------------------------------------------------
+            if ( present(x_in) ) then
+               self % monitorName = name_in
+               self % x           = x_in
+               self % nVars       = size(variables_in)
+               allocate( self % variableNames(self % nVars) )
+               self % variableNames = variables_in
 
-            select case ( trim(self % variable) )
+            else
+!
+!              Search for the parameters in the case file
+!              ------------------------------------------
+               write(in_label , '(A,I0)') "#define probe " , self % ID
+
+               call get_command_argument(1, paramFile)
+               call readValueInRegion(trim(paramFile), "name"    , self % monitorName, in_label, "# end" )
+               call readValueInRegion(trim(paramFile), "variable", variable          , in_label, "# end" )
+               call readValueInRegion(trim(paramFile), "position", coordinates       , in_label, "# end" )
+!
+!              Get the coordinates
+!              -------------------
+               self % x = getRealArrayFromString(coordinates)
+
+               self % nVars = 1
+               allocate( self % variableNames(1) )
+               self % variableNames(1) = variable
+            end if
+!
+!           Allocate memory
+!           ---------------
+            allocate ( self % values(self % nVars, BUFFER_SIZE) )
+!
+!           Check the variables
+!           --------------------
+            do v = 1, self % nVars
+            call tolower(self % variableNames(v))
+
+            select case ( trim(self % variableNames(v)) )
 #ifdef NAVIERSTOKES
             case ("pressure")
             case ("velocity")
@@ -107,7 +130,7 @@ module ProbeClass
             case ("mach")
             case ("k")
             case default
-               print*, 'Probe variable "',trim(self % variable),'" not implemented.'
+               print*, 'Probe variable "',trim(self % variableNames(v)),'" not implemented.'
                print*, "Options available are:"
                print*, "   * pressure"
                print*, "   * velocity"
@@ -125,7 +148,7 @@ module ProbeClass
             case ("v")
             case ("w")
             case default
-               print*, 'Probe variable "',trim(self % variable),'" not implemented.'
+               print*, 'Probe variable "',trim(self % variableNames(v)),'" not implemented.'
                print*, "Options available are:"
                print*, "   * pressure"
                print*, "   * velocity"
@@ -138,7 +161,7 @@ module ProbeClass
             case ("static-pressure")
 
             case default
-               print*, 'Probe variable "',trim(self % variable),'" not implemented.'
+               print*, 'Probe variable "',trim(self % variableNames(v)),'" not implemented.'
                print*, "Options available are:"
                print*, "   * static-pressure"
 
@@ -151,7 +174,7 @@ module ProbeClass
             case ("v")
             case ("w")
             case default
-               print*, 'Probe variable "',trim(self % variable),'" not implemented.'
+               print*, 'Probe variable "',trim(self % variableNames(v)),'" not implemented.'
                print*, "Options available are:"
                print*, "   * pressure"
                print*, "   * velocity"
@@ -160,7 +183,8 @@ module ProbeClass
                print*, "   * w"
             end select
 #endif
-         
+            end do
+
 !
 !           Find the requested point in the mesh
 !           ------------------------------------
@@ -238,13 +262,16 @@ module ProbeClass
 !        Write the file headers
 !        ----------------------
             write( fID , '(A20,A  )') "Monitor name:      ", trim(self % monitorName)
-            write( fID , '(A20,A  )') "Selected variable: " , trim(self % variable)
             write( fID , '(A20,ES24.10)') "x coordinate: ", self % x(1)
             write( fID , '(A20,ES24.10)') "y coordinate: ", self % x(2)
             write( fID , '(A20,ES24.10)') "z coordinate: ", self % x(3)
 
             write( fID , * )
-            write( fID , '(A10,2X,A24,2X,A24)' ) "Iteration" , "Time" , trim(self % variable)
+            write( fID , '(A10,2X,A24)' , advance = "no") "Iteration" , "Time"
+            do v = 1 , self % nVars
+               write( fID , '(2X,A24)' , advance = "no") trim(self % variableNames(v))
+            end do
+            write( fID , * )
 
             close ( fID )
          end if
@@ -264,18 +291,19 @@ module ProbeClass
 !        Local variables
 !        ---------------
 !
-         integer        :: i, j, k, ierr
+         integer        :: i, j, k, v, ierr
          real(kind=RP)  :: value
 
-         if ( .not. self % active ) return 
+         if ( .not. self % active ) return
 
          if ( MPI_Process % rank .eq. self % rank ) then
 
 !
 !           Update the probe
 !           ----------------
-   
-            select case (trim(self % variable))
+            do v = 1, self % nVars
+
+            select case (trim(self % variableNames(v)))
 #ifdef NAVIERSTOKES
             case("pressure")
                !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
@@ -420,14 +448,16 @@ module ProbeClass
 
             !$acc wait
 
-            self % values(bufferPosition) = value
-   
-#ifdef _HAS_MPI_            
+            self % values(v, bufferPosition) = value
+
+            end do
+!
+#ifdef _HAS_MPI_
             if ( MPI_Process % doMPIAction ) then
 !
 !              Share the result with the rest of the processes
-!              -----------------------------------------------         
-               call mpi_bcast(value, 1, MPI_DOUBLE, self % rank, MPI_COMM_WORLD, ierr)
+!              -----------------------------------------------
+               call mpi_bcast(self % values(:,bufferPosition), self % nVars, MPI_DOUBLE, self % rank, MPI_COMM_WORLD, ierr)
 
             end if
 #endif
@@ -437,7 +467,7 @@ module ProbeClass
 !           --------------------------------------------------------
 #ifdef _HAS_MPI_
             if ( MPI_Process % doMPIAction ) then
-               call mpi_bcast(self % values(bufferPosition), 1, MPI_DOUBLE, self % rank, MPI_COMM_WORLD, ierr)
+               call mpi_bcast(self % values(:,bufferPosition), self % nVars, MPI_DOUBLE, self % rank, MPI_COMM_WORLD, ierr)
             end if
 #endif
          end if
@@ -469,9 +499,9 @@ module ProbeClass
          class(Probe_t) :: self
          integer                 :: bufferLine
 
-         write(STD_OUT , '(1X,A,1X,ES10.3)' , advance = "no") "|" , self % values ( bufferLine ) 
+         write(STD_OUT , '(1X,A,1X,ES10.3)' , advance = "no") "|" , self % values ( 1 , bufferLine )
 
-      end subroutine Probe_WriteValue 
+      end subroutine Probe_WriteValue
 
       subroutine Probe_WriteToFile ( self , iter , t , no_of_lines)
 !
@@ -489,22 +519,26 @@ module ProbeClass
 !        Local variables
 !        ---------------
 !
-         integer                    :: i
+         integer                    :: i, v
          integer                    :: fID
 
          if ( MPI_Process % isRoot ) then
             open( newunit = fID , file = trim ( self % fileName ) , action = "write" , access = "append" , status = "old" )
-         
+
             do i = 1 , no_of_lines
-               write( fID , '(I10,2X,ES24.16,2X,ES24.16)' ) iter(i) , t(i) , self % values(i)
+               write( fID , '(I10,2X,ES24.16)' , advance = "no" ) iter(i) , t(i)
+               do v = 1 , self % nVars
+                  write( fID , '(2X,ES24.16)' , advance = "no" ) self % values(v,i)
+               end do
+               write( fID , * )
 
             end do
-        
+
             close ( fID )
          end if
 
-         
-         if ( no_of_lines .ne. 0 ) self % values(1) = self % values(no_of_lines)
+
+         if ( no_of_lines .ne. 0 ) self % values(:,1) = self % values(:,no_of_lines)
       
       end subroutine Probe_WriteToFile
 
@@ -566,6 +600,7 @@ module ProbeClass
          safedeallocate (self % lxi)
          safedeallocate (self % leta)
          safedeallocate (self % lzeta)
+         safedeallocate (self % variableNames)
       end subroutine Probe_Destruct
       
       elemental subroutine Probe_Assign (to, from)
@@ -576,14 +611,15 @@ module ProbeClass
          to % active = from % active
          to % rank = from % rank
          to % ID = from %  ID
-         to % eID = from % eID 
+         to % eID = from % eID
+         to % nVars = from % nVars
          to % x = from % x
          to % xi = from % xi
-         
+
          safedeallocate ( to % values )
-         allocate ( to % values ( size(from % values) ) )
+         allocate ( to % values ( size(from % values, 1), size(from % values, 2) ) )
          to % values = from % values
-         
+
          safedeallocate ( to % lxi )
          allocate ( to % lxi ( size(from % lxi) ) )
          to % lxi = from % lxi
@@ -598,8 +634,11 @@ module ProbeClass
          
          to % fileName = from % fileName
          to % monitorName = from % monitorName
-         to % variable = from % variable
-         
+
+         safedeallocate ( to % variableNames )
+         allocate ( to % variableNames ( size(from % variableNames) ) )
+         to % variableNames = from % variableNames
+
       end subroutine Probe_Assign
       
 end module ProbeClass
