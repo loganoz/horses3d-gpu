@@ -717,10 +717,10 @@ jobs:
           fi
         if: '!cancelled()'
 #
-# 41) CYLINDER StandardCentral
+# 41) CYLINDER RoePikePirozzoli
 # ----------------------------
-      - name: Build NSCylinderStandardCentral
-        working-directory: ./Solver/test/NavierStokes/CylinderStandardCentral/SETUP
+      - name: Build NSCylinderRoePikePirozzoli
+        working-directory: ./Solver/test/NavierStokes/CylinderRoePikePirozzoli/SETUP
         run: |
           module purge
           module load hpc_sdk
@@ -735,8 +735,8 @@ jobs:
           make clean || true
           make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
         if: '!cancelled()'
-      - name: Run NSCylinderStandardCentral
-        working-directory: ./Solver/test/NavierStokes/CylinderStandardCentral
+      - name: Run NSCylinderRoePikePirozzoli
+        working-directory: ./Solver/test/NavierStokes/CylinderRoePikePirozzoli
         run: |
           module purge
           module load hpc_sdk
@@ -750,7 +750,7 @@ jobs:
           export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
           cat > run_test.sh << 'EOF'
           #!/bin/bash
-          #SBATCH --job-name=NSCylinderStandardCentral
+          #SBATCH --job-name=NSCylinderRoePikePirozzoli
           #SBATCH --ntasks=2
           #SBATCH --partition=gpu
           #SBATCH --mem=32G
@@ -766,7 +766,7 @@ jobs:
           export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
           export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
           export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
-          mpirun -np 2 --bind-to none ./horses3d.ns CylinderStandardCentral.control
+          mpirun -np 2 --bind-to none ./horses3d.ns CylinderRoePikePirozzoli.control
           EOF
           job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
@@ -961,10 +961,10 @@ jobs:
           fi
         if: '!cancelled()'
 #
-# 45) CYLINDER PirozzoliRoe
+# 45) CYLINDER ViscousStandard
 # -------------------------
-      - name: Build NSCylinderPirozzoliRoe
-        working-directory: ./Solver/test/NavierStokes/CylinderPirozzoliRoe/SETUP
+      - name: Build NSCylinderViscousStandard
+        working-directory: ./Solver/test/NavierStokes/CylinderViscousStandard/SETUP
         run: |
           module purge
           module load hpc_sdk
@@ -979,8 +979,8 @@ jobs:
           make clean || true
           make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
         if: '!cancelled()'
-      - name: Run NSCylinderPirozzoliRoe
-        working-directory: ./Solver/test/NavierStokes/CylinderPirozzoliRoe
+      - name: Run NSCylinderViscousStandard
+        working-directory: ./Solver/test/NavierStokes/CylinderViscousStandard
         run: |
           module purge
           module load hpc_sdk
@@ -994,7 +994,7 @@ jobs:
           export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
           cat > run_test.sh << 'EOF'
           #!/bin/bash
-          #SBATCH --job-name=NSCylinderPirozzoliRoe
+          #SBATCH --job-name=NSCylinderViscousStandard
           #SBATCH --ntasks=2
           #SBATCH --partition=gpu
           #SBATCH --mem=32G
@@ -1010,7 +1010,313 @@ jobs:
           export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
           export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
           export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
-          mpirun -np 2 --bind-to none ./horses3d.ns CylinderPirozzoliRoe.control
+          mpirun -np 2 --bind-to none ./horses3d.ns CylinderViscousStandard.control
+          EOF
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
+          while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
+          cat slurm-${job_id}.out
+          exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
+          if [ "$exit_code" != "0" ]; then
+            echo "Test failed with exit code: $exit_code"
+            exit 1
+          fi
+        if: '!cancelled()'
+#
+# 46) CYLINDER RusanovStandard
+# -------------------------
+      - name: Build NSCylinderRusanovStandard
+        working-directory: ./Solver/test/NavierStokes/CylinderRusanovStandard/SETUP
+        run: |
+          module purge
+          module load hpc_sdk
+          module load nvhpc/24.11
+          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+          export CUDA_HOME=$NVHPC_CUDA_HOME
+          export CUDA_PATH=$NVHPC_CUDA_HOME
+          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+          make clean || true
+          make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
+        if: '!cancelled()'
+      - name: Run NSCylinderRusanovStandard
+        working-directory: ./Solver/test/NavierStokes/CylinderRusanovStandard
+        run: |
+          module purge
+          module load hpc_sdk
+          module load nvhpc/24.11
+          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+          export CUDA_HOME=$NVHPC_CUDA_HOME
+          export CUDA_PATH=$NVHPC_CUDA_HOME
+          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+          cat > run_test.sh << 'EOF'
+          #!/bin/bash
+          #SBATCH --job-name=NSCylinderRusanovStandard
+          #SBATCH --ntasks=2
+          #SBATCH --partition=gpu
+          #SBATCH --mem=32G
+          #SBATCH --gres=gpu:2
+          #SBATCH --time=00:15:00
+          module purge
+          module load hpc_sdk
+          module load nvhpc/24.11
+          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+          export CUDA_HOME=$NVHPC_CUDA_HOME
+          export CUDA_PATH=$NVHPC_CUDA_HOME
+          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+          mpirun -np 2 --bind-to none ./horses3d.ns CylinderRusanovStandard.control
+          EOF
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
+          while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
+          cat slurm-${job_id}.out
+          exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
+          if [ "$exit_code" != "0" ]; then
+            echo "Test failed with exit code: $exit_code"
+            exit 1
+          fi
+        if: '!cancelled()'
+#
+# 47) CYLINDER UdissStandard
+# -------------------------
+      - name: Build NSCylinderUdissStandard
+        working-directory: ./Solver/test/NavierStokes/CylinderUdissStandard/SETUP
+        run: |
+          module purge
+          module load hpc_sdk
+          module load nvhpc/24.11
+          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+          export CUDA_HOME=$NVHPC_CUDA_HOME
+          export CUDA_PATH=$NVHPC_CUDA_HOME
+          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+          make clean || true
+          make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
+        if: '!cancelled()'
+      - name: Run NSCylinderUdissStandard
+        working-directory: ./Solver/test/NavierStokes/CylinderUdissStandard
+        run: |
+          module purge
+          module load hpc_sdk
+          module load nvhpc/24.11
+          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+          export CUDA_HOME=$NVHPC_CUDA_HOME
+          export CUDA_PATH=$NVHPC_CUDA_HOME
+          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+          cat > run_test.sh << 'EOF'
+          #!/bin/bash
+          #SBATCH --job-name=NSCylinderUdissStandard
+          #SBATCH --ntasks=2
+          #SBATCH --partition=gpu
+          #SBATCH --mem=32G
+          #SBATCH --gres=gpu:2
+          #SBATCH --time=00:15:00
+          module purge
+          module load hpc_sdk
+          module load nvhpc/24.11
+          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+          export CUDA_HOME=$NVHPC_CUDA_HOME
+          export CUDA_PATH=$NVHPC_CUDA_HOME
+          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+          mpirun -np 2 --bind-to none ./horses3d.ns CylinderUdissStandard.control
+          EOF
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
+          while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
+          cat slurm-${job_id}.out
+          exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
+          if [ "$exit_code" != "0" ]; then
+            echo "Test failed with exit code: $exit_code"
+            exit 1
+          fi
+        if: '!cancelled()'
+#
+# 48) CYLINDER sprk33
+# -------------------
+      - name: Build NSCylinderssprk33
+        working-directory: ./Solver/test/NavierStokes/Cylinderssprk33/SETUP
+        run: |
+          module purge
+          module load hpc_sdk
+          module load nvhpc/24.11
+          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+          export CUDA_HOME=$NVHPC_CUDA_HOME
+          export CUDA_PATH=$NVHPC_CUDA_HOME
+          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+          make clean || true
+          make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
+        if: '!cancelled()'
+      - name: Run NSCylinderssprk33
+        working-directory: ./Solver/test/NavierStokes/Cylinderssprk33
+        run: |
+          module purge
+          module load hpc_sdk
+          module load nvhpc/24.11
+          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+          export CUDA_HOME=$NVHPC_CUDA_HOME
+          export CUDA_PATH=$NVHPC_CUDA_HOME
+          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+          cat > run_test.sh << 'EOF'
+          #!/bin/bash
+          #SBATCH --job-name=NSCylinderssprk33
+          #SBATCH --ntasks=2
+          #SBATCH --partition=gpu
+          #SBATCH --mem=32G
+          #SBATCH --gres=gpu:2
+          #SBATCH --time=00:15:00
+          module purge
+          module load hpc_sdk
+          module load nvhpc/24.11
+          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+          export CUDA_HOME=$NVHPC_CUDA_HOME
+          export CUDA_PATH=$NVHPC_CUDA_HOME
+          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+          mpirun -np 2 --bind-to none ./horses3d.ns Cylinderssprk33.control
+          EOF
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
+          while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
+          cat slurm-${job_id}.out
+          exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
+          if [ "$exit_code" != "0" ]; then
+            echo "Test failed with exit code: $exit_code"
+            exit 1
+          fi
+        if: '!cancelled()'
+#
+# 49) CYLINDER sprk43
+# -------------------
+      - name: Build NSCylinderssprk43
+        working-directory: ./Solver/test/NavierStokes/Cylinderssprk43/SETUP
+        run: |
+          module purge
+          module load hpc_sdk
+          module load nvhpc/24.11
+          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+          export CUDA_HOME=$NVHPC_CUDA_HOME
+          export CUDA_PATH=$NVHPC_CUDA_HOME
+          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+          make clean || true
+          make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
+        if: '!cancelled()'
+      - name: Run NSCylinderssprk43
+        working-directory: ./Solver/test/NavierStokes/Cylinderssprk43
+        run: |
+          module purge
+          module load hpc_sdk
+          module load nvhpc/24.11
+          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+          export CUDA_HOME=$NVHPC_CUDA_HOME
+          export CUDA_PATH=$NVHPC_CUDA_HOME
+          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+          cat > run_test.sh << 'EOF'
+          #!/bin/bash
+          #SBATCH --job-name=NSCylinderssprk43
+          #SBATCH --ntasks=2
+          #SBATCH --partition=gpu
+          #SBATCH --mem=32G
+          #SBATCH --gres=gpu:2
+          #SBATCH --time=00:15:00
+          module purge
+          module load hpc_sdk
+          module load nvhpc/24.11
+          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+          export CUDA_HOME=$NVHPC_CUDA_HOME
+          export CUDA_PATH=$NVHPC_CUDA_HOME
+          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+          mpirun -np 2 --bind-to none ./horses3d.ns Cylinderssprk43.control
+          EOF
+          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
+          while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
+          cat slurm-${job_id}.out
+          exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
+          if [ "$exit_code" != "0" ]; then
+            echo "Test failed with exit code: $exit_code"
+            exit 1
+          fi
+        if: '!cancelled()'
+
+#
+# 50) Limiter Test
+# -------------------
+      - name: Build NSLimiterTest
+        working-directory: ./Solver/test/NavierStokes/LimiterTest/SETUP
+        run: |
+          module purge
+          module load hpc_sdk
+          module load nvhpc/24.11
+          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+          export CUDA_HOME=$NVHPC_CUDA_HOME
+          export CUDA_PATH=$NVHPC_CUDA_HOME
+          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+          make clean || true
+          make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
+        if: '!cancelled()'
+      - name: Run NSLimiterTest
+        working-directory: ./Solver/test/NavierStokes/LimiterTest
+        run: |
+          module purge
+          module load hpc_sdk
+          module load nvhpc/24.11
+          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+          export CUDA_HOME=$NVHPC_CUDA_HOME
+          export CUDA_PATH=$NVHPC_CUDA_HOME
+          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+          cat > run_test.sh << 'EOF'
+          #!/bin/bash
+          #SBATCH --job-name=NSLimiterTest
+          #SBATCH --ntasks=2
+          #SBATCH --partition=gpu
+          #SBATCH --mem=32G
+          #SBATCH --gres=gpu:2
+          #SBATCH --time=00:15:00
+          module purge
+          module load hpc_sdk
+          module load nvhpc/24.11
+          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+          export CUDA_HOME=$NVHPC_CUDA_HOME
+          export CUDA_PATH=$NVHPC_CUDA_HOME
+          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+          mpirun -np 2 --bind-to none ./horses3d.ns LimiterTest.control
           EOF
           job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
