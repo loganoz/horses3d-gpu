@@ -477,15 +477,19 @@ module TessellationTypes
       class(point_type), pointer :: current, next 
       integer                    :: i
       
-      if( this% NumOfPoints .eq. 0 ) return
+      if( this% NumOfPoints .eq. 0 ) then
+         nullify(this% head)
+         return
+      end if
       
       current => this% head
 
-      do i = 1, this% NumOfPoints
+      do i = 1, this% NumOfPoints - 1
          next => current% next
          deallocate(current)
          current => next
       end do
+      deallocate(current)
       
       this% NumOfPoints = 0
       nullify(this% head)
