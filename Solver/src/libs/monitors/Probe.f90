@@ -262,9 +262,7 @@ module ProbeClass
 !        Write the file headers
 !        ----------------------
             write( fID , '(A20,A  )') "Monitor name:      ", trim(self % monitorName)
-            write( fID , '(A20,ES24.10)') "x coordinate: ", self % x(1)
-            write( fID , '(A20,ES24.10)') "y coordinate: ", self % x(2)
-            write( fID , '(A20,ES24.10)') "z coordinate: ", self % x(3)
+            write( fID , '(A25,ES24.10,2(4X,ES24.10))') "x, y, z coordinates: ", self % x(1), self % x(2), self % x(3)
 
             write( fID , * )
             write( fID , '(A10,2X,A24)' , advance = "no") "Iteration" , "Time"

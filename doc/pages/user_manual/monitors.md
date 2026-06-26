@@ -88,6 +88,14 @@ Real-time keywords may not work in parallel MPI computations. It depends on how 
 | variable  | *CHARACTER*: Variable to be monitored. Implemented options are: pressure, velocity, u, v, w, mach, k. | **Mandatory Keyword** |
 | position  | *REAL(3)*: Coordinates of the point to be monitored.        | **Mandatory Keyword** |
 
+Each probe writes its results to a dedicated `.probe` file, whose header reports the
+monitor name and its `x, y, z` coordinates on a single line:
+
+```
+ Monitor name:      probe_1
+      x, y, z coordinates:         5.0000000000E-01    0.0000000000E+00    0.0000000000E+00
+```
+
 ### Probes from a file
 
 Instead of (or in addition to) defining probes one-by-one with `#define probe` blocks,

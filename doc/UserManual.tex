@@ -1625,6 +1625,14 @@ position 	&
 							\textbf{Mandatory Keyword} \\ \hline
 \end{longtable}
 
+Each probe writes its results to a dedicated \texttt{.probe} file, whose header reports
+the monitor name and its $x$, $y$, $z$ coordinates on a single line:
+
+\begin{lstlisting}
+ Monitor name:      probe_1
+      x, y, z coordinates:         5.0000000000E-01    0.0000000000E+00    0.0000000000E+00
+\end{lstlisting}
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \section{Surface Monitors}
