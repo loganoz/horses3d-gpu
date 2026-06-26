@@ -353,7 +353,8 @@ module TessellationTypes
       
       type(PointLinkedList) :: PointLinkedList_Construct
       
-      PointLinkedList_Construct% head => null()
+      PointLinkedList_Construct% head        => null()
+      PointLinkedList_Construct% NumOfPoints =  0
    
    end function PointLinkedList_Construct
 !
@@ -390,6 +391,8 @@ module TessellationTypes
       end if
       
       nullify(current, currentNext)
+
+      this% NumOfPoints = this% NumOfPoints + 1
    
    end subroutine PointLinkedList_Add
 !
@@ -422,6 +425,8 @@ module TessellationTypes
       dataNext% prev => dataPrev
    
       nullify(dataPrev, dataNext)
+
+      this% NumOfPoints = this% NumOfPoints - 1
    
    end subroutine PointLinkedList_Remove
 !
@@ -454,6 +459,8 @@ module TessellationTypes
       this% head% prev => dataPrev 
    
       nullify(dataPrev)
+
+      this% NumOfPoints = this% NumOfPoints - 1
    
    end subroutine PointLinkedList_RemoveLast
 !
@@ -473,15 +480,15 @@ module TessellationTypes
       if( this% NumOfPoints .eq. 0 ) return
       
       current => this% head
-      next    => current% next
 
-      do i = 2, this% NumOfPoints
+      do i = 1, this% NumOfPoints
+         next => current% next
          deallocate(current)
          current => next
-         next    => current% next
       end do
       
       this% NumOfPoints = 0
+      nullify(this% head)
       
    end subroutine PointLinkedList_Destruct
 !
