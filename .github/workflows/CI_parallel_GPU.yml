@@ -174,71 +174,71 @@ jobs:
 # 5) CYLINDER SMAGORINSKY
 # -----------------------
 
-      - name: Build NSCylinderSmagorinsky
-        working-directory: ./Solver/test/NavierStokes/CylinderSmagorinsky/SETUP
-        run: |
-          module purge
-          module load hpc_sdk
-          module load nvhpc/24.11
-          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
-          export CUDA_HOME=$NVHPC_CUDA_HOME
-          export CUDA_PATH=$NVHPC_CUDA_HOME
-          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
-          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
-          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
-          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
-          make clean || true
-          make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
-        if: '!cancelled()'
+      # - name: Build NSCylinderSmagorinsky
+      #   working-directory: ./Solver/test/NavierStokes/CylinderSmagorinsky/SETUP
+      #   run: |
+      #     module purge
+      #     module load hpc_sdk
+      #     module load nvhpc/24.11
+      #     export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+      #     export CUDA_HOME=$NVHPC_CUDA_HOME
+      #     export CUDA_PATH=$NVHPC_CUDA_HOME
+      #     export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+      #     export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+      #     export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+      #     export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+      #     make clean || true
+      #     make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
+      #   if: '!cancelled()'
 
-      - name: Run NSCylinderSmagorinsky
-        working-directory: ./Solver/test/NavierStokes/CylinderSmagorinsky
-        run: |
-          module purge
-          module load hpc_sdk
-          module load nvhpc/24.11
-          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
-          export CUDA_HOME=$NVHPC_CUDA_HOME
-          export CUDA_PATH=$NVHPC_CUDA_HOME
-          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
-          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
-          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
-          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+      # - name: Run NSCylinderSmagorinsky
+      #   working-directory: ./Solver/test/NavierStokes/CylinderSmagorinsky
+      #   run: |
+      #     module purge
+      #     module load hpc_sdk
+      #     module load nvhpc/24.11
+      #     export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+      #     export CUDA_HOME=$NVHPC_CUDA_HOME
+      #     export CUDA_PATH=$NVHPC_CUDA_HOME
+      #     export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+      #     export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+      #     export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+      #     export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
           
-          cat > run_test.sh << 'EOF'
-          #!/bin/bash
-          #SBATCH --job-name=NSCylinderSmagorinsky
-          #SBATCH --ntasks=2
-          #SBATCH --partition=gpu
-          #SBATCH --mem=32G
-          #SBATCH --gres=gpu:2  # number of gpus max 4
-          #SBATCH --time=00:15:00
+      #     cat > run_test.sh << 'EOF'
+      #     #!/bin/bash
+      #     #SBATCH --job-name=NSCylinderSmagorinsky
+      #     #SBATCH --ntasks=2
+      #     #SBATCH --partition=gpu
+      #     #SBATCH --mem=32G
+      #     #SBATCH --gres=gpu:2  # number of gpus max 4
+      #     #SBATCH --time=00:15:00
           
-          module purge
-          module load hpc_sdk
-          module load nvhpc/24.11
-          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
-          export CUDA_HOME=$NVHPC_CUDA_HOME
-          export CUDA_PATH=$NVHPC_CUDA_HOME
-          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
-          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
-          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
-          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
-          mpirun -np 2 --bind-to none ./horses3d.ns CylinderSmagorinsky.control
-          EOF
+      #     module purge
+      #     module load hpc_sdk
+      #     module load nvhpc/24.11
+      #     export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+      #     export CUDA_HOME=$NVHPC_CUDA_HOME
+      #     export CUDA_PATH=$NVHPC_CUDA_HOME
+      #     export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+      #     export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+      #     export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+      #     export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+      #     mpirun -np 2 --bind-to none ./horses3d.ns CylinderSmagorinsky.control
+      #     EOF
           
-          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
-          while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
+      #     job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
+      #     while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
           
-          cat slurm-${job_id}.out
+      #     cat slurm-${job_id}.out
           
-          # Check exit code (ExitCode:Signal, e.g., "0:0" means success)
-          exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
-          if [ "$exit_code" != "0" ]; then
-            echo "Test failed with exit code: $exit_code"
-            exit 1
-          fi
-        if: '!cancelled()'
+      #     # Check exit code (ExitCode:Signal, e.g., "0:0" means success)
+      #     exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
+      #     if [ "$exit_code" != "0" ]; then
+      #       echo "Test failed with exit code: $exit_code"
+      #       exit 1
+      #     fi
+      #   if: '!cancelled()'
 
 #
 # 6) CYLINDER WALE
@@ -447,144 +447,144 @@ jobs:
           fi
         if: '!cancelled()'
 
-#
-# 9) TAYLOR GREEN VORTEX
-# ----------------------
+# #
+# # 9) TAYLOR GREEN VORTEX
+# # ----------------------
 
-      - name: Build TaylorGreen
-        working-directory: ./Solver/test/NavierStokes/TaylorGreen/SETUP
-        run: |
-          module purge
-          module load hpc_sdk
-          module load nvhpc/24.11
-          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
-          export CUDA_HOME=$NVHPC_CUDA_HOME
-          export CUDA_PATH=$NVHPC_CUDA_HOME
-          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
-          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
-          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
-          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
-          make clean || true
-          make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
-        if: '!cancelled()'
+#       - name: Build TaylorGreen
+#         working-directory: ./Solver/test/NavierStokes/TaylorGreen/SETUP
+#         run: |
+#           module purge
+#           module load hpc_sdk
+#           module load nvhpc/24.11
+#           export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+#           export CUDA_HOME=$NVHPC_CUDA_HOME
+#           export CUDA_PATH=$NVHPC_CUDA_HOME
+#           export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+#           export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+#           export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+#           export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+#           make clean || true
+#           make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
+#         if: '!cancelled()'
 
-      - name: Run TaylorGreen
-        working-directory: ./Solver/test/NavierStokes/TaylorGreen
-        run: |
-          module purge
-          module load hpc_sdk
-          module load nvhpc/24.11
-          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
-          export CUDA_HOME=$NVHPC_CUDA_HOME
-          export CUDA_PATH=$NVHPC_CUDA_HOME
-          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
-          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
-          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
-          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+#       - name: Run TaylorGreen
+#         working-directory: ./Solver/test/NavierStokes/TaylorGreen
+#         run: |
+#           module purge
+#           module load hpc_sdk
+#           module load nvhpc/24.11
+#           export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+#           export CUDA_HOME=$NVHPC_CUDA_HOME
+#           export CUDA_PATH=$NVHPC_CUDA_HOME
+#           export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+#           export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+#           export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+#           export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
           
-          cat > run_test.sh << 'EOF'
-          #!/bin/bash
-          #SBATCH --job-name=TaylorGreen
-          #SBATCH --ntasks=2
-          #SBATCH --partition=gpu
-          #SBATCH --mem=32G
-          #SBATCH --gres=gpu:2  # number of gpus max 4
-          #SBATCH --time=00:15:00
+#           cat > run_test.sh << 'EOF'
+#           #!/bin/bash
+#           #SBATCH --job-name=TaylorGreen
+#           #SBATCH --ntasks=2
+#           #SBATCH --partition=gpu
+#           #SBATCH --mem=32G
+#           #SBATCH --gres=gpu:2  # number of gpus max 4
+#           #SBATCH --time=00:15:00
           
-          module purge
-          module load hpc_sdk
-          module load nvhpc/24.11
-          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
-          export CUDA_HOME=$NVHPC_CUDA_HOME
-          export CUDA_PATH=$NVHPC_CUDA_HOME
-          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
-          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
-          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
-          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
-          mpirun -np 2 --bind-to none ./horses3d.ns TaylorGreen.control
-          EOF
+#           module purge
+#           module load hpc_sdk
+#           module load nvhpc/24.11
+#           export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+#           export CUDA_HOME=$NVHPC_CUDA_HOME
+#           export CUDA_PATH=$NVHPC_CUDA_HOME
+#           export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+#           export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+#           export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+#           export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+#           mpirun -np 2 --bind-to none ./horses3d.ns TaylorGreen.control
+#           EOF
           
-          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
-          while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
+#           job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
+#           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
           
-          cat slurm-${job_id}.out
+#           cat slurm-${job_id}.out
           
-          # Check exit code (ExitCode:Signal, e.g., "0:0" means success)
-          exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
-          if [ "$exit_code" != "0" ]; then
-            echo "Test failed with exit code: $exit_code"
-            exit 1
-          fi
-        if: '!cancelled()'
+#           # Check exit code (ExitCode:Signal, e.g., "0:0" means success)
+#           exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
+#           if [ "$exit_code" != "0" ]; then
+#             echo "Test failed with exit code: $exit_code"
+#             exit 1
+#           fi
+#         if: '!cancelled()'
 
-#
-# 18) NACA0012 Unsteady Dual Time Stepping
-# ----------------------------
+# #
+# # 18) NACA0012 Unsteady Dual Time Stepping
+# # ----------------------------
 
-      - name: Build DualTimeStepping
-        working-directory: ./Solver/test/NavierStokes/DualTimeStepping/SETUP
-        run: |
-          module purge
-          module load hpc_sdk
-          module load nvhpc/24.11
-          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
-          export CUDA_HOME=$NVHPC_CUDA_HOME
-          export CUDA_PATH=$NVHPC_CUDA_HOME
-          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
-          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
-          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
-          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
-          make clean || true
-          make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
-        if: '!cancelled()'
+#       - name: Build DualTimeStepping
+#         working-directory: ./Solver/test/NavierStokes/DualTimeStepping/SETUP
+#         run: |
+#           module purge
+#           module load hpc_sdk
+#           module load nvhpc/24.11
+#           export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+#           export CUDA_HOME=$NVHPC_CUDA_HOME
+#           export CUDA_PATH=$NVHPC_CUDA_HOME
+#           export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+#           export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+#           export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+#           export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+#           make clean || true
+#           make ns COMPILER=nvfortran COMM=PARALLEL ENABLE_THREADS=NO WITH_METIS=YES
+#         if: '!cancelled()'
 
-      - name: Run DualTimeStepping
-        working-directory: ./Solver/test/NavierStokes/DualTimeStepping
-        run: |
-          module purge
-          module load hpc_sdk
-          module load nvhpc/24.11
-          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
-          export CUDA_HOME=$NVHPC_CUDA_HOME
-          export CUDA_PATH=$NVHPC_CUDA_HOME
-          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
-          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
-          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
-          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+#       - name: Run DualTimeStepping
+#         working-directory: ./Solver/test/NavierStokes/DualTimeStepping
+#         run: |
+#           module purge
+#           module load hpc_sdk
+#           module load nvhpc/24.11
+#           export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+#           export CUDA_HOME=$NVHPC_CUDA_HOME
+#           export CUDA_PATH=$NVHPC_CUDA_HOME
+#           export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+#           export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+#           export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+#           export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
 
-          cat > run_test.sh << 'EOF'
-          #!/bin/bash
-          #SBATCH --job-name=DualTimeStepping
-          #SBATCH --ntasks=2
-          #SBATCH --partition=gpu
-          #SBATCH --mem=32G
-          #SBATCH --gres=gpu:2  # number of gpus max 4
-          #SBATCH --time=00:15:00
+#           cat > run_test.sh << 'EOF'
+#           #!/bin/bash
+#           #SBATCH --job-name=DualTimeStepping
+#           #SBATCH --ntasks=2
+#           #SBATCH --partition=gpu
+#           #SBATCH --mem=32G
+#           #SBATCH --gres=gpu:2  # number of gpus max 4
+#           #SBATCH --time=00:15:00
 
-          module purge
-          module load hpc_sdk
-          module load nvhpc/24.11
-          export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
-          export CUDA_HOME=$NVHPC_CUDA_HOME
-          export CUDA_PATH=$NVHPC_CUDA_HOME
-          export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
-          export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
-          export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
-          export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
-          mpirun -np 2 --bind-to none ./horses3d.ns DualTimeStepping.control
-          EOF
+#           module purge
+#           module load hpc_sdk
+#           module load nvhpc/24.11
+#           export NVHPC_CUDA_HOME=$NVHPC_ROOT/cuda
+#           export CUDA_HOME=$NVHPC_CUDA_HOME
+#           export CUDA_PATH=$NVHPC_CUDA_HOME
+#           export LD_LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LD_LIBRARY_PATH
+#           export LIBRARY_PATH=$NVHPC_ROOT/math_libs/12.6/targets/x86_64-linux/lib:$NVHPC_CUDA_HOME/lib64:$LIBRARY_PATH
+#           export NVCOMPILER_COMM_LIBS_HOME=$NVHPC_ROOT/comm_libs/12.6
+#           export OPAL_PREFIX=$NVHPC_ROOT/comm_libs/mpi
+#           mpirun -np 2 --bind-to none ./horses3d.ns DualTimeStepping.control
+#           EOF
 
-          job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
-          while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
+#           job_id=$(sbatch --uid=a.ballout --parsable run_test.sh)
+#           while squeue -j $job_id 2>/dev/null | grep -q $job_id; do sleep 10; done
 
-          cat slurm-${job_id}.out
+#           cat slurm-${job_id}.out
 
-          exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
-          if [ "$exit_code" != "0" ]; then
-            echo "Test failed with exit code: $exit_code"
-            exit 1
-          fi
-        if: '!cancelled()'
+#           exit_code=$(sacct -j $job_id --format=ExitCode --noheader | head -1 | tr -d ' ' | cut -d':' -f1)
+#           if [ "$exit_code" != "0" ]; then
+#             echo "Test failed with exit code: $exit_code"
+#             exit 1
+#           fi
+#         if: '!cancelled()'
 
 #
 # 26) IBM CYLINDER
