@@ -9,8 +9,6 @@ The general keywords that can be specified are explained in the table below:
 | Keyword                 | Description                                                                                   | Default value |
 |-------------------------|-----------------------------------------------------------------------------------------------|---------------|
 | monitors flush interval | *INTEGER*: Iteration interval to flush the monitor information to the monitor files.          | 100           |
-| probes file             | *CHARACTER*: Path to a `.dat` file defining probes in bulk (see [Probes from a file](#probes-from-a-file)). | --  |
-| probes file variables   | *CHARACTER*: Whitespace-separated list of variables to sample at every probe defined in `probes file`. **Mandatory** when `probes file` is used. | -- |
 
 
 ## Residual Monitors
@@ -95,13 +93,19 @@ Real-time keywords may not work in parallel MPI computations. It depends on how 
 Instead of (or in addition to) defining probes one-by-one with `#define probe` blocks,
 a set of probes can be defined in bulk through a plain text `.dat` file, each line
 holding the coordinates of a point. The same list of variables is sampled at every
-probe in the file, and is given through the `probes file variables` control-file
-keyword:
+probe in the file, and the probes-file block is defined like any other monitor block:
 
 ```markdown
-probes file           = MyProbes.dat
-probes file variables = pressure u v
+#define probe file
+   file      = MyProbes.dat
+   variables = pressure u v
+#end
 ```
+
+| Keyword   | Description                                                          | Default value          |
+|-----------|-----------------------------------------------------------------------|-------------------------|
+| file      | *CHARACTER*: Path to the `.dat` file defining the probes' coordinates. | **Mandatory Keyword** |
+| variables | *CHARACTER*: Whitespace-separated list of variables to sample at every probe in the file. | **Mandatory Keyword** |
 
 ```
 # x       y      z
@@ -113,8 +117,14 @@ probes file variables = pressure u v
 Lines that are empty or start with `#` are ignored; every remaining line holds the
 `x y z` coordinates of one probe. For each of these probes a dedicated output file
 `<solution_file>.probe_N.probe` is created (`N` being the probe's position in the
-file), with one column per variable (as listed in `probes file variables`) and one
-row per saved time step (in addition to the `Iteration` and `Time` columns).
+file), with one column per variable (as listed in `variables`) and one row per saved
+time step (in addition to the `Iteration` and `Time` columns).
+
+To keep the per-iteration screen log readable when many probes are defined this way,
+file-based probes are excluded from it; their individual `.probe` files are still
+written normally. Instead, a summary of the probes-file monitor (file path, number of
+probes and sampled variables) is printed once in the startup log, right after the
+"Time integrator" section.
 
 
 ## Surface Monitors

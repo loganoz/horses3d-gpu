@@ -31,6 +31,9 @@ module MonitorsClass
       integer                                    :: no_of_surfaceMonitors
       integer                                    :: no_of_volumeMonitors
       integer                                    :: no_of_loadBalancingMonitors
+      integer                                    :: no_of_fileProbes = 0
+      character(len=LINE_LENGTH)                 :: probesFileName = ""
+      character(len=STR_LEN_MONITORS), allocatable :: probesVariables(:)
       integer                                    :: bufferLine
       integer                      , allocatable :: iter(:)
       integer                                    :: dt_restriction
@@ -55,6 +58,7 @@ module MonitorsClass
          procedure   :: WriteValues     => Monitor_WriteValues
          procedure   :: UpdateValues    => Monitor_UpdateValues
          procedure   :: WriteToFile     => Monitor_WriteToFile
+         procedure   :: WriteProbesFileSummary => Monitor_WriteProbesFileSummary
          procedure   :: destruct        => Monitor_Destruct
          procedure   :: copy            => Monitor_Assign
          generic     :: assignment(=)   => copy
@@ -127,15 +131,15 @@ module MonitorsClass
 !           variables to be sampled and saved for the same probe location
 !           ---------------------------------------------------------------
 #ifdef FLOW
-            if ( controlVariables % containsKey("probes file") ) then
-               probesFileName = controlVariables % stringValueForKey("probes file", requestedLength = LINE_LENGTH)
+            call readProbesFileBlock( probesFileName, probesVariablesLine, no_of_probesVariables )
+
+            if ( len_trim(probesFileName) .gt. 0 ) then
                call countProbesInFile( trim(probesFileName), no_of_fileProbes )
 
-               if ( controlVariables % containsKey("probes file variables") ) then
-                  probesVariablesLine = controlVariables % stringValueForKey("probes file variables", requestedLength = LINE_LENGTH)
+               if ( len_trim(probesVariablesLine) .gt. 0 ) then
                   call splitIntoTokens( trim(probesVariablesLine), probesVariables, no_of_probesVariables )
                else
-                  write(STD_OUT,*) "Error: 'probes file variables' must be specified when using 'probes file'."
+                  write(STD_OUT,*) "Error: 'variables' must be specified inside the '#define probe file' block."
                   stop
                end if
             end if
@@ -176,8 +180,12 @@ module MonitorsClass
          if ( no_of_fileProbes .gt. 0 ) then
             call InitializeProbesFromFile( trim(probesFileName), Monitors % probes, Monitors % no_of_probes, &
                                             mesh, solution_file, FirstCall, probesVariables )
+            Monitors % probesFileName = trim(probesFileName)
+            allocate( Monitors % probesVariables(size(probesVariables)) )
+            Monitors % probesVariables = probesVariables
          end if
 
+         Monitors % no_of_fileProbes = no_of_fileProbes
          Monitors % no_of_probes = Monitors % no_of_probes + no_of_fileProbes
 #endif
 
@@ -242,9 +250,9 @@ module MonitorsClass
 
 #ifdef FLOW
 !
-!        Write probes labels
-!        -------------------
-         do i = 1 , self % no_of_probes
+!        Write probes labels (file-based probes excluded for readability)
+!        ---------------------------------------------------------------
+         do i = 1 , self % no_of_probes - self % no_of_fileProbes
             call self % probes(i) % WriteLabel
          end do
 #endif
@@ -314,9 +322,9 @@ module MonitorsClass
 
 #ifdef FLOW
 !
-!        Print dashes for probes
-!        -----------------------
-         do i = 1 , self % no_of_probes
+!        Print dashes for probes (file-based probes excluded for readability)
+!        ----------------------------------------------------------------
+         do i = 1 , self % no_of_probes - self % no_of_fileProbes
             if ( self % probes(i) % active ) then
                write(STD_OUT , '(3X,A10)' , advance = "no" ) dashes(1 : min(10 , len_trim( self % probes(i) % monitorName ) + 2 ) )
             end if
@@ -381,9 +389,9 @@ module MonitorsClass
 
 #ifdef FLOW
 !
-!        Print probes
-!        ------------
-         do i = 1 , self % no_of_probes
+!        Print probes (file-based probes excluded for readability)
+!        ----------------------------------------------------------
+         do i = 1 , self % no_of_probes - self % no_of_fileProbes
             call self % probes(i) % WriteValues ( self % bufferLine )
          end do
 #endif
@@ -592,7 +600,43 @@ module MonitorsClass
          end if
 
       end subroutine Monitor_WriteToFile
-      
+
+      subroutine Monitor_WriteProbesFileSummary ( self )
+!
+!        ********************************************************************
+!              Prints a startup-log summary of the bulk probes-file monitor,
+!           shown instead of including the file-based probes in the
+!           per-iteration screen log.
+!        ********************************************************************
+!
+         use Headers
+         use MPI_Process_Info
+         implicit none
+         class(Monitor_t)        :: self
+!
+!        ---------------
+!        Local variables
+!        ---------------
+!
+         integer :: j
+
+         if ( .not. MPI_Process % isRoot ) return
+         if ( self % no_of_fileProbes .le. 0 ) return
+
+         write(STD_OUT,'(/)')
+         call Section_Header("Probes file monitor")
+         write(STD_OUT,'(/)')
+
+         write(STD_OUT,'(30X,A,A28,A)')   "->" , "File: " , trim(self % probesFileName)
+         write(STD_OUT,'(30X,A,A28,I10)') "->" , "Number of probes: " , self % no_of_fileProbes
+         write(STD_OUT,'(30X,A,A28)',advance="no") "->" , "Variables: "
+         do j = 1 , size(self % probesVariables)
+            write(STD_OUT,'(A)',advance="no") trim(self % probesVariables(j)) // " "
+         end do
+         write(STD_OUT,*)
+
+      end subroutine Monitor_WriteProbesFileSummary
+
       subroutine Monitor_Destruct (self)
          implicit none
          class(Monitor_t)        :: self
@@ -636,6 +680,13 @@ module MonitorsClass
          to % no_of_surfaceMonitors       = from % no_of_surfaceMonitors
          to % no_of_volumeMonitors        = from % no_of_volumeMonitors
          to % no_of_loadBalancingMonitors = from % no_of_loadBalancingMonitors
+         to % no_of_fileProbes            = from % no_of_fileProbes
+         to % probesFileName              = from % probesFileName
+         if ( allocated(from % probesVariables) ) then
+            safedeallocate ( to % probesVariables )
+            allocate ( to % probesVariables ( size(from % probesVariables) ) )
+            to % probesVariables = from % probesVariables
+         end if
          to % bufferLine                  = from % bufferLine
          
          safedeallocate ( to % iter )
@@ -748,7 +799,12 @@ readloop:do
 !           ---------
             line = getSquashedLine( line )
 
-            if ( index ( line , '#defineprobe' ) .gt. 0 ) then
+            if ( index ( line , '#defineprobefile' ) .gt. 0 ) then
+!
+!              The probe-file block is not an individual probe definition
+!              -----------------------------------------------------------
+
+            elseif ( index ( line , '#defineprobe' ) .gt. 0 ) then
                no_of_probes = no_of_probes + 1
 
             elseif ( index ( line , '#definesurfacemonitor' ) .gt. 0 ) then
@@ -792,6 +848,41 @@ end subroutine getNoOfMonitors
 !
 !///////////////////////////////////////////////////////////////////////////////////
 !
+   subroutine readProbesFileBlock(fileName, variablesLine, no_of_probesVariables)
+!
+!     ******************************************************************
+!        Reads the "#define probe file ... #end" block from the case
+!     file, if present:
+!
+!        #define probe file
+!           file      = Probe.dat
+!           variables = u
+!        #end
+!     ******************************************************************
+!
+      use ParamfileRegions
+      implicit none
+      character(len=LINE_LENGTH), intent(out) :: fileName
+      character(len=LINE_LENGTH), intent(out) :: variablesLine
+      integer,                    intent(out) :: no_of_probesVariables
+!
+!     ---------------
+!     Local variables
+!     ---------------
+!
+      character(len=LINE_LENGTH) :: paramFile
+
+      fileName              = ""
+      variablesLine         = ""
+      no_of_probesVariables = 0
+
+      call get_command_argument(1, paramFile)
+
+      call readValueInRegion( trim(paramFile), "file"     , fileName     , "#define probe file", "#end" )
+      call readValueInRegion( trim(paramFile), "variables", variablesLine, "#define probe file", "#end" )
+
+   end subroutine readProbesFileBlock
+
    subroutine countProbesInFile(fileName, n)
       implicit none
       character(len=*), intent(in)  :: fileName
