@@ -309,10 +309,11 @@ Module DGSEMClass
 !
 !     Compute wall distances
 !     ----------------------
-#if defined(NAVIERSTOKES)
-      call self % mesh % ComputeWallDistances
-#endif
-      IF(.NOT. success) RETURN
+! #if defined(NAVIERSTOKES)
+!      call self % mesh % ComputeWallDistances
+! #endif
+!     IF(.NOT. success) RETURN
+
 !
 !     construct surfaces mesh
 !     -----------------------
