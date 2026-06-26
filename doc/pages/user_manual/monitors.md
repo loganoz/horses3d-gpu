@@ -104,7 +104,7 @@ probe in the file, and the probes-file block is defined like any other monitor b
 
 | Keyword   | Description                                                          | Default value          |
 |-----------|-----------------------------------------------------------------------|-------------------------|
-| file      | *CHARACTER*: Path to the `.dat` file defining the probes' coordinates. | **Mandatory Keyword** |
+| file      | *CHARACTER*: Path to the `.dat` file defining the probes' coordinates. May optionally be wrapped in quotes (`"..."` or `'...'`); case is preserved. | **Mandatory Keyword** |
 | variables | *CHARACTER*: Whitespace-separated list of variables to sample at every probe in the file. | **Mandatory Keyword** |
 
 ```

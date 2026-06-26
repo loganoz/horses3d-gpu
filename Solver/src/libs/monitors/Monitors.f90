@@ -858,9 +858,13 @@ end subroutine getNoOfMonitors
 !           file      = Probe.dat
 !           variables = u
 !        #end
+!
+!     Note: this is a hand-rolled parser (rather than readValueInRegion)
+!     because readValueInRegion lower-cases every line it reads, which
+!     would corrupt a case-sensitive file path.
 !     ******************************************************************
 !
-      use ParamfileRegions
+      use ParamfileRegions, only: getSquashedLine
       implicit none
       character(len=LINE_LENGTH), intent(out) :: fileName
       character(len=LINE_LENGTH), intent(out) :: variablesLine
@@ -871,17 +875,72 @@ end subroutine getNoOfMonitors
 !     ---------------
 !
       character(len=LINE_LENGTH) :: paramFile
+      character(len=LINE_LENGTH) :: line, squashed
+      integer                    :: fID, io, position
+      logical                    :: inside
 
       fileName              = ""
       variablesLine         = ""
       no_of_probesVariables = 0
+      inside                = .false.
 
       call get_command_argument(1, paramFile)
 
-      call readValueInRegion( trim(paramFile), "file"     , fileName     , "#define probe file", "#end" )
-      call readValueInRegion( trim(paramFile), "variables", variablesLine, "#define probe file", "#end" )
+      open ( newunit = fID , file = trim(paramFile) , status = "old" , action = "read" )
+
+      do
+         read ( fID , '(A)' , iostat = io ) line
+         if ( io .ne. 0 ) exit
+
+         squashed = getSquashedLine(line)
+
+         if ( squashed .eq. getSquashedLine("#define probe file") ) then
+            inside = .true.
+            cycle
+         elseif ( squashed .eq. getSquashedLine("#end") ) then
+            inside = .false.
+            cycle
+         end if
+
+         if ( .not. inside ) cycle
+!
+!        Strip a trailing comment, keeping the value's original case
+!        -------------------------------------------------------------
+         position = index(line , '!')
+         if ( position .gt. 0 ) line = line(1:position-1)
+
+         position = max( index(line,'='), index(line,':') )
+         if ( position .eq. 0 ) cycle
+
+         if ( getSquashedLine(line(1:position-1)) .eq. getSquashedLine("file") ) then
+            fileName = adjustl( removeQuotes( line(position+1:) ) )
+         elseif ( getSquashedLine(line(1:position-1)) .eq. getSquashedLine("variables") ) then
+            variablesLine = adjustl( removeQuotes( line(position+1:) ) )
+         end if
+      end do
+
+      close(fID)
 
    end subroutine readProbesFileBlock
+
+   function removeQuotes(str) result(res)
+      implicit none
+      character(len=*), intent(in) :: str
+      character(len=LINE_LENGTH)   :: res
+      character(len=LINE_LENGTH)   :: auxstr
+      integer                      :: i, j
+
+      auxstr = trim(adjustl(str))
+      res    = ""
+      j      = 0
+
+      do i = 1 , len_trim(auxstr)
+         if ( auxstr(i:i) .eq. '"' .or. auxstr(i:i) .eq. "'" ) cycle
+         j = j + 1
+         res(j:j) = auxstr(i:i)
+      end do
+
+   end function removeQuotes
 
    subroutine countProbesInFile(fileName, n)
       implicit none
