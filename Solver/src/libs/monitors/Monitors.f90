@@ -86,7 +86,10 @@ module MonitorsClass
          logical, save                   :: FirstCall = .TRUE.
          logical                         :: saveGradients
          character(len=LINE_LENGTH)      :: probesFileName
+         character(len=LINE_LENGTH)      :: probesVariablesLine
+         character(len=STR_LEN_MONITORS), allocatable :: probesVariables(:)
          integer                         :: no_of_fileProbes
+         integer                         :: no_of_probesVariables
 !
 !        Setup the buffer
 !        ----------------
@@ -127,6 +130,14 @@ module MonitorsClass
             if ( controlVariables % containsKey("probes file") ) then
                probesFileName = controlVariables % stringValueForKey("probes file", requestedLength = LINE_LENGTH)
                call countProbesInFile( trim(probesFileName), no_of_fileProbes )
+
+               if ( controlVariables % containsKey("probes file variables") ) then
+                  probesVariablesLine = controlVariables % stringValueForKey("probes file variables", requestedLength = LINE_LENGTH)
+                  call splitIntoTokens( trim(probesVariablesLine), probesVariables, no_of_probesVariables )
+               else
+                  write(STD_OUT,*) "Error: 'probes file variables' must be specified when using 'probes file'."
+                  stop
+               end if
             end if
 #endif
          end if
@@ -164,7 +175,7 @@ module MonitorsClass
 
          if ( no_of_fileProbes .gt. 0 ) then
             call InitializeProbesFromFile( trim(probesFileName), Monitors % probes, Monitors % no_of_probes, &
-                                            mesh, solution_file, FirstCall )
+                                            mesh, solution_file, FirstCall, probesVariables )
          end if
 
          Monitors % no_of_probes = Monitors % no_of_probes + no_of_fileProbes
@@ -767,14 +778,13 @@ end subroutine getNoOfMonitors
 !     Probes-from-file auxiliary routines
 !
 !     The probes file is a plain text file. Blank lines and lines starting
-!     with "#" are ignored. The first remaining line lists the variables
-!     to sample (shared by every probe in the file):
-!
-!        variable1 [variable2 ...]
-!
-!     Every remaining line holds the coordinates of one probe:
+!     with "#" are ignored. Every remaining line holds the coordinates of
+!     one probe:
 !
 !        x  y  z
+!
+!     The list of variables to sample (shared by every probe in the file)
+!     is given through the "probes file variables" control-file keyword.
 !
 !     A separate output file "<solution_file>.probe_<N>.probe" is created for
 !     each probe, with one column per variable, and one row written per
@@ -792,11 +802,9 @@ end subroutine getNoOfMonitors
 !     ---------------
 !
       integer                    :: fID, io
-      logical                    :: headerRead
       character(len=LINE_LENGTH) :: line
 
       n = 0
-      headerRead = .false.
       open ( newunit = fID , file = fileName , status = "old" , action = "read" )
 
       do
@@ -806,14 +814,6 @@ end subroutine getNoOfMonitors
          line = adjustl(line)
          if ( len_trim(line) .eq. 0 ) cycle
          if ( line(1:1) .eq. '#' )    cycle
-!
-!        The first non-blank, non-comment line lists the variable names
-!        shared by every probe and is not itself a probe
-!        ----------------------------------------------------------------
-         if ( .not. headerRead ) then
-            headerRead = .true.
-            cycle
-         end if
 
          n = n + 1
       end do
@@ -858,7 +858,7 @@ end subroutine getNoOfMonitors
    end subroutine splitIntoTokens
 
 #ifdef FLOW
-   subroutine InitializeProbesFromFile(fileName, probes, offset, mesh, solution_file, FirstCall)
+   subroutine InitializeProbesFromFile(fileName, probes, offset, mesh, solution_file, FirstCall, variables)
       implicit none
       character(len=*),   intent(in)    :: fileName
       class(Probe_t),     intent(inout) :: probes(:)
@@ -866,21 +866,19 @@ end subroutine getNoOfMonitors
       class(HexMesh),     intent(in)    :: mesh
       character(len=*),   intent(in)    :: solution_file
       logical,            intent(in)    :: FirstCall
+      character(len=*),   intent(in)    :: variables(:)
 !
 !     ---------------
 !     Local variables
 !     ---------------
 !
       integer                                      :: fID, io, idx, nTok
-      logical                                      :: headerRead
       character(len=LINE_LENGTH)                   :: line
       real(kind=RP)                                :: x(NDIM)
       character(len=STR_LEN_MONITORS), allocatable  :: tokens(:)
-      character(len=STR_LEN_MONITORS), allocatable  :: variables(:)
       character(len=STR_LEN_MONITORS)               :: pname
 
       idx = offset
-      headerRead = .false.
       open ( newunit = fID , file = fileName , status = "old" , action = "read" )
 
       do
@@ -890,14 +888,6 @@ end subroutine getNoOfMonitors
          line = adjustl(line)
          if ( len_trim(line) .eq. 0 ) cycle
          if ( line(1:1) .eq. '#' )    cycle
-!
-!        The first non-blank, non-comment line is the shared variable list
-!        ------------------------------------------------------------------
-         if ( .not. headerRead ) then
-            call splitIntoTokens(line, variables, nTok)
-            headerRead = .true.
-            cycle
-         end if
 
          call splitIntoTokens(line, tokens, nTok)
 
@@ -919,7 +909,6 @@ end subroutine getNoOfMonitors
          deallocate(tokens)
       end do
 
-      if ( allocated(variables) ) deallocate(variables)
       close(fID)
 
    end subroutine InitializeProbesFromFile
