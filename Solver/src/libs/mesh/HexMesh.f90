@@ -5254,9 +5254,9 @@ subroutine HexMesh_pAdapt_MPI (self, NNew, controlVariables)
       end do
    end if
 
-#if defined(NAVIERSTOKES)
-   call self % ComputeWallDistances()
-#endif
+! #if defined(NAVIERSTOKES)
+!   call self % ComputeWallDistances()
+! #endif
 
 !     *********
 !     Finish up
@@ -5436,9 +5436,9 @@ end subroutine HexMesh_pAdapt_MPI
 
       call self % ConstructGeometry(facesArray, elementArray)
 
-#if defined(NAVIERSTOKES)
-      call self % ComputeWallDistances(facesArray, elementArray)
-#endif
+! #if defined(NAVIERSTOKES)
+!      call self % ComputeWallDistances(facesArray, elementArray)
+! #endif
 
 !     *********
 !     Finish up
