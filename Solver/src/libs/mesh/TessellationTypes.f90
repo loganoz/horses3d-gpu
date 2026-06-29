@@ -379,7 +379,6 @@ module TessellationTypes
          this% head% prev => this% head
       else
          current => this% head% prev
-         currentNext => current% next
          allocate(currentNext) 
          call currentNext% copy(point)
          currentNext% next => this% head
@@ -556,7 +555,6 @@ module TessellationTypes
          this% head% prev => this% head
       else
          current => this% head% prev
-         currentNext => current% next
          allocate(currentNext) 
          call currentNext% copy(object)
          currentNext% next => this% head
@@ -601,7 +599,8 @@ module TessellationTypes
       
       deallocate(data)
       
-      this% NumOfObjs = this% NumOfObjs - 1
+      this% head      => null()
+      this% NumOfObjs =  0
       
       nullify(dataPrev)
       
