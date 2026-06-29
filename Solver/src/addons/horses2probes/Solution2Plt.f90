@@ -1,1107 +1,491 @@
-module Solution2PltModule
+module Solution2ProbesModule
+#ifdef FLOW
    use SMConstants
-   use SolutionFile
-   use InterpolationMatrices
-   use FileReadingUtilities      , only: getFileName
-   use getTask
+   use Storage                    , only: Mesh_t, Element_t
+   use PhysicsStorage              , only: IRHO, IRHOU, IRHOV, IRHOW
+   use VariableConversion         , only: Pressure
+   use NodalStorageClass          , only: NodalStorage
+   use SharedSpectralBasis        , only: spA, addNewSpectralBasis
+   use Utilities                  , only: SolveThreeEquationLinearSystem
+   use MPI_Process_Info
    implicit none
 
    private
-   public   Solution2Plt, WriteBoundaryToTecplot
+   public :: RunSolution2ProbesFromControl
 
-#define PRECISION_FORMAT "(E18.10)"
+   integer, parameter :: MAX_VARS = 16
 
-   contains
-      subroutine Solution2Plt(meshName, solutionName, fixedOrder, basis, Nout, mode)
-         use getTask
-         use Headers
-         implicit none  
-         character(len=*), intent(in)     :: meshName
-         character(len=*), intent(in)     :: solutionName
-         integer,          intent(in)     :: basis
-         logical,          intent(in)     :: fixedOrder
-         integer,          intent(in)     :: Nout(3)
-         integer,          intent(in)     :: mode
+contains
 
-         write(STD_OUT,'(/)')
-         call SubSection_Header("Job description")
-         
-         select case (mode)
-         case(MODE_FINITEELM)
-            write(STD_OUT,'(30X,A3,A)') "->", " Output mode: Tecplot FE"
-         case(MODE_MULTIZONE)
-            write(STD_OUT,'(30X,A3,A)') "->", " Output mode: Tecplot Multi-Zone"
+   subroutine RunSolution2ProbesFromControl(controlFile)
+      character(len=*), intent(in) :: controlFile
+
+      character(len=LINE_LENGTH) :: meshName, solName, probesName, outName, outFmt
+      character(len=LINE_LENGTH) :: varsLine
+      character(len=32)          :: varNames(MAX_VARS)
+      integer :: nVars
+
+      type(Mesh_t) :: mesh
+      real(kind=RP), allocatable :: probes(:,:)    ! (3,nP)
+      real(kind=RP), allocatable :: outVals(:,:)   ! (nVars,nP)
+      logical,      allocatable  :: found(:)
+      integer :: nP, fid
+
+      call ReadControlFile(controlFile, meshName, solName, probesName, outName, outFmt, varsLine)
+      call ParseVarList(varsLine, varNames, nVars)
+
+      if (MPI_Process % isRoot) then
+         write(STD_OUT,'(A)') "horses2probes: mesh   = "//trim(meshName)
+         write(STD_OUT,'(A)') "horses2probes: hsol   = "//trim(solName)
+         write(STD_OUT,'(A)') "horses2probes: probes = "//trim(probesName)
+      end if
+
+      call mesh % ReadMesh(trim(meshName))
+      call mesh % ReadSolution(trim(solName))
+
+      call ReadProbesXYZ(trim(probesName), probes, nP)
+      allocate(outVals(nVars, nP))
+      allocate(found(nP))
+
+      call InterpolateAll(mesh, probes, varNames, nVars, outVals, found)
+
+      if (MPI_Process % isRoot) then
+         open(newunit=fid, file=trim(outName), status="unknown", action="write")
+         if (trim(ToLower(outFmt)) == "tec") then
+            call WriteTecplot(fid, probes, varNames, nVars, outVals, found)
+         else
+            call WriteTxt(fid, probes, varNames, nVars, outVals, found)
+         end if
+         close(fid)
+         write(STD_OUT,'(A)') "horses2probes: wrote "//trim(outName)
+      end if
+   end subroutine RunSolution2ProbesFromControl
+
+
+   ! ==========================================================
+   ! Control file parsing
+   ! ==========================================================
+   subroutine ReadControlFile(fname, meshName, solName, probesName, outName, outFmt, varsLine)
+      character(len=*), intent(in)  :: fname
+      character(len=*), intent(out) :: meshName, solName, probesName, outName, outFmt, varsLine
+
+      integer :: fid, ios
+      character(len=LINE_LENGTH) :: line, key, val
+
+      meshName   = ""
+      solName    = ""
+      probesName = ""
+      outName    = "probes.tec"
+      outFmt     = "tec"
+      varsLine   = "rho,u,v,w,p"
+
+      open(newunit=fid, file=trim(fname), status="old", action="read")
+      do
+         read(fid,'(A)', iostat=ios) line
+         if (ios /= 0) exit
+         line = trim(StripComment(line))
+         if (len_trim(line) == 0) cycle
+
+         call SplitKeyValue(line, key, val)
+         key = trim(ToLower(key))
+         val = trim(StripQuotes(val))
+
+         select case (key)
+         case ("hmesh file")
+            meshName = val
+         case ("hsol file")
+            solName = val
+         case ("probes file")
+            probesName = val
+         case ("output file")
+            outName = val
+         case ("output format")
+            outFmt = val
+         case ("output variables")
+            varsLine = val
          end select
-         
-         select case ( basis )
+      end do
+      close(fid)
 
-         case(EXPORT_GAUSS)
+      if (len_trim(meshName) == 0) error stop "horses2probes: missing 'hmesh file'"
+      if (len_trim(solName)  == 0) error stop "horses2probes: missing 'hsol file'"
+      if (len_trim(probesName) == 0) error stop "horses2probes: missing 'probes file'"
+   end subroutine ReadControlFile
 
-            if ( fixedOrder ) then
-               write(STD_OUT,'(30X,A3,A)') "->", " Export to Gauss points with fixed order"
-               write(STD_OUT,'(30X,A,A30,I0,A,I0,A,I0,A)') "->" , "Output order: [",&
-                                                Nout(1),",",Nout(2),",",Nout(3),"]."
-               call Solution2Plt_GaussPoints_FixedOrder(meshName, solutionName, Nout, mode)
-   
-            else
-               write(STD_OUT,'(30X,A3,A)') "->", " Export to Gauss points"
-               call Solution2Plt_GaussPoints(meshName, solutionName, mode)
+   subroutine SplitKeyValue(line, key, val)
+      character(len=*), intent(in)  :: line
+      character(len=*), intent(out) :: key, val
+      integer :: p
+      p = index(line, "=")
+      if (p <= 0) then
+         key = trim(line)
+         val = ""
+      else
+         key = adjustl(line(1:p-1))
+         val = adjustl(line(p+1:))
+      end if
+   end subroutine SplitKeyValue
 
-            end if
+   pure function StripQuotes(s) result(out)
+      character(len=*), intent(in) :: s
+      character(len=len(s)) :: out
+      integer :: L
+      out = trim(s)
+      L = len_trim(out)
+      if (L >= 2) then
+         if ((out(1:1) == '"' .and. out(L:L) == '"') .or. &
+             (out(1:1) == "'" .and. out(L:L) == "'")) then
+            out = out(2:L-1)
+         end if
+      end if
+      out = trim(out)
+   end function StripQuotes
 
-         case(EXPORT_HOMOGENEOUS)
-            
-            write(STD_OUT,'(30X,A3,A)') "->", " Export to homogeneous points"
-            write(STD_OUT,'(30X,A,A30,I0,A,I0,A,I0,A)') "->" , "Output order: [",&
-                                        Nout(1),",",Nout(2),",",Nout(3),"]."
-            call Solution2Plt_Homogeneous(meshName, solutionName, Nout, mode)
+   pure function StripComment(s) result(out)
+      character(len=*), intent(in) :: s
+      character(len=len(s)) :: out
+      integer :: p
+      out = s
+      p = index(out, "!")
+      if (p > 0) out = out(1:p-1)
+      p = index(out, "#")
+      if (p > 0) out = out(1:p-1)
+      out = trim(out)
+   end function StripComment
 
-         end select
+   pure function ToLower(s) result(out)
+      character(len=*), intent(in) :: s
+      character(len=len(s)) :: out
+      integer :: i, c
+      out = s
+      do i=1,len(s)
+         c = iachar(out(i:i))
+         if (c >= iachar('A') .and. c <= iachar('Z')) out(i:i) = achar(c + 32)
+      end do
+   end function ToLower
 
-      end subroutine Solution2Plt
-!
-!//////////////////////////////////////////////////////////////////////////////////////////
-!
-!     Gauss Points procedures
-!     -----------------------
-!
-!//////////////////////////////////////////////////////////////////////////////////////////
-!
-      subroutine Solution2Plt_GaussPoints(meshName, solutionName, mode)
-         use Storage
-         use NodalStorageClass
-         use SharedSpectralBasis
-         use OutputVariables
-         implicit none  
-         character(len=*), intent(in)     :: meshName
-         character(len=*), intent(in)     :: solutionName
-         integer,          intent(in)     :: mode
-!
-!        ---------------
-!        Local variables
-!        ---------------
-!
-         type(Mesh_t)                    :: mesh
-         character(len=LINE_LENGTH)      :: meshPltName
-         character(len=LINE_LENGTH)      :: solutionFile
-         character(len=1024)             :: title
-         integer                         :: no_of_elements, eID
-         integer                         :: fid, bID
-         integer                         :: Nmesh(4), Nsol(4)
-!
-!        Read the mesh and solution data
-!        -------------------------------
-         call mesh % ReadMesh(meshName)
-         call mesh % ReadSolution(SolutionName)
-         no_of_elements = mesh % no_of_elements
-!
-!        Transform zones to the output variables
-!        ---------------------------------------
-         do eID = 1, no_of_elements
-            associate ( e => mesh % elements(eID) )
-            e % Nout = e % Nsol
-!
-!           Construct spectral basis
-!           ------------------------
-            call addNewSpectralBasis(spA, e % Nmesh, mesh % nodeType)
-            call addNewSpectralBasis(spA, e % Nsol , mesh % nodeType)
-!
-!           Project mesh and solution
-!           -------------------------
-            call ProjectStorageGaussPoints(e, spA, e % Nmesh, Nsol, mesh % hasGradients, mesh % isStatistics)
 
-            end associate
-         end do
-!
-!        Write the solution file name
-!        ----------------------------
-         solutionFile = trim(getFileName(solutionName)) // ".tec"
-!
-!        Create the file
-!        ---------------
-         open(newunit = fid, file = trim(solutionFile), action = "write", status = "unknown")
-!
-!        Add the title
-!        -------------
-         write(title,'(A,A,A,A,A)') '"Generated from ',trim(meshName),' and ',trim(solutionName),'"'
-         write(fid,'(A,A)') "TITLE = ", trim(title)
-!
-!        Add the variables
-!        -----------------
-         call getOutputVariables()
+   ! ==========================================================
+   ! Parse variable list (ONLY: rho,u,v,w,p)
+   ! ==========================================================
+   subroutine ParseVarList(line, names, n)
+      character(len=*), intent(in) :: line
+      character(len=32), intent(out) :: names(MAX_VARS)
+      integer, intent(out) :: n
 
-         write(fid,'(A,A)') 'VARIABLES = "x","y","z"', trim(getOutputVariablesLabel())
-!
-!        Write elements
-!        --------------
-         if ( mode == MODE_FINITEELM) then
-            call WriteSingleFluidZoneToTecplot(fid,mesh)
+      character(len=LINE_LENGTH) :: tmp
+      integer :: p
+
+      n = 0
+      names = ""
+
+      tmp = trim(line)
+      do
+         if (len_trim(tmp) == 0) exit
+         p = index(tmp, ",")
+         if (p == 0) then
+            call PushVar(trim(tmp), names, n)
+            exit
          else
-            do eID = 1, no_of_elements
-               associate ( e => mesh % elements(eID) )
-!
-!              Write the tecplot file
-!              ----------------------
-               call WriteElementToTecplot(fid, e, mesh % refs, &
-                                          mesh % hasGradients, mesh % isStatistics, mesh % hasSensor)
-               end associate
+            call PushVar(trim(tmp(1:p-1)), names, n)
+            tmp = adjustl(tmp(p+1:))
+         end if
+      end do
+
+      if (n == 0) then
+         call PushVar("rho", names, n)
+         call PushVar("u",   names, n)
+         call PushVar("v",   names, n)
+         call PushVar("w",   names, n)
+         call PushVar("p",   names, n)
+      end if
+   end subroutine ParseVarList
+
+   subroutine PushVar(v, names, n)
+      character(len=*), intent(in) :: v
+      character(len=32), intent(inout) :: names(MAX_VARS)
+      integer, intent(inout) :: n
+      character(len=32) :: vv
+
+      vv = trim(ToLower(v))
+      if (len_trim(vv) == 0) return
+      if (n >= MAX_VARS) error stop "horses2probes: too many variables"
+
+      ! Optional alias:
+      if (vv == "pressure") vv = "p"
+
+      select case (vv)
+      case ("rho","u","v","w","p")
+         n = n + 1
+         names(n) = vv
+      case default
+         error stop "horses2probes: unsupported variable '"//trim(vv)//"' (use rho,u,v,w,p)"
+      end select
+   end subroutine PushVar
+
+
+   ! ==========================================================
+   ! Probes file reader: one line per probe -> x y z
+   ! ==========================================================
+   subroutine ReadProbesXYZ(fname, xyz, n)
+      character(len=*), intent(in)  :: fname
+      real(kind=RP), allocatable, intent(out) :: xyz(:,:)  ! (3,n)
+      integer, intent(out) :: n
+      integer :: fid, ios
+      real(kind=RP) :: x,y,z
+
+      n = 0
+      open(newunit=fid, file=trim(fname), status="old", action="read")
+      do
+         read(fid,*,iostat=ios) x,y,z
+         if (ios /= 0) exit
+         n = n + 1
+      end do
+      rewind(fid)
+
+      allocate(xyz(3,n))
+      n = 0
+      do
+         read(fid,*,iostat=ios) x,y,z
+         if (ios /= 0) exit
+         n = n + 1
+         xyz(1,n) = x
+         xyz(2,n) = y
+         xyz(3,n) = z
+      end do
+      close(fid)
+   end subroutine ReadProbesXYZ
+
+
+   ! ==========================================================
+   ! Interpolation: FindPointInMesh (Newton) + lj() + interpolate Q
+   ! ==========================================================
+   subroutine InterpolateAll(mesh, probes, varNames, nVars, outVals, found)
+      type(Mesh_t), intent(inout) :: mesh
+      real(kind=RP), intent(in)    :: probes(:,:)      ! (3,nP)
+      character(len=32), intent(in):: varNames(MAX_VARS)
+      integer, intent(in)          :: nVars
+      real(kind=RP), intent(out)   :: outVals(:,:)     ! (nVars,nP)
+      logical, intent(out)         :: found(:)         ! (nP)
+
+      integer :: nP, ip
+
+      if (size(probes,1) /= 3) error stop "horses2probes: probes must have shape (3,nP)"
+      nP = size(probes,2)
+
+      if (size(outVals,1) /= nVars .or. size(outVals,2) /= nP) error stop "horses2probes: outVals wrong shape"
+      if (size(found) /= nP) error stop "horses2probes: found wrong size"
+
+      do ip = 1, nP
+         call InterpolateOne(mesh, probes(:,ip), varNames, nVars, outVals(:,ip), found(ip))
+      end do
+   end subroutine InterpolateAll
+
+   subroutine InterpolateOne(mesh, x, varNames, nVars, vals, ok)
+      type(Mesh_t), intent(inout)  :: mesh
+      real(kind=RP), intent(in)    :: x(3)
+      character(len=32), intent(in):: varNames(MAX_VARS)
+      integer, intent(in)          :: nVars
+      real(kind=RP), intent(out)   :: vals(nVars)
+      logical, intent(out)         :: ok
+
+      integer :: eID, i, j, k, iv
+      real(kind=RP) :: xi(3), w
+      real(kind=RP), allocatable :: lxi(:), leta(:), lzeta(:)
+      real(kind=RP), allocatable :: Qp(:)
+
+      vals = 0.0_RP
+      call FindPointInMesh(mesh, x, eID, xi, ok)
+      if (.not. ok) return
+
+      associate(e => mesh % elements(eID))
+
+         call addNewSpectralBasis(spA, e % Nsol, mesh % nodeType)
+
+         allocate(lxi(0:e%Nsol(1)))
+         allocate(leta(0:e%Nsol(2)))
+         allocate(lzeta(0:e%Nsol(3)))
+
+         lxi   = NodalStorage(e%Nsol(1)) % lj(xi(1))
+         leta  = NodalStorage(e%Nsol(2)) % lj(xi(2))
+         lzeta = NodalStorage(e%Nsol(3)) % lj(xi(3))
+
+         allocate(Qp(size(e%Q,1)))
+         Qp = 0.0_RP
+
+         do k=0,e%Nsol(3)
+            do j=0,e%Nsol(2)
+               do i=0,e%Nsol(1)
+                  w = lxi(i)*leta(j)*lzeta(k)
+                  Qp(:) = Qp(:) + e%Q(:,i,j,k) * w
+               end do
             end do
-         end if
-!
-!        Write boundaries
-!        ----------------
-         if (hasBoundaries) then
-            if ( mode == MODE_FINITEELM) then
-               do bID=1, size (mesh % boundaries)
-                  call WriteSingleBoundaryZoneToTecplot(fid, mesh % boundaries(bID), mesh % elements)
-               end do
-            else
-               do bID=1, size (mesh % boundaries)
-                  call WriteBoundaryToTecplot(fid, mesh % boundaries(bID), mesh % elements)
-               end do
-            end if
-         end if
-!
-!        Close the file
-!        --------------
-         close(fid)
-      
-      end subroutine Solution2Plt_GaussPoints
-
-      subroutine ProjectStorageGaussPoints(e, spA, NM, NS, hasGradients, hasStats)
-         use Storage
-         use NodalStorageClass
-         use ProlongMeshAndSolution
-         implicit none
-         type(Element_t)     :: e
-         type(NodalStorage_t),  intent(in)  :: spA(0:)
-         integer           ,  intent(in)  :: NM(3)
-         integer           ,  intent(in)  :: NS(3)
-         logical,             intent(in)  :: hasGradients
-         logical,             intent(in)  :: hasStats
-         
-         e % Nout = e % Nsol
-         if ( all(e % Nmesh .eq. e % Nout) ) then
-            e % xOut(1:,0:,0:,0:) => e % x
-
-         else
-            allocate( e % xOut(1:3,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-            call prolongMeshToGaussPoints(e, spA, NM, NS)
-
-         end if
-
-         e % Qout(1:,0:,0:,0:) => e % Q
-         if ( hasGradients ) then
-            e % U_xout(1:,0:,0:,0:) => e % U_x
-            e % U_yout(1:,0:,0:,0:) => e % U_y
-            e % U_zout(1:,0:,0:,0:) => e % U_z
-         end if
-         e % QDot_out(1:,0:,0:,0:) => e % QDot
-         if (hasStats) e % statsout(1:,0:,0:,0:) => e % stats
-         if (hasUt_NS) e % ut_NSout(1:,0:,0:,0:) => e % ut_NS
-         if (hasMu_NS) e % mu_NSout(1:,0:,0:,0:) => e % mu_NS
-         if (hasWallY) e % wallYout(1:,0:,0:,0:) => e % wallY
-         if (hasMu_sgs) e % mu_sgsout(1:,0:,0:,0:) => e % mu_sgs
-         if (hasSource) e % sourceout(1:,0:,0:,0:) => e % source
-
-      end subroutine ProjectStorageGaussPoints
-!
-!//////////////////////////////////////////////////////////////////////////////////
-!
-!     Gauss points with fixed order procedures
-!     ----------------------------------------
-!
-!//////////////////////////////////////////////////////////////////////////////////
-!
-      subroutine Solution2Plt_GaussPoints_FixedOrder(meshName, solutionName, Nout, mode)
-         use Storage
-         use NodalStorageClass
-         use SharedSpectralBasis
-         use OutputVariables
-         implicit none  
-         character(len=*), intent(in)     :: meshName
-         character(len=*), intent(in)     :: solutionName
-         integer,          intent(in)     :: Nout(3)
-         integer,          intent(in)     :: mode
-!
-!        ---------------
-!        Local variables
-!        ---------------
-!
-         type(Mesh_t)                               :: mesh
-         character(len=LINE_LENGTH)                 :: meshPltName
-         character(len=LINE_LENGTH)                 :: solutionFile
-         character(len=1024)                        :: title
-         integer                                    :: no_of_elements, eID
-         integer                                    :: fid, bID
-!
-!        Read the mesh and solution data
-!        -------------------------------
-         call mesh % ReadMesh(meshName)
-         call mesh % ReadSolution(SolutionName)
-!
-!        Allocate the output spectral basis
-!        ----------------------------------
-         call spA(Nout(1)) % Construct(GAUSS, Nout(1))
-         call spA(Nout(2)) % Construct(GAUSS, Nout(2))
-         call spA(Nout(3)) % Construct(GAUSS, Nout(3))
-!
-!        Write each element zone
-!        -----------------------
-         do eID = 1, mesh % no_of_elements
-            associate ( e => mesh % elements(eID) )
-            e % Nout = Nout
-!
-!           Construct spectral basis
-!           ------------------------
-            call addNewSpectralBasis(spA, e % Nmesh, mesh % nodeType)
-            call addNewSpectralBasis(spA, e % Nsol, mesh % nodeType)
-!
-!           Construct interpolation matrices
-!           --------------------------------
-            associate( spAoutXi   => spA(Nout(1)), &
-                       spAoutEta  => spA(Nout(2)), &
-                       spAoutZeta => spA(Nout(3)) )
-            call addNewInterpolationMatrix(Tset, e % Nsol(1), spA(e % Nsol(1)), e % Nout(1), spAoutXi   % x)   ! TODO: check why it was Nsol(1)
-            call addNewInterpolationMatrix(Tset, e % Nsol(2), spA(e % Nsol(2)), e % Nout(2), spAoutEta  % x)   ! TODO: check why it was Nsol(1)
-            call addNewInterpolationMatrix(Tset, e % Nsol(3), spA(e % Nsol(3)), e % Nout(3), spAoutZeta % x)   ! TODO: check why it was Nsol(1)
-            end associate
-!
-!           Perform interpolation
-!           ---------------------
-            call ProjectStorageGaussPoints_FixedOrder(e, spA, e % Nmesh, e % Nsol, e % Nout, &
-                                                                    Tset(e % Nout(1), e % Nsol(1)) % T, &
-                                                                    Tset(e % Nout(2), e % Nsol(2)) % T, &
-                                                                    Tset(e % Nout(3), e % Nsol(3)) % T, &
-                                                                    mesh % hasGradients, mesh % isStatistics, mesh % hasTimeDeriv)
-
-            end associate
          end do
-!
-!        Write the solution file name
-!        ----------------------------
-         solutionFile = trim(getFileName(solutionName)) // ".tec"
-!
-!        Create the file
-!        ---------------
-         open(newunit = fid, file = trim(solutionFile), action = "write", status = "unknown")
-!
-!        Add the title
-!        -------------
-         write(title,'(A,A,A,A,A)') '"Generated from ',trim(meshName),' and ',trim(solutionName),'"'
-         write(fid,'(A,A)') "TITLE = ", trim(title)
-!
-!        Add the variables
-!        -----------------
-         call getOutputVariables()
-         write(fid,'(A,A)') 'VARIABLES = "x","y","z"', trim(getOutputVariablesLabel())
-!
-!        Write elements
-!        --------------
-         if ( mode == MODE_FINITEELM) then
-            call WriteSingleFluidZoneToTecplot(fid,mesh)
-         else
-            do eID = 1, mesh % no_of_elements
-               associate ( e => mesh % elements(eID) )
 
-               call WriteElementToTecplot(fid, e, mesh % refs, &
-                                          mesh % hasGradients, mesh % isStatistics, mesh % hasSensor)
-               end associate
-            end do
-         end if
-!
-!        Write boundaries
-!        ----------------
-         if (hasBoundaries) then
-            if ( mode == MODE_FINITEELM) then
-               do bID=1, size (mesh % boundaries)
-                  call WriteSingleBoundaryZoneToTecplot(fid, mesh % boundaries(bID), mesh % elements)
-               end do
-            else
-               do bID=1, size (mesh % boundaries)
-                  call WriteBoundaryToTecplot(fid, mesh % boundaries(bID), mesh % elements)
-               end do
-            end if
-         end if
-!
-!        Close the file
-!        --------------
-         close(fid)
-
-      end subroutine Solution2Plt_GaussPoints_FixedOrder
-
-      subroutine ProjectStorageGaussPoints_FixedOrder(e, spA, NM, NS, Nout, Tx, Ty, Tz, hasGradients, hasStats, hasTimeDeriv)
-         use Storage
-         use NodalStorageClass
-         use ProlongMeshAndSolution
-         implicit none
-         type(Element_t)     :: e
-         type(NodalStorage_t),  intent(in)  :: spA(0:)
-         integer           ,  intent(in)  :: NM(3)
-         integer           ,  intent(in)  :: NS(3)
-         integer           ,  intent(in)  :: Nout(3)
-         real(kind=RP),       intent(in)  :: Tx(0:e % Nout(1), 0:e % Nsol(1))
-         real(kind=RP),       intent(in)  :: Ty(0:e % Nout(2), 0:e % Nsol(2))
-         real(kind=RP),       intent(in)  :: Tz(0:e % Nout(3), 0:e % Nsol(3))
-         logical,             intent(in)  :: hasGradients
-         logical,             intent(in)  :: hasStats
-         logical,             intent(in)  :: hasTimeDeriv
-!
-!        Project mesh
-!        ------------         
-         if ( all(e % Nmesh .eq. e % Nout) ) then
-            e % xOut(1:,0:,0:,0:) => e % x
-
-         else
-            allocate( e % xOut(1:3,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-            call prolongMeshToGaussPoints(e, spA, NM, Nout)
-
-         end if
-!
-!        Project the solution
-!        --------------------
-         if ( all( e % Nsol .eq. e % Nout ) ) then
-            e % Qout(1:,0:,0:,0:) => e % Q
-
-            if ( hasGradients ) then
-               e % U_xout(1:,0:,0:,0:) => e % U_x
-               e % U_yout(1:,0:,0:,0:) => e % U_y
-               e % U_zout(1:,0:,0:,0:) => e % U_z
-            end if
-
-
-            e % QDot_out(1:,0:,0:,0:) => e % QDot
-            if (hasStats) e % statsout(1:,0:,0:,0:) => e % stats
-            if (hasUt_NS) e % ut_NSout(1:,0:,0:,0:) => e % ut_NS
-            if (hasMu_NS) e % mu_NSout(1:,0:,0:,0:) => e % mu_NS
-            if (hasWallY) e % wallYout(1:,0:,0:,0:) => e % wallY
-            if (hasMu_sgs) e % mu_sgsout(1:,0:,0:,0:) => e % mu_sgs
-            if (hasSource) e % sourceout(1:,0:,0:,0:) => e % source
-
-         else
-            allocate( e % Qout(1:NVARS,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-            call prolongSolutionToGaussPoints(NVARS, e % Nsol, e % Q, e % Nout, e % Qout, Tx, Ty, Tz)
-   
-            if ( hasGradients ) then
-               allocate( e % U_xout(1:NGRADVARS,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-               allocate( e % U_yout(1:NGRADVARS,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-               allocate( e % U_zout(1:NGRADVARS,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-               call prolongSolutionToGaussPoints(NGRADVARS, e % Nsol, e % U_x, e % Nout, e % U_xout, Tx, Ty, Tz)
-               call prolongSolutionToGaussPoints(NGRADVARS, e % Nsol, e % U_y, e % Nout, e % U_yout, Tx, Ty, Tz)
-               call prolongSolutionToGaussPoints(NGRADVARS, e % Nsol, e % U_z, e % Nout, e % U_zout, Tx, Ty, Tz)
-            end if
-
-            if (hasStats) then
-                allocate( e % statsout(1:NSTAT,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-                call prolongSolutionToGaussPoints(NSTAT, e % Nsol, e % stats, e % Nout, e % statsout, Tx, Ty, Tz)
-            end if
-
-            if (hasUt_NS) then
-                allocate( e % ut_NSout(1:NSTAT,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-                call prolongSolutionToGaussPoints(1, e % Nsol, e % ut_NS, e % Nout, e % ut_NSout, Tx, Ty, Tz)
-            end if
-
-            if (hasMu_NS) then
-                allocate( e % mu_NSout(1,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-                call prolongSolutionToGaussPoints(1, e % Nsol, e % mu_NS, e % Nout, e % mu_NSout, Tx, Ty, Tz)            
-            end if
-
-            if (hasWallY) then
-                allocate( e % wallYout(1,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-                call prolongSolutionToGaussPoints(1, e % Nsol, e % WallY, e % Nout, e % wallYout, Tx, Ty, Tz)            
-            end if
-
-            if (hasMu_sgs) then
-                allocate( e % mu_sgsout(1,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-                call prolongSolutionToGaussPoints(1, e % Nsol, e % mu_sgs, e % Nout, e % mu_sgsout, Tx, Ty, Tz)            
-            end if
-
-            if (hasSource) then
-                allocate( e % sourceout(1,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-                call prolongSolutionToGaussPoints(1, e % Nsol, e % source, e % Nout, e % sourceout, Tx, Ty, Tz)            
-            end if
-
-            allocate( e % QDot_out(1:NVARS,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-            if ( hasTimeDeriv ) then
-                call prolongSolutionToGaussPoints(NVARS, e % Nsol, e % QDot, e % Nout, e % QDot_out, Tx, Ty, Tz)
-            end if
-
-         end if
-
-      end subroutine ProjectStorageGaussPoints_FixedOrder
-!
-!////////////////////////////////////////////////////////////////////////////
-!
-!     Homogeneous procedures
-!     ----------------------
-!
-!////////////////////////////////////////////////////////////////////////////
-!
-      subroutine Solution2Plt_Homogeneous(meshName, solutionName, Nout, mode)
-         use Storage
-         use NodalStorageClass
-         use SharedSpectralBasis
-         use OutputVariables
-         implicit none  
-         character(len=*), intent(in)     :: meshName
-         character(len=*), intent(in)     :: solutionName
-         integer,          intent(in)     :: Nout(3)
-         integer,          intent(in)     :: mode
-!
-!        ---------------
-!        Local variables
-!        ---------------
-!
-         type(Mesh_t)                               :: mesh
-         character(len=LINE_LENGTH)                 :: meshPltName
-         character(len=LINE_LENGTH)                 :: solutionFile
-         character(len=1024)                        :: title
-         integer                                    :: no_of_elements, eID
-         integer                                    :: fid, bID
-         real(kind=RP)                              :: xi(0:Nout(1)), eta(0:Nout(2)), zeta(0:Nout(3))
-         integer                                    :: i
-!
-!        Read the mesh and solution data
-!        -------------------------------
-         call mesh % ReadMesh(meshName)
-         call mesh % ReadSolution(SolutionName)
-!
-!        Set homogeneous nodes
-!        ---------------------
-         xi   = RESHAPE( (/ (-1.0_RP + 2.0_RP*i/Nout(1),i=0,Nout(1)) /), (/ Nout(1)+1 /) )
-         eta  = RESHAPE( (/ (-1.0_RP + 2.0_RP*i/Nout(2),i=0,Nout(2)) /), (/ Nout(2)+1 /) )
-         zeta = RESHAPE( (/ (-1.0_RP + 2.0_RP*i/Nout(3),i=0,Nout(3)) /), (/ Nout(3)+1 /) )
-!
-!        Write each element zone
-!        -----------------------
-         do eID = 1, mesh % no_of_elements
-            associate ( e => mesh % elements(eID) )
-            e % Nout = Nout
-!
-!           Construct spectral basis for both mesh and solution
-!           ---------------------------------------------------
-            call addNewSpectralBasis(spA, e % Nmesh, mesh % nodeType)
-            call addNewSpectralBasis(spA, e % Nsol , mesh % nodeType)
-!
-!           Construct interpolation matrices for the mesh
-!           ---------------------------------------------
-            call addNewInterpolationMatrix(Tset, e % Nmesh(1), spA(e % Nmesh(1)), e % Nout(1), xi)
-            call addNewInterpolationMatrix(Tset, e % Nmesh(2), spA(e % Nmesh(2)), e % Nout(2), eta)      ! TODO: check why it was Nmesh(1) 
-            call addNewInterpolationMatrix(Tset, e % Nmesh(3), spA(e % Nmesh(3)), e % Nout(3), zeta)     ! TODO: check why it was Nmesh(1)
-
-!
-!           Construct interpolation matrices for the solution
-!           -------------------------------------------------
-            call addNewInterpolationMatrix(Tset, e % Nsol(1), spA(e % Nsol(1)), e % Nout(1), xi)
-            call addNewInterpolationMatrix(Tset, e % Nsol(2), spA(e % Nsol(2)), e % Nout(2), eta)        ! TODO: check why it was Nout(1)
-            call addNewInterpolationMatrix(Tset, e % Nsol(3), spA(e % Nsol(3)), e % Nout(3), zeta)       ! TODO: check why it was Nout(1)
-!
-!           Perform interpolation
-!           ---------------------
-            call ProjectStorageHomogeneousPoints(e, Tset(e % Nout(1), e % Nmesh(1)) % T, &
-                                                    Tset(e % Nout(2), e % Nmesh(2)) % T, &
-                                                    Tset(e % Nout(3), e % Nmesh(3)) % T, &
-                                                     Tset(e % Nout(1), e % Nsol(1)) % T, &
-                                                     Tset(e % Nout(2), e % Nsol(2)) % T, &
-                                                     Tset(e % Nout(3), e % Nsol(3)) % T, &
-                                                     mesh % hasGradients, mesh % isStatistics, mesh % hasTimeDeriv)
-
-
-            end associate
+         do iv = 1, nVars
+            select case (trim(varNames(iv)))
+            case ("rho")
+               vals(iv) = Qp(IRHO)
+            case ("u")
+               vals(iv) = Qp(IRHOU) / Qp(IRHO)
+            case ("v")
+               vals(iv) = Qp(IRHOV) / Qp(IRHO)
+            case ("w")
+               vals(iv) = Qp(IRHOW) / Qp(IRHO)
+            case ("p")
+               vals(iv) = Pressure(Qp)
+            end select
          end do
-!
-!        Write the solution file name
-!        ----------------------------
-         solutionFile = trim(getFileName(solutionName)) // ".tec"
-!
-!        Create the file
-!        ---------------
-         open(newunit = fid, file = trim(solutionFile), action = "write", status = "unknown")
-!
-!        Add the title
-!        -------------
-         write(title,'(A,A,A,A,A)') '"Generated from ',trim(meshName),' and ',trim(solutionName),'"'
-         write(fid,'(A,A)') "TITLE = ", trim(title)
-!
-!        Add the variables
-!        -----------------
-         call getOutputVariables()
-         write(fid,'(A,A)') 'VARIABLES = "x","y","z"', trim(getOutputVariablesLabel())
-!
-!        Write elements
-!        --------------
-         if ( mode == MODE_FINITEELM) then
-            call WriteSingleFluidZoneToTecplot(fid,mesh)
-         else
-            do eID = 1, mesh % no_of_elements
-               associate ( e => mesh % elements(eID) )
 
-               call WriteElementToTecplot(fid, e, mesh % refs, &
-                                          mesh % hasGradients, mesh % isStatistics, mesh % hasSensor)
-               end associate
-            end do
+         deallocate(Qp, lxi, leta, lzeta)
+      end associate
+
+   end subroutine InterpolateOne
+
+
+   ! ==========================================================
+   ! Point location: loop over elements, Newton-invert geometry
+   ! mapping x(xi) = sum x_ijk * l_i(xi)*l_j(eta)*l_k(zeta)
+   ! ==========================================================
+   subroutine FindPointInMesh(mesh, x, eID, xi, found)
+      type(Mesh_t),  intent(in)  :: mesh
+      real(kind=RP), intent(in)  :: x(3)
+      integer,       intent(out) :: eID
+      real(kind=RP), intent(out) :: xi(3)
+      logical,       intent(out) :: found
+
+      integer :: e
+      logical :: ok
+
+      found = .false.
+      eID   = 0
+      xi    = 0.0_RP
+
+      do e = 1, mesh % no_of_elements
+         call FindPointInElement(mesh % elements(e), mesh % nodeType, x, xi, ok)
+         if (ok) then
+            found = .true.
+            eID   = e
+            return
          end if
-!
-!        Write boundaries
-!        ----------------
-         if (hasBoundaries) then
-            if ( mode == MODE_FINITEELM) then
-               do bID=1, size (mesh % boundaries)
-                  call WriteSingleBoundaryZoneToTecplot(fid, mesh % boundaries(bID), mesh % elements)
-               end do
-            else
-               do bID=1, size (mesh % boundaries)
-                  call WriteBoundaryToTecplot(fid, mesh % boundaries(bID), mesh % elements)
-               end do
-            end if
-         end if
+      end do
+   end subroutine FindPointInMesh
 
-!
-!        Close the file
-!        --------------
-         close(fid)
+   subroutine FindPointInElement(e, nodeType, x, xi, ok)
+      type(Element_t), intent(in)  :: e
+      integer,          intent(in) :: nodeType
+      real(kind=RP),    intent(in) :: x(3)
+      real(kind=RP),    intent(out):: xi(3)
+      logical,          intent(out):: ok
 
-      end subroutine Solution2Plt_Homogeneous
+      integer,       parameter :: MAX_ITER    = 50
+      real(kind=RP), parameter :: TOL         = 1.0e-12_RP
+      real(kind=RP), parameter :: INSIDE_TOL  = 1.0e-8_RP
 
-      subroutine ProjectStorageHomogeneousPoints(e, TxMesh, TyMesh, TzMesh, TxSol, TySol, TzSol, hasGradients, hasStats, hasTimeDeriv)
-         use Storage
-         use NodalStorageClass
-         implicit none
-         type(Element_t)     :: e
-         real(kind=RP),       intent(in)  :: TxMesh(0:e % Nout(1), 0:e % Nmesh(1))
-         real(kind=RP),       intent(in)  :: TyMesh(0:e % Nout(2), 0:e % Nmesh(2))
-         real(kind=RP),       intent(in)  :: TzMesh(0:e % Nout(3), 0:e % Nmesh(3))
-         real(kind=RP),       intent(in)  :: TxSol(0:e % Nout(1), 0:e % Nsol(1))
-         real(kind=RP),       intent(in)  :: TySol(0:e % Nout(2), 0:e % Nsol(2))
-         real(kind=RP),       intent(in)  :: TzSol(0:e % Nout(3), 0:e % Nsol(3))
-         logical,             intent(in)  :: hasGradients
-         logical,             intent(in)  :: hasStats
-         logical,             intent(in)  :: hasTimeDeriv
-!
-!        ---------------
-!        Local variables
-!        ---------------
-!
-         integer     :: i, j, k, l, m, n
-!
-!        Project mesh
-!        ------------         
-         allocate( e % xOut(1:3,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-         e % xOut = 0.0_RP
+      integer :: i, j, k, iter
+      real(kind=RP), allocatable :: lxi(:), leta(:), lzeta(:)
+      real(kind=RP), allocatable :: dlxi(:), dleta(:), dlzeta(:)
+      real(kind=RP) :: F(3), Jac(3,3), dx(3)
 
-         do n = 0, e % Nmesh(3) ; do m = 0, e % Nmesh(2) ; do l = 0, e % Nmesh(1)
-            do k = 0, e % Nout(3) ; do j = 0, e % Nout(2) ; do i = 0, e % Nout(1)
-               e % xOut(:,i,j,k) = e % xOut(:,i,j,k) + e % x(:,l,m,n) * TxMesh(i,l) * TyMesh(j,m) * TzMesh(k,n)
-            end do            ; end do            ; end do
+      call addNewSpectralBasis(spA, e % Nmesh, nodeType)
+
+      allocate(lxi(0:e%Nmesh(1)),  leta(0:e%Nmesh(2)),  lzeta(0:e%Nmesh(3)))
+      allocate(dlxi(0:e%Nmesh(1)), dleta(0:e%Nmesh(2)), dlzeta(0:e%Nmesh(3)))
+
+      xi = 0.0_RP
+
+      do iter = 1, MAX_ITER
+         lxi   = NodalStorage(e%Nmesh(1)) % lj(xi(1))
+         leta  = NodalStorage(e%Nmesh(2)) % lj(xi(2))
+         lzeta = NodalStorage(e%Nmesh(3)) % lj(xi(3))
+
+         F = 0.0_RP
+         do k=0,e%Nmesh(3) ; do j=0,e%Nmesh(2) ; do i=0,e%Nmesh(1)
+            F = F + e%x(:,i,j,k) * lxi(i)*leta(j)*lzeta(k)
+         end do            ; end do            ; end do
+         F = F - x
+
+         if (maxval(abs(F)) .lt. TOL) exit
+         if (any(abs(xi) .ge. 2.5_RP)) exit
+
+         dlxi   = NodalStorage(e%Nmesh(1)) % dlj(xi(1))
+         dleta  = NodalStorage(e%Nmesh(2)) % dlj(xi(2))
+         dlzeta = NodalStorage(e%Nmesh(3)) % dlj(xi(3))
+
+         Jac = 0.0_RP
+         do k=0,e%Nmesh(3) ; do j=0,e%Nmesh(2) ; do i=0,e%Nmesh(1)
+            Jac(:,1) = Jac(:,1) + e%x(:,i,j,k) * dlxi(i)*leta(j)*lzeta(k)
+            Jac(:,2) = Jac(:,2) + e%x(:,i,j,k) * lxi(i)*dleta(j)*lzeta(k)
+            Jac(:,3) = Jac(:,3) + e%x(:,i,j,k) * lxi(i)*leta(j)*dlzeta(k)
          end do            ; end do            ; end do
 
-!
-!        Project the solution
-!        --------------------
-         allocate( e % Qout(1:NVARS,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-         e % Qout = 0.0_RP
+         dx = SolveThreeEquationLinearSystem(Jac, -F)
+         xi = xi + dx
+      end do
 
-         do n = 0, e % Nsol(3) ; do m = 0, e % Nsol(2) ; do l = 0, e % Nsol(1)
-            do k = 0, e % Nout(3) ; do j = 0, e % Nout(2) ; do i = 0, e % Nout(1)
-               e % Qout(:,i,j,k) = e % Qout(:,i,j,k) + e % Q(:,l,m,n) * TxSol(i,l) * TySol(j,m) * TzSol(k,n)
-            end do            ; end do            ; end do
-         end do            ; end do            ; end do
+      ok = all(abs(xi) .lt. 1.0_RP + INSIDE_TOL)
+
+      deallocate(lxi, leta, lzeta, dlxi, dleta, dlzeta)
+
+   end subroutine FindPointInElement
 
 
-         allocate( e % QDot_out(1:NVARS,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-         e % QDot_out = 0.0_RP
-         if ( hasTimeDeriv ) then
+   ! ==========================================================
+   ! Output writers
+   ! ==========================================================
+   subroutine WriteTecplot(fid, probes, varNames, nVars, vals, found)
+      integer, intent(in) :: fid
+      real(kind=RP), intent(in) :: probes(:,:)   ! (3,nP)
+      character(len=32), intent(in) :: varNames(MAX_VARS)
+      integer, intent(in) :: nVars
+      real(kind=RP), intent(in) :: vals(:,:)     ! (nVars,nP)
+      logical, intent(in) :: found(:)            ! (nP)
 
-             do n = 0, e % Nsol(3) ; do m = 0, e % Nsol(2) ; do l = 0, e % Nsol(1)
-                do k = 0, e % Nout(3) ; do j = 0, e % Nout(2) ; do i = 0, e % Nout(1)
-                   e % QDot_out(:,i,j,k) = e % QDot_out(:,i,j,k) + e % QDot(:,l,m,n) * TxSol(i,l) * TySol(j,m) * TzSol(k,n)
-                end do            ; end do            ; end do
-             end do            ; end do            ; end do
-         end if
+      integer :: i, iv, nP
+      nP = size(probes,2)
 
-         if ( hasGradients ) then
-            allocate( e % U_xout(1:NGRADVARS,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)))
-            e % U_xout = 0.0_RP
-   
-            do n = 0, e % Nsol(3) ; do m = 0, e % Nsol(2) ; do l = 0, e % Nsol(1)
-               do k = 0, e % Nout(3) ; do j = 0, e % Nout(2) ; do i = 0, e % Nout(1)
-                  e % U_xout(:,i,j,k) = e % U_xout(:,i,j,k) + e % U_x(:,l,m,n) * TxSol(i,l) * TySol(j,m) * TzSol(k,n)
-               end do            ; end do            ; end do
-            end do            ; end do            ; end do
+      write(fid,'(A)') 'TITLE="horses2probes"'
+      write(fid,'(A)', advance="no") 'VARIABLES="x","y","z"'
+      do iv=1,nVars
+         write(fid,'(A)', advance="no") ',"'//trim(varNames(iv))//'"'
+      end do
+      write(fid,'(A)') ',"found"'
+      write(fid,'(A,I0,A)') 'ZONE T="PROBES" I=', nP, ', F=POINT'
 
-          allocate( e % U_yout(1:NGRADVARS, 0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-            e % U_yout = 0.0_RP
-   
-            do n = 0, e % Nsol(3) ; do m = 0, e % Nsol(2) ; do l = 0, e % Nsol(1)
-               do k = 0, e % Nout(3) ; do j = 0, e % Nout(2) ; do i = 0, e % Nout(1)
-                  e % U_yout(:,i,j,k) = e % U_yout(:,i,j,k) + e % U_y(:,l,m,n) * TxSol(i,l) * TySol(j,m) * TzSol(k,n)
-               end do            ; end do            ; end do
-            end do            ; end do            ; end do
-
-          allocate( e % U_zout(1:NGRADVARS, 0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-            e % U_zout = 0.0_RP
-   
-            do n = 0, e % Nsol(3) ; do m = 0, e % Nsol(2) ; do l = 0, e % Nsol(1)
-               do k = 0, e % Nout(3) ; do j = 0, e % Nout(2) ; do i = 0, e % Nout(1)
-                  e % U_zout(:,i,j,k) = e % U_zout(:,i,j,k) + e % U_z(:,l,m,n) * TxSol(i,l) * TySol(j,m) * TzSol(k,n)
-               end do            ; end do            ; end do
-            end do            ; end do            ; end do
-
-         end if
-
-         if (hasStats) then
-            allocate( e % statsout(1:NSTAT,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-            e % statsout = 0.0_RP
-            do n = 0, e % Nsol(3) ; do m = 0, e % Nsol(2) ; do l = 0, e % Nsol(1)
-               do k = 0, e % Nout(3) ; do j = 0, e % Nout(2) ; do i = 0, e % Nout(1)
-                  e % statsout(:,i,j,k) = e % statsout(:,i,j,k) + e % stats(:,l,m,n) * TxSol(i,l) * TySol(j,m) * TzSol(k,n)
-               end do            ; end do            ; end do
-            end do            ; end do            ; end do
-         end if
-         
-         if (hasUt_NS) then
-            allocate( e % ut_NSout(1,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-            e % ut_NSout = 0.0_RP
-            do n = 0, e % Nsol(3) ; do m = 0, e % Nsol(2) ; do l = 0, e % Nsol(1)
-               do k = 0, e % Nout(3) ; do j = 0, e % Nout(2) ; do i = 0, e % Nout(1)
-                  e % ut_NSout(:,i,j,k) = e % ut_NSout(:,i,j,k) + e % ut_NS(:,l,m,n) * TxSol(i,l) * TySol(j,m) * TzSol(k,n)
-               end do            ; end do            ; end do
-            end do            ; end do            ; end do
-         end if
-         
-         if (hasMu_NS) then
-            allocate( e % mu_NSout(1,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-            e % mu_NSout = 0.0_RP
-            do n = 0, e % Nsol(3) ; do m = 0, e % Nsol(2) ; do l = 0, e % Nsol(1)
-               do k = 0, e % Nout(3) ; do j = 0, e % Nout(2) ; do i = 0, e % Nout(1)
-                  e % mu_NSout(:,i,j,k) = e % mu_NSout(:,i,j,k) + e % mu_NS(:,l,m,n) * TxSol(i,l) * TySol(j,m) * TzSol(k,n)
-               end do            ; end do            ; end do
-            end do            ; end do            ; end do  
-         end if
-         
-         if (hasWallY) then
-            allocate( e % wallYout(1,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-            e % wallYout = 0.0_RP
-            do n = 0, e % Nsol(3) ; do m = 0, e % Nsol(2) ; do l = 0, e % Nsol(1)
-               do k = 0, e % Nout(3) ; do j = 0, e % Nout(2) ; do i = 0, e % Nout(1)
-                  e % wallYout(:,i,j,k) = e % wallYout(:,i,j,k) + e % WallY(:,l,m,n) * TxSol(i,l) * TySol(j,m) * TzSol(k,n)
-               end do            ; end do            ; end do
-            end do            ; end do            ; end do  
-         end if
-         
-         if (hasMu_sgs) then
-            allocate( e % mu_sgsout(1,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-            e % mu_sgsout = 0.0_RP
-            do n = 0, e % Nsol(3) ; do m = 0, e % Nsol(2) ; do l = 0, e % Nsol(1)
-               do k = 0, e % Nout(3) ; do j = 0, e % Nout(2) ; do i = 0, e % Nout(1)
-                  e % mu_sgsout(:,i,j,k) = e % mu_sgsout(:,i,j,k) + e % mu_sgs(:,l,m,n) * TxSol(i,l) * TySol(j,m) * TzSol(k,n)
-               end do            ; end do            ; end do
-            end do            ; end do            ; end do  
-         end if
-
-         if (hasSource) then
-            allocate( e % sourceout(1:NVARS,0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-            e % sourceout = 0.0_RP
-            do n = 0, e % Nsol(3) ; do m = 0, e % Nsol(2) ; do l = 0, e % Nsol(1)
-               do k = 0, e % Nout(3) ; do j = 0, e % Nout(2) ; do i = 0, e % Nout(1)
-                  e % sourceout(:,i,j,k) = e % sourceout(:,i,j,k) + e % source(:,l,m,n) * TxSol(i,l) * TySol(j,m) * TzSol(k,n)
-               end do            ; end do            ; end do
-            end do            ; end do            ; end do  
-         end if
-
-      end subroutine ProjectStorageHomogeneousPoints
-!
-!/////////////////////////////////////////////////////////////////////////////
-!
-!     Write solution
-!     --------------
-!
-!/////////////////////////////////////////////////////////////////////////////
-!
-!     Writes a single fluid zone using the FE Tecplot format
-!     -> This format is more efficiently read by paraview and tecplot.
-!     ------------------------------------------------------
-      subroutine WriteSingleFluidZoneToTecplot(fid,mesh)
-         use Storage
-         use OutputVariables
-         implicit none
-         integer     , intent(in)        :: fid
-         type(Mesh_t), intent(inout)     :: mesh
-         !---------
-         integer :: numOfPoints  ! Number of plot points
-         integer :: numOfFElems  ! Number of FINITE elements
-         integer :: firstPoint(size(mesh % elements))
-         integer :: eID          ! Spectral (not finite) element counter
-         integer :: i, j, k
-         integer :: N(3)
-         integer :: corners(8), cornersFace(4)
-         character(len=LINE_LENGTH) :: formatout
-         !---------
-         
-!        Definitions
-!        -----------
-         formatout = getFormat() ! format for point data
-         
-         ! Count points and elements
-         numOfPoints   = product(mesh % elements(1) % Nout + 1)
-         if (mesh % isSurface) then
-             numOfFElems   = product(mesh % elements(1) % Nout(1:2))
-         else
-             numOfFElems   = product(mesh % elements(1) % Nout)
-         end if
-         firstPoint(1) = 1
-         do eID = 2, size(mesh % elements)
-            associate ( e => mesh % elements(eID) )
-            firstPoint(eID) = numOfPoints + 1
-            numOfPoints = numOfPoints + product(e % Nout + 1)
-            if (mesh % isSurface) then
-                numOfFElems   = numOfFElems + product(e % Nout(1:2))
-            else
-                numOfFElems   = numOfFElems + product(e % Nout)
-            end if
-            ! numOfFElems = numOfFElems + product(e % Nout    )
-            end associate
+      do i=1,nP
+         write(fid,'(3ES24.16)', advance="no") probes(1,i), probes(2,i), probes(3,i)
+         do iv=1,nVars
+            write(fid,'(1X,ES24.16)', advance="no") vals(iv,i)
          end do
-         
-         if (mesh % isSurface) then
-             write(fid,'(A,I0,A,I0,A)') 'ZONE T="FLUID" N=',numOfPoints,' E=',numOfFElems,' ET=QUADRILATERAL, F=FEPOINT'
-         else
-             write(fid,'(A,I0,A,I0,A)') 'ZONE T="FLUID" N=',numOfPoints,' E=',numOfFElems,' ET=BRICK, F=FEPOINT'
-         end if
-         
-!        Write the points
-!        ----------------
-         do eID = 1, size(mesh % elements)
-            associate ( e => mesh % elements(eID) )
-            N = e % Nout
-            allocate (e % outputVars(1:no_of_outputVariables, 0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-            call ComputeOutputVariables(no_of_outputVariables, outputVariableNames, e % Nout, e, e % outputVars, mesh % refs, &
-                                        mesh % hasGradients, mesh % isStatistics, mesh % hasSensor)
-            
-            do k = 0, e % Nout(3) ; do j = 0, e % Nout(2) ; do i = 0, e % Nout(1)
-               write(fid,trim(formatout)) e % xOut(:,i,j,k), e % outputVars(:,i,j,k)
-            end do                ; end do                ; end do
-            end associate
+         write(fid,'(1X,I1)') merge(1,0,found(i))
+      end do
+   end subroutine WriteTecplot
+
+   subroutine WriteTxt(fid, probes, varNames, nVars, vals, found)
+      integer, intent(in) :: fid
+      real(kind=RP), intent(in) :: probes(:,:)   ! (3,nP)
+      character(len=32), intent(in) :: varNames(MAX_VARS)
+      integer, intent(in) :: nVars
+      real(kind=RP), intent(in) :: vals(:,:)     ! (nVars,nP)
+      logical, intent(in) :: found(:)            ! (nP)
+
+      integer :: i, iv, nP
+      nP = size(probes,2)
+
+      write(fid,'(A)', advance="no") "# x y z"
+      do iv=1,nVars
+         write(fid,'(A)', advance="no") " "//trim(varNames(iv))
+      end do
+      write(fid,'(A)') " found"
+
+      do i=1,nP
+         write(fid,'(3ES24.16)', advance="no") probes(1,i), probes(2,i), probes(3,i)
+         do iv=1,nVars
+            write(fid,'(1X,ES24.16)', advance="no") vals(iv,i)
          end do
-         
-!        Write the elems connectivity
-!        ----------------------------
-         ! surface mesh case
-         if (mesh % isSurface) then
-             do eID = 1, size(mesh % elements)
-                associate ( e => mesh % elements(eID) )
+         write(fid,'(1X,I1)') merge(1,0,found(i))
+      end do
+   end subroutine WriteTxt
 
-                do j = 0, e % Nout(2) - 1 ; do i = 0, e % Nout(1) - 1
-                   cornersFace =  [ ij2localDOF(i,j,e%Nout(1:2)), ij2localDOF(i+1,j,e%Nout(1:2)), ij2localDOF(i+1,j+1,e%Nout(1:2)), ij2localDOF(i,j+1,e%Nout(1:2)) ] + firstPoint(eID)
-                   write(fid,*) cornersFace
-                end do                  ; end do
-
-                end associate
-             end do
-         ! normal elements case
-         else
-             do eID = 1, size(mesh % elements)
-                associate ( e => mesh % elements(eID) )
-                
-                do k = 0, e % Nout(3) - 1 ; do j = 0, e % Nout(2) - 1 ; do i = 0, e % Nout(1) - 1
-                   corners =  [ ijk2localDOF(i,j,k  ,e%Nout), ijk2localDOF(i+1,j,k  ,e%Nout), ijk2localDOF(i+1,j+1,k  ,e%Nout), ijk2localDOF(i,j+1,k  ,e%Nout), &
-                                ijk2localDOF(i,j,k+1,e%Nout), ijk2localDOF(i+1,j,k+1,e%Nout), ijk2localDOF(i+1,j+1,k+1,e%Nout), ijk2localDOF(i,j+1,k+1,e%Nout)  ] + firstPoint(eID)
-                   write(fid,*) corners
-                end do                    ; end do                    ; end do
-                
-                end associate
-             end do
-         end if
-      end subroutine WriteSingleFluidZoneToTecplot
-!
-!////////////////////////////////////////////////////////////////////////////
-!
-!     ------------------------------------------------------------------
-!     ijk2localDOF:
-!     Returns the local DOF index for an element in zero-based numbering
-!     ------------------------------------------------------------------
-      function ijk2localDOF(i,j,k,Nout) result(idx)
-         implicit none
-         
-         integer, intent(in)   :: i, j, k, Nout(3)
-         integer               :: idx
-         
-         IF (i < 0 .OR. i > Nout(1))     error stop 'error in ijk2local, i has wrong value'
-         IF (j < 0 .OR. j > Nout(2))     error stop 'error in ijk2local, j has wrong value'
-         IF (k < 0 .OR. k > Nout(3))     error stop 'error in ijk2local, k has wrong value'
-         
-         idx = k*(Nout(1)+1)*(Nout(2)+1) + j*(Nout(1)+1) + i
-      end function ijk2localDOF
-!
-!//////////////////////////////////////////////////////////////////////////////
-!
-!     Writes a single boundary zone using the FE Tecplot format
-!     -> This format is more efficiently read by paraview and tecplot.
-!     ------------------------------------------------------
-      subroutine WriteSingleBoundaryZoneToTecplot(fd,boundary, elements)
-         use Storage
-         use NodalStorageClass
-         use prolongMeshAndSolution
-         use OutputVariables
-         use SolutionFile
-         implicit none
-         !-arguments-------------------------------------------
-         integer         , intent(in) :: fd
-         type(Boundary_t), intent(in) :: boundary
-         type(Element_t) , intent(in) :: elements(:)
-         !-local-variables-------------------------------------
-         integer :: numOfPoints  ! Number of plot points
-         integer :: numOfFElems  ! Number of FINITE elements
-         integer :: fID, side
-         integer :: corners(4)
-         integer :: i,j,k
-         integer :: N(3)
-         integer :: firstPoint(boundary % no_of_faces)
-         integer :: Nf      (2,boundary % no_of_faces)
-         character(len=LINE_LENGTH) :: formatout
-         !-----------------------------------------------------
-         
-         formatout = getFormat()
-         
-         ! Count points and elements
-         numOfPoints   = 0
-         numOfFElems   = 0
-         
-         do fID = 1, boundary % no_of_faces
-            associate (e => elements( boundary % elements(fID) ))
-            side = boundary % elementSides(fID)
-            
-            select case (side)
-               case(1,2) ; Nf(:,fID) = [e % Nout(1), e % Nout(3)]
-               case(3,5) ; Nf(:,fID) = [e % Nout(1), e % Nout(2)]
-               case(4,6) ; Nf(:,fID) = [e % Nout(2), e % Nout(3)]
-            end select
-            
-            firstPoint(fID) = numOfPoints + 1
-            numOfPoints     = numOfPoints + product(Nf(:,fID)+1)
-            numOfFElems     = numOfFElems + product(Nf(:,fID)  )
-            end associate
-         end do
-
-         ! don't write if boundary doesn't have elements associated, happens for periodic conditions
-         if (numOfFElems .eq. 0) return
-         
-         write(fd,'(A,I0,A,I0,A,A,A)') "ZONE N=", numOfPoints,", E=", numOfFElems, &
-                                                  ',ET=QUADRILATERAL, F=FEPOINT, T="boundary_', trim(boundary % Name), '"'
-                  
-!        Write the points
-!        ----------------
-         do fID=1, boundary % no_of_faces
-            
-            associate (e => elements( boundary % elements(fID) ))
-            side = boundary % elementSides(fID)
-            N = e % Nout
-            select case (side)
-            
-               case(1)
-                  do k = 0, e % Nout(3)    ; do i = 0, e % Nout(1)
-                     write(fd,trim(formatout)) e % xOut(:,i,0,k), e % outputVars(:,i,0,k)
-                  end do                ; end do
-                  
-               case(2)
-                  do k = 0, e % Nout(3)    ; do i = 0, e % Nout(1)
-                     write(fd,trim(formatout)) e % xOut(:,i,e % Nout(2),k), e % outputVars(:,i,e % Nout(2),k)
-                  end do                ; end do
-               
-               case(3)
-                  do j = 0, e % Nout(2)    ; do i = 0, e % Nout(1)
-                     write(fd,trim(formatout)) e % xOut(:,i,j,0), e % outputVars(:,i,j,0)
-                  end do                ; end do
-                  
-               case(4)
-                  do k = 0, e % Nout(3)    ; do j = 0, e % Nout(2)
-                     write(fd,trim(formatout)) e % xOut(:,e % Nout(1),j,k), e % outputVars(:,e % Nout(1),j,k)
-                  end do                ; end do
-                  
-               case(5)
-                  do j = 0, e % Nout(2)    ; do i = 0, e % Nout(1)
-                     write(fd,trim(formatout)) e % xOut(:,i,j,e % Nout(3)), e % outputVars(:,i,j,e % Nout(3))
-                  end do                ; end do
-                  
-               case(6)
-                  do k = 0, e % Nout(3)    ; do j = 0, e % Nout(2)
-                     write(fd,trim(formatout)) e % xOut(:,0,j,k), e % outputVars(:,0,j,k)
-                  end do                ; end do
-                  
-            end select
-            
-            end associate
-         end do
-         
-!        Write the elems connectivity
-!        ----------------------------
-         do fID = 1, boundary % no_of_faces
-            
-            do j = 0, Nf(2,fID) - 1 ; do i = 0, Nf(1,fID) - 1
-               corners =  [ ij2localDOF(i,j,Nf(:,fID)), ij2localDOF(i+1,j,Nf(:,fID)), ij2localDOF(i+1,j+1,Nf(:,fID)), ij2localDOF(i,j+1,Nf(:,fID)) ] + firstPoint(fID)
-               write(fd,*) corners
-            end do                  ; end do
-            
-         end do
-         
-      end subroutine WriteSingleBoundaryZoneToTecplot
-!
-!////////////////////////////////////////////////////////////////////////////
-!
-!     --------------------------------------------------------------
-!     ij2localDOF:
-!     Returns the local DOF index for a face in zero-based numbering
-!     --------------------------------------------------------------
-      function ij2localDOF(i,j,Nout) result(idx)
-         implicit none
-         
-         integer, intent(in)   :: i, j, Nout(2)
-         integer               :: idx
-         
-         IF (i < 0 .OR. i > Nout(1))     error stop 'error in ijk2local, i has wrong value'
-         IF (j < 0 .OR. j > Nout(2))     error stop 'error in ijk2local, j has wrong value'
-         
-         idx = j*(Nout(1)+1) + i
-      end function ij2localDOF
-!
-!//////////////////////////////////////////////////////////////////////////////
-!
-      subroutine WriteElementToTecplot(fid,e,refs, hasGradients, hasStats, hasSensor)
-         use Storage
-         use NodalStorageClass
-         use prolongMeshAndSolution
-         use OutputVariables
-         use SolutionFile
-         implicit none
-         integer,            intent(in)    :: fid
-         type(Element_t),    intent(inout) :: e 
-         real(kind=RP),      intent(in)    :: refs(NO_OF_SAVED_REFS)
-         logical,            intent(in)    :: hasGradients
-         logical,            intent(in)    :: hasStats
-         logical,            intent(in)    :: hasSensor
-!
-!        ---------------
-!        Local variables
-!        ---------------
-!
-         integer                    :: i,j,k,var
-         character(len=LINE_LENGTH) :: formatout
-!
-!        Get output variables
-!        --------------------
-         
-         allocate (e % outputVars(1:no_of_outputVariables, 0:e % Nout(1), 0:e % Nout(2), 0:e % Nout(3)) )
-         call ComputeOutputVariables(no_of_outputVariables, outputVariableNames, e % Nout, e, e % outputVars, refs, hasGradients, hasStats, hasSensor)
-!
-!        Write variables
-!        ---------------        
-         write(fid,'(A,I0,A,I0,A,I0,A)') "ZONE I=",e % Nout(1)+1,", J=",e % Nout(2)+1, &
-                                            ", K=",e % Nout(3)+1,", F=POINT"
-
-         formatout = getFormat()
-
-         do k = 0, e % Nout(3)   ; do j = 0, e % Nout(2)    ; do i = 0, e % Nout(1)
-            write(fid,trim(formatout)) e % xOut(:,i,j,k), e % outputVars(:,i,j,k)
-         end do               ; end do                ; end do
-
-      end subroutine WriteElementToTecplot
-      
-      subroutine WriteBoundaryToTecplot(fd,boundary, elements)
-         use Storage
-         use NodalStorageClass
-         use prolongMeshAndSolution
-         use OutputVariables
-         use SolutionFile
-         implicit none
-         !-arguments-------------------------------------------
-         integer         , intent(in) :: fd
-         type(Boundary_t), intent(in) :: boundary
-         type(Element_t) , intent(in) :: elements(:)
-         !-local-variables-------------------------------------
-         integer :: fID, side
-         integer :: i,j,k
-         character(len=LINE_LENGTH) :: formatout
-         !-----------------------------------------------------
-         
-         formatout = getFormat()
-         
-         do fID=1, boundary % no_of_faces
-            
-            associate (e => elements( boundary % elements(fID) ))
-            side = boundary % elementSides(fID)
-            
-            select case (side)
-            
-               case(1)
-                  
-                  write(fd,'(A,I0,A,I0,A,I0,A,A,I0,A)') "ZONE I=",e % Nout(1)+1,", J=",e % Nout(3)+1, &
-                                                  ", K=",1,', F=POINT, T="boundary_', trim(boundary % Name), fID, '"'
-                  
-                  do k = 0, e % Nout(3)    ; do i = 0, e % Nout(1)
-                     write(fd,trim(formatout)) e % xOut(:,i,0,k), e % outputVars(:,i,0,k)
-                  end do                ; end do
-                  
-               case(2)
-                  
-                  write(fd,'(A,I0,A,I0,A,I0,A,A,I0,A)') "ZONE I=",e % Nout(1)+1,", J=",e % Nout(3)+1, &
-                                                  ", K=",1,', F=POINT, T="boundary_', trim(boundary % Name), fID, '"'
-                  
-                  do k = 0, e % Nout(3)    ; do i = 0, e % Nout(1)
-                     write(fd,trim(formatout)) e % xOut(:,i,e % Nout(2),k), e % outputVars(:,i,e % Nout(2),k)
-                  end do                ; end do
-               
-               case(3)
-                  
-                  write(fd,'(A,I0,A,I0,A,I0,A,A,I0,A)') "ZONE I=",e % Nout(1)+1,", J=",e % Nout(2)+1, &
-                                                  ", K=",1,', F=POINT, T="boundary_', trim(boundary % Name), fID, '"'
-                  
-                  do j = 0, e % Nout(2)    ; do i = 0, e % Nout(1)
-                     write(fd,trim(formatout)) e % xOut(:,i,j,0), e % outputVars(:,i,j,0)
-                  end do                ; end do
-                  
-               case(4)
-                  
-                  write(fd,'(A,I0,A,I0,A,I0,A,A,I0,A)') "ZONE I=",e % Nout(2)+1,", J=",e % Nout(3)+1, &
-                                                  ", K=",1,', F=POINT, T="boundary_', trim(boundary % Name), fID, '"'
-                  
-                  do k = 0, e % Nout(3)    ; do j = 0, e % Nout(2)
-                     write(fd,trim(formatout)) e % xOut(:,e % Nout(1),j,k), e % outputVars(:,e % Nout(1),j,k)
-                  end do                ; end do
-                  
-               case(5)
-                  
-                  write(fd,'(A,I0,A,I0,A,I0,A,A,I0,A)') "ZONE I=",e % Nout(1)+1,", J=",e % Nout(2)+1, &
-                                                  ", K=",1,', F=POINT, T="boundary_', trim(boundary % Name), fID, '"'
-                  
-                  do j = 0, e % Nout(2)    ; do i = 0, e % Nout(1)
-                     write(fd,trim(formatout)) e % xOut(:,i,j,e % Nout(3)), e % outputVars(:,i,j,e % Nout(3))
-                  end do                ; end do
-                  
-               case(6)
-                  
-                  write(fd,'(A,I0,A,I0,A,I0,A,A,I0,A)') "ZONE I=",e % Nout(2)+1,", J=",e % Nout(3)+1, &
-                                                  ", K=",1,', F=POINT, T="boundary_', trim(boundary % Name), fID, '"'
-                  
-                  do k = 0, e % Nout(3)    ; do j = 0, e % Nout(2)
-                     write(fd,trim(formatout)) e % xOut(:,0,j,k), e % outputVars(:,0,j,k)
-                  end do                ; end do
-                  
-            end select
-            
-            end associate
-         end do
-         
-      end subroutine WriteBoundaryToTecplot
-      
-
-      character(len=LINE_LENGTH) function getFormat()
-         use OutputVariables
-         implicit none
-
-         getFormat = ""
-
-         write(getFormat,'(A,I0,A,A)') "(",3+no_of_outputVariables,PRECISION_FORMAT,")"
-
-      end function getFormat
-
-end module Solution2PltModule
+#endif
+end module Solution2ProbesModule
