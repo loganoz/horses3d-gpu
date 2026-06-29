@@ -6,9 +6,13 @@ INSTALL_DIR ?= ./
 PROG        = ./bin/horses2probes
 
 # IMPORTANT: force FLOW for this addon
-MACROS += -DFLOW
+# Use 'override' because the top-level Makefile invokes this sub-make with
+# MACROS='$(MACROS)' on the command line, which would otherwise take
+# precedence over a plain '+=' assignment here and silently drop -DFLOW.
+override MACROS += -DFLOW
 
 OBJS =  sharedSpectralBasis \
+        Storage \
         Solution2probes \
         main
 
