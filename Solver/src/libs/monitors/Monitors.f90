@@ -1392,7 +1392,9 @@ end subroutine getNoOfMonitors
       call h5close_f(iError)
 
    end subroutine Monitor_WriteFileProbesHDF5
-#endif
+#endif   ! HAS_HDF5
+
+#endif   ! FLOW
 
 end module MonitorsClass
 !
