@@ -133,6 +133,7 @@ module ProbeClass
             case ("w")
             case ("mach")
             case ("k")
+            case ("rho")
             case default
                print*, 'Probe variable "',trim(self % variableNames(v)),'" not implemented.'
                print*, "Options available are:"
@@ -143,6 +144,7 @@ module ProbeClass
                print*, "   * w"
                print*, "   * Mach"
                print*, "   * K"
+               print*, "   * rho"
             end select
 #endif
 #ifdef INCNS
@@ -151,6 +153,7 @@ module ProbeClass
             case ("u")
             case ("v")
             case ("w")
+            case ("rho")
             case default
                print*, 'Probe variable "',trim(self % variableNames(v)),'" not implemented.'
                print*, "Options available are:"
@@ -159,6 +162,7 @@ module ProbeClass
                print*, "   * u"
                print*, "   * v"
                print*, "   * w"
+               print*, "   * rho"
             end select
 #endif
 #ifdef MULTIPHASE
@@ -357,10 +361,17 @@ module ProbeClass
       
             case("k")
                !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = 0.5_RP * (POW2(mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k)) + &
                                                 POW2(mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k)) + &
                                                 POW2(mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k)))/mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+               end do         ; end do         ; end do
+               !$acc end parallel loop
+
+            case("rho")
+               !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
                end do         ; end do         ; end do
                !$acc end parallel loop
 #endif
@@ -398,8 +409,15 @@ module ProbeClass
    
             case("w")
                !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHOW,i,j,k) / mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+               end do            ; end do             ; end do
+               !$acc end parallel loop
+
+            case("rho")
+               !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
                end do            ; end do             ; end do
                !$acc end parallel loop
 #endif
@@ -524,6 +542,11 @@ module ProbeClass
          integer                    :: i, v
          integer                    :: fID
 
+         if ( .not. self % active ) then
+            if ( no_of_lines .ne. 0 ) self % values(:,1) = self % values(:,no_of_lines)
+            return
+         end if
+
          if ( MPI_Process % isRoot ) then
             open( newunit = fID , file = trim ( self % fileName ) , action = "write" , access = "append" , status = "old" )
 
@@ -621,21 +644,29 @@ module ProbeClass
          to % x = from % x
          to % xi = from % xi
 
-         safedeallocate ( to % values )
-         allocate ( to % values ( size(from % values, 1), size(from % values, 2) ) )
-         to % values = from % values
+         if ( allocated(from % values) ) then
+            safedeallocate ( to % values )
+            allocate ( to % values ( size(from % values, 1), size(from % values, 2) ) )
+            to % values = from % values
+         end if
 
-         safedeallocate ( to % lxi )
-         allocate ( to % lxi ( size(from % lxi) ) )
-         to % lxi = from % lxi
-         
-         safedeallocate ( to % leta )
-         allocate ( to % leta ( size(from % leta) ) )
-         to % leta = from % leta
-         
-         safedeallocate ( to % lzeta )
-         allocate ( to % lzeta ( size(from % lzeta) ) )
-         to % lzeta = from % lzeta
+         if ( allocated(from % lxi) ) then
+            safedeallocate ( to % lxi )
+            allocate ( to % lxi ( size(from % lxi) ) )
+            to % lxi = from % lxi
+         end if
+
+         if ( allocated(from % leta) ) then
+            safedeallocate ( to % leta )
+            allocate ( to % leta ( size(from % leta) ) )
+            to % leta = from % leta
+         end if
+
+         if ( allocated(from % lzeta) ) then
+            safedeallocate ( to % lzeta )
+            allocate ( to % lzeta ( size(from % lzeta) ) )
+            to % lzeta = from % lzeta
+         end if
          
          to % saveTimestep  = from % saveTimestep
          to % lastSavedTime = from % lastSavedTime
