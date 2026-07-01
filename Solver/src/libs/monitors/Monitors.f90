@@ -35,6 +35,8 @@ module MonitorsClass
       character(len=LINE_LENGTH)                 :: probesFileName = ""
       character(len=STR_LEN_MONITORS), allocatable :: probesVariables(:)
       real(kind=RP)                              :: probeFileSaveTimestep = 0.0_RP
+      character(len=8)                           :: probeFileOutputFormat = "ASCII"
+      real(kind=RP)                              :: fp_lastSavedTime = -huge(0.0_RP)
       integer                                    :: bufferLine
       integer                      , allocatable :: iter(:)
       integer                                    :: dt_restriction
@@ -96,6 +98,7 @@ module MonitorsClass
          integer                         :: no_of_fileProbes
          integer                         :: no_of_probesVariables
          real(kind=RP)                   :: probeFileSaveTimestep
+         character(len=8)                :: probeFileOutputFormat
 !
 !        Setup the buffer
 !        ----------------
@@ -133,7 +136,7 @@ module MonitorsClass
 !           variables to be sampled and saved for the same probe location
 !           ---------------------------------------------------------------
 #ifdef FLOW
-            call readProbesFileBlock( probesFileName, probesVariablesLine, no_of_probesVariables, probeFileSaveTimestep )
+            call readProbesFileBlock( probesFileName, probesVariablesLine, no_of_probesVariables, probeFileSaveTimestep, probeFileOutputFormat )
 
             if ( len_trim(probesFileName) .gt. 0 ) then
                call countProbesInFile( trim(probesFileName), no_of_fileProbes )
@@ -184,8 +187,15 @@ module MonitorsClass
                                             mesh, solution_file, FirstCall, probesVariables, probeFileSaveTimestep )
             Monitors % probesFileName         = trim(probesFileName)
             Monitors % probeFileSaveTimestep  = probeFileSaveTimestep
+            Monitors % probeFileOutputFormat  = probeFileOutputFormat
+            Monitors % fp_lastSavedTime       = -huge(0.0_RP)
             allocate( Monitors % probesVariables(size(probesVariables)) )
             Monitors % probesVariables = probesVariables
+#ifdef HAS_HDF5
+            if ( trim(probeFileOutputFormat) .eq. "HDF5" ) then
+               call Monitor_InitFileProbesHDF5( Monitors, no_of_fileProbes )
+            end if
+#endif
          end if
 
          Monitors % no_of_fileProbes = no_of_fileProbes
@@ -543,12 +553,25 @@ module MonitorsClass
             end do
 
 #ifdef FLOW
-            do i = 1 , self % no_of_probes
+            do i = 1 , self % no_of_probes - self % no_of_fileProbes
                call self % probes(i) % WriteToFile ( self % iter , self % t , self % bufferLine )
             end do
+            if ( self % no_of_fileProbes .gt. 0 ) then
+#ifdef HAS_HDF5
+               if ( trim(self % probeFileOutputFormat) .eq. "HDF5" ) then
+                  call Monitor_WriteFileProbesHDF5( self, self % iter, self % t, self % bufferLine )
+               else
 #endif
-   
-#if defined(NAVIERSTOKES) || defined(INCNS)  
+                  do i = self % no_of_probes - self % no_of_fileProbes + 1, self % no_of_probes
+                     call self % probes(i) % WriteToFile ( self % iter , self % t , self % bufferLine )
+                  end do
+#ifdef HAS_HDF5
+               end if
+#endif
+            end if
+#endif
+
+#if defined(NAVIERSTOKES) || defined(INCNS)
             do i = 1 , self % no_of_surfaceMonitors
                call self % surfaceMonitors(i) % WriteToFile ( self % iter , self % t , self % bufferLine )
             end do
@@ -584,9 +607,22 @@ module MonitorsClass
                end do
 
 #ifdef FLOW
-               do i = 1 , self % no_of_probes
-                  call self % probes(i) % WriteToFile ( self % iter , self % t , self % bufferLine ) 
+               do i = 1 , self % no_of_probes - self % no_of_fileProbes
+                  call self % probes(i) % WriteToFile ( self % iter , self % t , self % bufferLine )
                end do
+               if ( self % no_of_fileProbes .gt. 0 ) then
+#ifdef HAS_HDF5
+                  if ( trim(self % probeFileOutputFormat) .eq. "HDF5" ) then
+                     call Monitor_WriteFileProbesHDF5( self, self % iter, self % t, self % bufferLine )
+                  else
+#endif
+                     do i = self % no_of_probes - self % no_of_fileProbes + 1, self % no_of_probes
+                        call self % probes(i) % WriteToFile ( self % iter , self % t , self % bufferLine )
+                     end do
+#ifdef HAS_HDF5
+                  end if
+#endif
+               end if
 #endif
 
 #if defined(NAVIERSTOKES) || defined(INCNS)
@@ -640,6 +676,7 @@ module MonitorsClass
          if ( self % probeFileSaveTimestep .gt. 0.0_RP ) then
             write(STD_OUT,'(30X,A,A28,ES14.6)') "->" , "Save timestep: " , self % probeFileSaveTimestep
          end if
+         write(STD_OUT,'(30X,A,A28,A)') "->" , "Output format: " , trim(self % probeFileOutputFormat)
 
       end subroutine Monitor_WriteProbesFileSummary
 
@@ -689,6 +726,8 @@ module MonitorsClass
          to % no_of_fileProbes            = from % no_of_fileProbes
          to % probesFileName              = from % probesFileName
          to % probeFileSaveTimestep       = from % probeFileSaveTimestep
+         to % probeFileOutputFormat       = from % probeFileOutputFormat
+         to % fp_lastSavedTime            = from % fp_lastSavedTime
          if ( allocated(from % probesVariables) ) then
             safedeallocate ( to % probesVariables )
             allocate ( to % probesVariables ( size(from % probesVariables) ) )
@@ -855,7 +894,7 @@ end subroutine getNoOfMonitors
 !
 !///////////////////////////////////////////////////////////////////////////////////
 !
-   subroutine readProbesFileBlock(fileName, variablesLine, no_of_probesVariables, saveTimestep)
+   subroutine readProbesFileBlock(fileName, variablesLine, no_of_probesVariables, saveTimestep, outputFormat)
 !
 !     ******************************************************************
 !        Reads the "#define probe file ... #end" block from the case
@@ -865,6 +904,7 @@ end subroutine getNoOfMonitors
 !           file                = Probe.dat
 !           variables           = u
 !           probe save timestep = 1.0E-3
+!           output format       = HDF5
 !        #end
 !
 !     Note: this is a hand-rolled parser (rather than readValueInRegion)
@@ -878,6 +918,7 @@ end subroutine getNoOfMonitors
       character(len=LINE_LENGTH), intent(out) :: variablesLine
       integer,                    intent(out) :: no_of_probesVariables
       real(kind=RP),              intent(out) :: saveTimestep
+      character(len=8),           intent(out) :: outputFormat
 !
 !     ---------------
 !     Local variables
@@ -893,6 +934,7 @@ end subroutine getNoOfMonitors
       variablesLine         = ""
       no_of_probesVariables = 0
       saveTimestep          = 0.0_RP
+      outputFormat          = "ASCII"
       inside                = .false.
 
       call get_command_argument(1, paramFile)
@@ -930,6 +972,14 @@ end subroutine getNoOfMonitors
          elseif ( getSquashedLine(line(1:position-1)) .eq. getSquashedLine("probe save timestep") ) then
             valStr = adjustl( removeQuotes( line(position+1:) ) )
             read( valStr , * ) saveTimestep
+         elseif ( getSquashedLine(line(1:position-1)) .eq. getSquashedLine("output format") ) then
+            valStr = adjustl( removeQuotes( line(position+1:) ) )
+            valStr = adjustl( getSquashedLine(valStr) )
+            if ( index(valStr, "hdf5") .gt. 0 ) then
+               outputFormat = "HDF5"
+            else
+               outputFormat = "ASCII"
+            end if
          end if
       end do
 
@@ -1078,6 +1128,270 @@ end subroutine getNoOfMonitors
       close(fID)
 
    end subroutine InitializeProbesFromFile
+
+! ============================================================
+!  HDF5 collective I/O for file-based probes
+!  Compiled only when HAS_HDF5 is defined.
+! ============================================================
+
+#ifdef HAS_HDF5
+   subroutine Monitor_InitFileProbesHDF5(self, no_of_fileProbes)
+!
+!     Creates the HDF5 output file for bulk file-probes with
+!     the following structure:
+!
+!       /coordinates  (3, nProbes)   — fixed, written once
+!       /time         (extendible)   — one value per saved step
+!       /iteration    (extendible)   — one value per saved step
+!       /<varname>    (nProbes, ext) — one row per saved step
+!
+      use HDF5
+      use MPI_Process_Info
+      implicit none
+      class(Monitor_t), intent(inout) :: self
+      integer,          intent(in)    :: no_of_fileProbes
+!
+!     ---------------
+!     Local variables
+!     ---------------
+!
+      integer(HID_T)   :: file_id, dset_id, dspace_id, dcpl_id
+      integer(HSIZE_T) :: dims2(2), maxdims2(2), chunk2(2)
+      integer(HSIZE_T) :: dims1(1), maxdims1(1), chunk1(1)
+      integer          :: iError, j, v, fp_offset, nv
+      character(len=LINE_LENGTH) :: fname
+      real(kind=RP), allocatable :: coords(:,:)
+
+      if ( .not. MPI_Process % isRoot ) return
+
+      nv        = size(self % probesVariables)
+      fp_offset = self % no_of_probes  ! probes are allocated 1..no_of_probes+no_of_fileProbes
+                                        ! but at this point no_of_probes has not yet been bumped
+
+      write(fname,'(A,A)') trim(self % solution_file), ".probes.h5"
+
+      call h5open_f(iError)
+      call h5fcreate_f(trim(fname), H5F_ACC_TRUNC_F, file_id, iError)
+
+      ! /coordinates  (3, nProbes) — fixed at creation
+      allocate( coords(3, no_of_fileProbes) )
+      do j = 1, no_of_fileProbes
+         coords(:, j) = self % probes(fp_offset + j) % x
+      end do
+      dims2 = [ int(3, HSIZE_T), int(no_of_fileProbes, HSIZE_T) ]
+      call h5screate_simple_f(2, dims2, dspace_id, iError)
+      call h5dcreate_f(file_id, "coordinates", H5T_NATIVE_DOUBLE, dspace_id, dset_id, iError)
+      call h5dwrite_f(dset_id, H5T_NATIVE_DOUBLE, coords, dims2, iError)
+      call h5dclose_f(dset_id, iError)
+      call h5sclose_f(dspace_id, iError)
+      deallocate(coords)
+
+      ! /time  (extendible 1-D)
+      dims1(1)    = 0
+      maxdims1(1) = H5S_UNLIMITED_F
+      chunk1(1)   = int(max(BUFFER_SIZE, 1), HSIZE_T)
+      call h5screate_simple_f(1, dims1, dspace_id, iError, maxdims1)
+      call h5pcreate_f(H5P_DATASET_CREATE_F, dcpl_id, iError)
+      call h5pset_chunk_f(dcpl_id, 1, chunk1, iError)
+      call h5dcreate_f(file_id, "time", H5T_NATIVE_DOUBLE, dspace_id, dset_id, iError, dcpl_id)
+      call h5dclose_f(dset_id, iError)
+      call h5sclose_f(dspace_id, iError)
+      call h5pclose_f(dcpl_id, iError)
+
+      ! /iteration  (extendible 1-D)
+      call h5screate_simple_f(1, dims1, dspace_id, iError, maxdims1)
+      call h5pcreate_f(H5P_DATASET_CREATE_F, dcpl_id, iError)
+      call h5pset_chunk_f(dcpl_id, 1, chunk1, iError)
+      call h5dcreate_f(file_id, "iteration", H5T_NATIVE_INTEGER, dspace_id, dset_id, iError, dcpl_id)
+      call h5dclose_f(dset_id, iError)
+      call h5sclose_f(dspace_id, iError)
+      call h5pclose_f(dcpl_id, iError)
+
+      ! /<varname>  (nProbes × extendible)
+      dims2(1)    = int(no_of_fileProbes, HSIZE_T)
+      dims2(2)    = 0
+      maxdims2(1) = int(no_of_fileProbes, HSIZE_T)
+      maxdims2(2) = H5S_UNLIMITED_F
+      chunk2(1)   = int(no_of_fileProbes, HSIZE_T)
+      chunk2(2)   = int(max(BUFFER_SIZE, 1), HSIZE_T)
+
+      do v = 1, nv
+         call h5screate_simple_f(2, dims2, dspace_id, iError, maxdims2)
+         call h5pcreate_f(H5P_DATASET_CREATE_F, dcpl_id, iError)
+         call h5pset_chunk_f(dcpl_id, 2, chunk2, iError)
+         call h5dcreate_f(file_id, trim(self % probesVariables(v)), H5T_NATIVE_DOUBLE, &
+                          dspace_id, dset_id, iError, dcpl_id)
+         call h5dclose_f(dset_id, iError)
+         call h5sclose_f(dspace_id, iError)
+         call h5pclose_f(dcpl_id, iError)
+      end do
+
+      call h5fclose_f(file_id, iError)
+      call h5close_f(iError)
+
+   end subroutine Monitor_InitFileProbesHDF5
+
+   subroutine Monitor_WriteFileProbesHDF5(self, iter, t, no_of_lines)
+!
+!     Appends one buffer of file-probe data to the HDF5 output file.
+!     Only lines that satisfy the saveTimestep filter are written.
+!     Called from Monitor_WriteToFile in place of the per-probe ASCII loop.
+!
+      use HDF5
+      use MPI_Process_Info
+      implicit none
+      class(Monitor_t), intent(inout) :: self
+      integer,          intent(in)    :: iter(:)
+      real(kind=RP),    intent(in)    :: t(:)
+      integer,          intent(in)    :: no_of_lines
+!
+!     ---------------
+!     Local variables
+!     ---------------
+!
+      integer(HID_T)   :: file_id, dset_id, dspace_id, mspace_id
+      integer(HSIZE_T) :: cur1(1), max1(1), off1(1), cnt1(1)
+      integer(HSIZE_T) :: new1(1)
+      integer(HSIZE_T) :: cur2(2), max2(2), off2(2), cnt2(2)
+      integer(HSIZE_T) :: new2(2)
+      integer          :: iError, i, j, k, v, nfp, nv, fp_offset, n_write
+      character(len=LINE_LENGTH) :: fname
+      logical,      allocatable :: wmask(:)
+      integer,      allocatable :: ibuf(:)
+      real(kind=RP), allocatable :: rbuf(:), vbuf(:)
+
+      if ( .not. MPI_Process % isRoot ) return
+
+      nfp       = self % no_of_fileProbes
+      nv        = size(self % probesVariables)
+      fp_offset = self % no_of_probes - nfp
+
+      ! Build write mask (apply saveTimestep filter)
+      allocate( wmask(no_of_lines) )
+      wmask = .false.
+      do i = 1, no_of_lines
+         if ( self % probeFileSaveTimestep .gt. 0.0_RP ) then
+            if ( t(i) .lt. self % fp_lastSavedTime + self % probeFileSaveTimestep ) cycle
+         end if
+         wmask(i) = .true.
+      end do
+      n_write = count(wmask)
+      if ( n_write .eq. 0 ) then
+         deallocate(wmask)
+         return
+      end if
+
+      ! Update lastSavedTime to the latest written time
+      do i = no_of_lines, 1, -1
+         if ( wmask(i) ) then
+            self % fp_lastSavedTime = t(i)
+            exit
+         end if
+      end do
+
+      write(fname,'(A,A)') trim(self % solution_file), ".probes.h5"
+
+      call h5open_f(iError)
+      call h5fopen_f(trim(fname), H5F_ACC_RDWR_F, file_id, iError)
+
+      ! Query current extent of /time to get append offset
+      call h5dopen_f(file_id, "time", dset_id, iError)
+      call h5dget_space_f(dset_id, dspace_id, iError)
+      call h5sget_simple_extent_dims_f(dspace_id, cur1, max1, iError)
+      call h5sclose_f(dspace_id, iError)
+      call h5dclose_f(dset_id, iError)
+      ! cur1(1) = number of time steps already written
+
+      cnt1(1) = int(n_write, HSIZE_T)
+      off1(1) = cur1(1)
+      new1(1) = cur1(1) + cnt1(1)
+
+      ! Pack filtered iteration values
+      allocate( ibuf(n_write) )
+      j = 0
+      do i = 1, no_of_lines
+         if ( .not. wmask(i) ) cycle
+         j = j + 1
+         ibuf(j) = iter(i)
+      end do
+
+      call h5dopen_f(file_id, "iteration", dset_id, iError)
+      call h5dextend_f(dset_id, new1, iError)
+      call h5dget_space_f(dset_id, dspace_id, iError)
+      call h5sselect_hyperslab_f(dspace_id, H5S_SELECT_SET_F, off1, cnt1, iError)
+      call h5screate_simple_f(1, cnt1, mspace_id, iError)
+      call h5dwrite_f(dset_id, H5T_NATIVE_INTEGER, ibuf, cnt1, iError, mspace_id, dspace_id)
+      call h5sclose_f(mspace_id, iError)
+      call h5sclose_f(dspace_id, iError)
+      call h5dclose_f(dset_id, iError)
+      deallocate(ibuf)
+
+      ! Pack filtered time values
+      allocate( rbuf(n_write) )
+      j = 0
+      do i = 1, no_of_lines
+         if ( .not. wmask(i) ) cycle
+         j = j + 1
+         rbuf(j) = t(i)
+      end do
+
+      call h5dopen_f(file_id, "time", dset_id, iError)
+      call h5dextend_f(dset_id, new1, iError)
+      call h5dget_space_f(dset_id, dspace_id, iError)
+      call h5sselect_hyperslab_f(dspace_id, H5S_SELECT_SET_F, off1, cnt1, iError)
+      call h5screate_simple_f(1, cnt1, mspace_id, iError)
+      call h5dwrite_f(dset_id, H5T_NATIVE_DOUBLE, rbuf, cnt1, iError, mspace_id, dspace_id)
+      call h5sclose_f(mspace_id, iError)
+      call h5sclose_f(dspace_id, iError)
+      call h5dclose_f(dset_id, iError)
+      deallocate(rbuf)
+
+      ! Write each variable as a (nfp × n_write) hyperslab.
+      ! To limit peak memory we write one time step at a time (one row).
+      allocate( vbuf(nfp) )
+
+      cur2(1) = int(nfp, HSIZE_T)
+      cur2(2) = cur1(1)
+      cnt2(1) = int(nfp, HSIZE_T)
+      cnt2(2) = 1
+      off2(1) = 0
+      new2(1) = int(nfp, HSIZE_T)
+
+      do v = 1, nv
+         call h5dopen_f(file_id, trim(self % probesVariables(v)), dset_id, iError)
+
+         j = 0
+         do i = 1, no_of_lines
+            if ( .not. wmask(i) ) cycle
+            j = j + 1
+
+            ! Gather one time-step row from all file-probes
+            do concurrent (k = 1:nfp)
+               vbuf(k) = self % probes(fp_offset + k) % values(v, i)
+            end do
+
+            new2(2)  = cur2(2) + int(j, HSIZE_T)
+            off2(2)  = cur2(2) + int(j - 1, HSIZE_T)
+
+            call h5dextend_f(dset_id, new2, iError)
+            call h5dget_space_f(dset_id, dspace_id, iError)
+            call h5sselect_hyperslab_f(dspace_id, H5S_SELECT_SET_F, off2, cnt2, iError)
+            call h5screate_simple_f(2, cnt2, mspace_id, iError)
+            call h5dwrite_f(dset_id, H5T_NATIVE_DOUBLE, vbuf, cnt2, iError, mspace_id, dspace_id)
+            call h5sclose_f(mspace_id, iError)
+            call h5sclose_f(dspace_id, iError)
+         end do
+
+         call h5dclose_f(dset_id, iError)
+      end do
+
+      deallocate(vbuf)
+      deallocate(wmask)
+
+      call h5fclose_f(file_id, iError)
+      call h5close_f(iError)
+
+   end subroutine Monitor_WriteFileProbesHDF5
 #endif
 
 end module MonitorsClass

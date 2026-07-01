@@ -108,6 +108,7 @@ probe in the file, and the probes-file block is defined like any other monitor b
    file                = MyProbes.dat
    variables           = pressure u v
    probe save timestep = 1.4285714E-03
+   output format       = ASCII
 #end
 ```
 
@@ -115,7 +116,8 @@ probe in the file, and the probes-file block is defined like any other monitor b
 |---------------------|-----------------------------------------------------------------------|-------------------------|
 | file                | *CHARACTER*: Path to the `.dat` file defining the probes' coordinates. May optionally be wrapped in quotes (`"..."` or `'...'`); case is preserved. | **Mandatory Keyword** |
 | variables           | *CHARACTER*: Whitespace-separated list of variables to sample at every probe in the file. | **Mandatory Keyword** |
-| probe save timestep | *REAL*: Minimum physical-time interval between consecutive writes to the `.probe` files. If omitted or set to zero, data is written every iteration. | 0 (every iteration) |
+| probe save timestep | *REAL*: Minimum physical-time interval between consecutive writes. If omitted or set to zero, data is written every iteration. | 0 (every iteration) |
+| output format       | *CHARACTER*: Output format for the probe data. `ASCII` writes one `.probe` text file per probe. `HDF5` writes a single `<solution>.probes.h5` file containing all probes (requires compilation with `HAS_HDF5`). | `ASCII` |
 
 ```
 # x       y      z
@@ -131,10 +133,31 @@ file), with one column per variable (as listed in `variables`) and one row per s
 time step (in addition to the `Iteration` and `Time` columns).
 
 To keep the per-iteration screen log readable when many probes are defined this way,
-file-based probes are excluded from it; their individual `.probe` files are still
-written normally. Instead, a summary of the probes-file monitor (file path, number of
-probes and sampled variables) is printed once in the startup log, right after the
+file-based probes are excluded from it; their output files are still written normally.
+Instead, a summary of the probes-file monitor (file path, number of probes, sampled
+variables, and output format) is printed once in the startup log, right after the
 "Time integrator" section.
+
+### ASCII output (default)
+
+Each probe writes to a dedicated `<solution_file>.probe_N.probe` text file, one row
+per saved time step, with `Iteration`, `Time`, and one column per variable.
+
+### HDF5 output
+
+When `output format = HDF5` is set (requires `HAS_HDF5` at compile time), all probes
+are written to a single `<solution_file>.probes.h5` file with the following structure:
+
+| Dataset        | Shape                    | Description                            |
+|----------------|--------------------------|----------------------------------------|
+| `coordinates`  | `(3, nProbes)`           | x, y, z of each probe (fixed at init)  |
+| `time`         | `(nTimesteps,)`          | Physical time of each saved step       |
+| `iteration`    | `(nTimesteps,)`          | Iteration number of each saved step    |
+| `<varname>`    | `(nProbes, nTimesteps)`  | One dataset per sampled variable       |
+
+All variable datasets are extendible — data is appended every time the monitor buffer
+is flushed. This format is recommended for large probe sets (thousands or more) because
+it avoids the overhead of opening and closing a separate file for every probe.
 
 
 ## Surface Monitors
