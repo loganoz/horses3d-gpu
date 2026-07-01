@@ -117,11 +117,11 @@ contains
                               angle, center(2), CloudCenter(NDIM),  &
                               R1(NDIM), R2(NDIM), R3(NDIM), Length,  &
                               Width, nMax, nMin
-      integer, allocatable :: send_req(:,:)
+      integer, allocatable :: send_req(:)
       integer              :: array_of_statuses(MPI_STATUS_SIZE,13),  &
                               nProcs, ierr
                               
-      allocate(send_req(MPI_Process% nProcs-1,13))
+      allocate(send_req(13))
       
       vertex_x    = OBB(STLNum)% LocVertices(1,:)
       vertex_y    = OBB(STLNum)% LocVertices(2,:)
@@ -140,33 +140,33 @@ contains
 
       do nProcs = 2, MPI_Process% nProcs
    
-         call mpi_isend(vertex_x, 8, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,1), ierr )
+         call mpi_isend(vertex_x, 8, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(1), ierr )
          
-         call mpi_isend(vertex_y, 8, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,2), ierr )
+         call mpi_isend(vertex_y, 8, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(2), ierr )
          
-         call mpi_isend(vertex_z, 8, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,3), ierr )
+         call mpi_isend(vertex_z, 8, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(3), ierr )
          
-         call mpi_isend(angle, 1, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,4), ierr )
+         call mpi_isend(angle, 1, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(4), ierr )
          
-         call mpi_isend(center, 2, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,5), ierr )
+         call mpi_isend(center, 2, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(5), ierr )
          
-         call mpi_isend(CloudCenter, NDIM, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,6), ierr )
+         call mpi_isend(CloudCenter, NDIM, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(6), ierr )
          
-         call mpi_isend(R1, NDIM, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,7), ierr )
+         call mpi_isend(R1, NDIM, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(7), ierr )
          
-         call mpi_isend(R2, NDIM, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,8), ierr )
+         call mpi_isend(R2, NDIM, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(8), ierr )
          
-         call mpi_isend(R3, NDIM, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,9), ierr )
+         call mpi_isend(R3, NDIM, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(9), ierr )
          
-         call mpi_isend(Length, 1, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,10), ierr )
+         call mpi_isend(Length, 1, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(10), ierr )
          
-         call mpi_isend(Width, 1, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,11), ierr )
+         call mpi_isend(Width, 1, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(11), ierr )
          
-         call mpi_isend(nMax, 1, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,12), ierr )
+         call mpi_isend(nMax, 1, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(12), ierr )
          
-         call mpi_isend(nMin, 1, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,13), ierr )
+         call mpi_isend(nMin, 1, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(13), ierr )
 
-         call mpi_waitall(13, send_req(nProcs-1,:), array_of_statuses, ierr)
+         call mpi_waitall(13, send_req, array_of_statuses, ierr)
       
       end do
       
@@ -219,7 +219,7 @@ contains
                                         start_index, final_index, i, j,           &
                                         nProcs, ierr,                             &
                                         array_of_statuses(MPI_STATUS_SIZE,17)
-      integer, allocatable           :: SortedIndex(:), send_req(:,:)
+      integer, allocatable           :: SortedIndex(:), send_req(:)
 #endif
       maxvec   = maxloc((/ OBB(STLNum)% MBR% Length,OBB(STLNum)% MBR% Width,abs(OBB(STLNum)% nMax) + abs(OBB(STLNum)% nMin) /))  
       rootAxis = maxvec(1)
@@ -238,7 +238,7 @@ contains
                 vertices_y(NumOfObjs,3),                 &
                 vertices_z(NumOfObjs,3),                 &
                 locVertices(8,NDIM,MPI_Process% nProcs), &
-                send_req(MPI_Process% nProcs-1,17)       )
+                send_req(17)       )
 
       do i = 1, NumOfObjs
          Bar(i) = 0.0_RP
@@ -304,43 +304,43 @@ contains
             
          NumOfObjsPartion = (final_index-start_index) + 1
 
-         call mpi_isend(NumOfObjsPartion, 1, MPI_INT, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,1), ierr )
+         call mpi_isend(NumOfObjsPartion, 1, MPI_INT, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(1), ierr )
 
-         call mpi_wait(send_req(nProcs-1,1),MPI_STATUS_IGNORE,ierr)
+         call mpi_wait(send_req(1),MPI_STATUS_IGNORE,ierr)
 
-         call mpi_isend(normals_x(start_index:final_index), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,2), ierr )
+         call mpi_isend(normals_x(start_index:final_index), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(2), ierr )
 
-         call mpi_isend(normals_y(start_index:final_index), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,3), ierr )
+         call mpi_isend(normals_y(start_index:final_index), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(3), ierr )
 
-         call mpi_isend(normals_z(start_index:final_index), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,4), ierr )
+         call mpi_isend(normals_z(start_index:final_index), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(4), ierr )
 
-         call mpi_isend(vertices_x(start_index:final_index,1), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,5), ierr )
+         call mpi_isend(vertices_x(start_index:final_index,1), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(5), ierr )
 
-         call mpi_isend(vertices_y(start_index:final_index,1), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,6), ierr )
+         call mpi_isend(vertices_y(start_index:final_index,1), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(6), ierr )
 
-         call mpi_isend(vertices_z(start_index:final_index,1), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,7), ierr )
+         call mpi_isend(vertices_z(start_index:final_index,1), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(7), ierr )
 
-         call mpi_isend(vertices_x(start_index:final_index,2), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,8), ierr )
+         call mpi_isend(vertices_x(start_index:final_index,2), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(8), ierr )
 
-         call mpi_isend(vertices_y(start_index:final_index,2), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,9), ierr )
+         call mpi_isend(vertices_y(start_index:final_index,2), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(9), ierr )
 
-         call mpi_isend(vertices_z(start_index:final_index,2), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,10), ierr )
+         call mpi_isend(vertices_z(start_index:final_index,2), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(10), ierr )
 
-         call mpi_isend(vertices_x(start_index:final_index,3), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,11), ierr )
+         call mpi_isend(vertices_x(start_index:final_index,3), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(11), ierr )
 
-         call mpi_isend(vertices_y(start_index:final_index,3), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,12), ierr )
+         call mpi_isend(vertices_y(start_index:final_index,3), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(12), ierr )
 
-         call mpi_isend(vertices_z(start_index:final_index,3), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,13), ierr )
+         call mpi_isend(vertices_z(start_index:final_index,3), NumOfObjsPartion, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(13), ierr )
  
-         call mpi_isend(locVertices(:,1,nProcs), 8, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,14), ierr )
+         call mpi_isend(locVertices(:,1,nProcs), 8, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(14), ierr )
  
-         call mpi_isend(locVertices(:,2,nProcs), 8, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,15), ierr )
+         call mpi_isend(locVertices(:,2,nProcs), 8, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(15), ierr )
   
-         call mpi_isend(locVertices(:,3,nProcs), 8, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,16), ierr )
+         call mpi_isend(locVertices(:,3,nProcs), 8, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(16), ierr )
 
-         call mpi_isend(rootAxis, 1, MPI_INT, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,17), ierr )  
+         call mpi_isend(rootAxis, 1, MPI_INT, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(17), ierr )  
 
-         call mpi_waitall(17, send_req(nProcs-1,:), array_of_statuses, ierr)
+         call mpi_waitall(17, send_req, array_of_statuses, ierr)
 
       end do  
 
@@ -626,7 +626,7 @@ contains
       !-local-variables----------------------------------------------------------
       real(kind=RP), allocatable :: coords(:,:), normals(:,:), Dist(:)
       integer,       allocatable :: local_position(:,:), element_index(:),   &
-                                    partition(:), indeces(:), send_req(:,:)
+                                    partition(:), indeces(:), send_req(:)
       integer                    :: i, nProcs, ierr,                         &
                                     array_of_statuses(MPI_STATUS_SIZE,9)
 
@@ -635,7 +635,7 @@ contains
                 element_index(PointsList% NumOfObjs),       &
                 partition(PointsList% NumOfObjs),           &
                 indeces(PointsList% NumOfObjs),             &
-                send_req(MPI_Process% nProcs-1,9)          )
+                send_req(9)          )
 
       do i = 1, PointsList% NumOfObjs
          coords(i,:)         = PointsList% x(i)% coords
@@ -647,25 +647,25 @@ contains
 
       do nProcs = 2, MPI_Process% nProcs
 
-         call mpi_isend( coords(:,1), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,1), ierr )
+         call mpi_isend( coords(:,1), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(1), ierr )
 
-         call mpi_isend( coords(:,2), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,2), ierr )
+         call mpi_isend( coords(:,2), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(2), ierr )
 
-         call mpi_isend( coords(:,3), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,3), ierr )
+         call mpi_isend( coords(:,3), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(3), ierr )
 
-         call mpi_isend( local_position(:,1), PointsList% NumOfObjs, MPI_INT, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,4), ierr )
+         call mpi_isend( local_position(:,1), PointsList% NumOfObjs, MPI_INT, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(4), ierr )
 
-         call mpi_isend( local_position(:,2), PointsList% NumOfObjs, MPI_INT, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,5), ierr )
+         call mpi_isend( local_position(:,2), PointsList% NumOfObjs, MPI_INT, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(5), ierr )
 
-         call mpi_isend( local_position(:,3), PointsList% NumOfObjs, MPI_INT, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,6), ierr )
+         call mpi_isend( local_position(:,3), PointsList% NumOfObjs, MPI_INT, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(6), ierr )
 
-         call mpi_isend( element_index, PointsList% NumOfObjs, MPI_INT, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,7), ierr )
+         call mpi_isend( element_index, PointsList% NumOfObjs, MPI_INT, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(7), ierr )
       
-         call mpi_isend( partition, PointsList% NumOfObjs, MPI_INT, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,8), ierr )
+         call mpi_isend( partition, PointsList% NumOfObjs, MPI_INT, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(8), ierr )
 
-         call mpi_isend( indeces, PointsList% NumOfObjs, MPI_INT, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,9), ierr )
+         call mpi_isend( indeces, PointsList% NumOfObjs, MPI_INT, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(9), ierr )
 
-         call mpi_waitall(9, send_req(nProcs-1,:), array_of_statuses, ierr)
+         call mpi_waitall(9, send_req, array_of_statuses, ierr)
 
       end do
 
@@ -687,7 +687,7 @@ contains
       real(kind=RP), allocatable :: coords(:,:), normals_x(:,:), normals_y(:,:),        &
                                     normals_z(:,:)
       integer,       allocatable :: local_position(:,:),  element_index(:),             &
-                                    partition(:), recv_req(:,:)
+                                    partition(:), recv_req(:)
       integer                    :: i, LocNumOfObjs, start_index, final_index, ierr,    &
                                     rank, nProcs, array_of_statuses(MPI_STATUS_SIZE,9)
 
@@ -695,35 +695,35 @@ contains
                 local_position(PointsList% NumOfObjs,NDIM),             &
                 element_index(PointsList% NumOfObjs),                   &
                 partition(PointsList% NumOfObjs),                       &
-                recv_req(MPI_Process% nProcs-1,9)                      ) 
+                recv_req(9)                      ) 
 
       start_index = PointsList% LocNumOfObjs; final_index = PointsList% LocNumOfObjs
 
       do nProcs = 2, MPI_Process% nProcs 
 
-         call mpi_irecv( LocNumOfObjs, 1, MPI_INT, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,1), ierr )
+         call mpi_irecv( LocNumOfObjs, 1, MPI_INT, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(1), ierr )
 
-         call mpi_wait(recv_req(nProcs-1,1), MPI_STATUS_IGNORE, ierr) 
+         call mpi_wait(recv_req(1), MPI_STATUS_IGNORE, ierr) 
 
          if( LocNumOfObjs .eq. 0 ) cycle
 
-         call mpi_irecv( coords(1:LocNumOfObjs,1), LocNumOfObjs, MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,2), ierr )
+         call mpi_irecv( coords(1:LocNumOfObjs,1), LocNumOfObjs, MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(2), ierr )
 
-         call mpi_irecv( coords(1:LocNumOfObjs,2), LocNumOfObjs, MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,3), ierr )
+         call mpi_irecv( coords(1:LocNumOfObjs,2), LocNumOfObjs, MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(3), ierr )
 
-         call mpi_irecv( coords(1:LocNumOfObjs,3), LocNumOfObjs, MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,4), ierr )
+         call mpi_irecv( coords(1:LocNumOfObjs,3), LocNumOfObjs, MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(4), ierr )
 
-         call mpi_irecv( local_position(1:LocNumOfObjs,1), LocNumOfObjs, MPI_INT, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,5), ierr )
+         call mpi_irecv( local_position(1:LocNumOfObjs,1), LocNumOfObjs, MPI_INT, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(5), ierr )
 
-         call mpi_irecv( local_position(1:LocNumOfObjs,2), LocNumOfObjs, MPI_INT, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,6), ierr )
+         call mpi_irecv( local_position(1:LocNumOfObjs,2), LocNumOfObjs, MPI_INT, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(6), ierr )
 
-         call mpi_irecv( local_position(1:LocNumOfObjs,3), LocNumOfObjs, MPI_INT, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,7), ierr )
+         call mpi_irecv( local_position(1:LocNumOfObjs,3), LocNumOfObjs, MPI_INT, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(7), ierr )
 
-         call mpi_irecv( element_index(1:LocNumOfObjs), LocNumOfObjs, MPI_INT, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,8), ierr )
+         call mpi_irecv( element_index(1:LocNumOfObjs), LocNumOfObjs, MPI_INT, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(8), ierr )
 
-         call mpi_irecv( partition(1:LocNumOfObjs), LocNumOfObjs, MPI_INT, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,9), ierr )
+         call mpi_irecv( partition(1:LocNumOfObjs), LocNumOfObjs, MPI_INT, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(9), ierr )
 
-         call mpi_waitall(9, recv_req(nProcs-1,:), array_of_statuses, ierr)
+         call mpi_waitall(9, recv_req, array_of_statuses, ierr)
 
          start_index = final_index
          final_index = start_index + LocNumOfObjs
@@ -931,30 +931,38 @@ contains
       !-local-variables-------------------------------------------------------------------
 #ifdef _HAS_MPI_
       real(kind=RP), allocatable :: normals_x(:,:), normals_y(:,:), normals_z(:,:)
-      integer,       allocatable :: recv_req(:,:)
+      integer,       allocatable :: recv_req(:)
       integer                    :: i, ierr, rank, nProcs,                          &
                                     array_of_statuses(MPI_STATUS_SIZE,3)
 
       allocate( normals_x(PointsList% NumOfObjs,MPI_Process% nProcs-1), &
                 normals_y(PointsList% NumOfObjs,MPI_Process% nProcs-1), &
                 normals_z(PointsList% NumOfObjs,MPI_Process% nProcs-1), &
-                recv_req(MPI_Process% nProcs-1,3)                       )
+                recv_req(3)                       )
  
       do nProcs = 2, MPI_Process% nProcs 
  
-         call mpi_irecv( normals_x(:,nProcs-1), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,1), ierr )
+         call mpi_irecv( normals_x(:,nProcs-1), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(1), ierr )
 
-         call mpi_irecv( normals_y(:,nProcs-1), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,2), ierr )
+         call mpi_irecv( normals_y(:,nProcs-1), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(2), ierr )
 
-         call mpi_irecv( normals_z(:,nProcs-1), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,3), ierr )
+         call mpi_irecv( normals_z(:,nProcs-1), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(3), ierr )
 
-         call mpi_waitall(3, recv_req(nProcs-1,:), array_of_statuses, ierr ) 
+         call mpi_waitall(3, recv_req, array_of_statuses, ierr ) 
 
       end do
 
       do i = 1, PointsList% NumOfObjs
-         rank = ranks(i)
+         ! ranks(:) arrives as real(RP); recover the integer rank with nint (round-to-nearest),
+         ! NOT truncation, so a value stored as e.g. 2.9999999 is not silently mapped to column 2.
+         ! NOTE: this is the interface-preserving fix (ranks kept real). If the call site can be
+         !       changed, passing an integer rank array end-to-end is the cleaner solution.
+         rank = nint(ranks(i))
          if( rank .eq. 0 ) cycle
+         if( rank < 1 .or. rank > (MPI_Process% nProcs-1) ) then
+            print*, "recvNormalsRoot: rank index out of range. point=", i, " rank=", rank
+            error stop
+         end if
          PointsList% x(i)% normal(1) = normals_x(i,rank)
          PointsList% x(i)% normal(2) = normals_y(i,rank)
          PointsList% x(i)% normal(3) = normals_z(i,rank)
@@ -1039,12 +1047,12 @@ contains
 #ifdef _HAS_MPI_
       !-local-variables------------------------------------------------------------------------
       real(kind=RP), allocatable :: normals(:,:), Dist(:)
-      integer,       allocatable :: send_req(:,:)
+      integer,       allocatable :: send_req(:)
       integer                    :: i, ierr, nProcs, array_of_statuses(MPI_STATUS_SIZE,4)
 
       allocate( normals(PointsList% NumOfObjs,NDIM), &
                 Dist(PointsList% NumOfObjs),         &
-                send_req(MPI_Process% nProcs-1,4)    )
+                send_req(4)    )
 
       do i = 1, PointsList% NumOfObjs
          normals(i,:) = PointsList% x(i)% normal
@@ -1053,15 +1061,15 @@ contains
 
       do nProcs = 2, MPI_Process% nProcs
 
-         call mpi_isend( normals(:,1), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,1), ierr )
+         call mpi_isend( normals(:,1), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(1), ierr )
 
-         call mpi_isend( normals(:,2), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,2), ierr )
+         call mpi_isend( normals(:,2), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(2), ierr )
 
-         call mpi_isend( normals(:,3), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,3), ierr )
+         call mpi_isend( normals(:,3), PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(3), ierr )
          
-         call mpi_isend( Dist, PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(nProcs-1,4), ierr )
+         call mpi_isend( Dist, PointsList% NumOfObjs, MPI_DOUBLE, nProcs-1, DEFAULT_TAG, MPI_COMM_WORLD, send_req(4), ierr )
 
-         call mpi_waitall(4, send_req(nProcs-1,:), array_of_statuses, ierr)
+         call mpi_waitall(4, send_req, array_of_statuses, ierr)
 
       end do
 
@@ -1085,7 +1093,7 @@ contains
 #ifdef _HAS_MPI_      
       integer                    :: ierr, nProcs, rank, ObjsSize, start_index,        &
                                     final_index, array_of_statuses(MPI_STATUS_SIZE,4)
-      integer,       allocatable :: recv_req(:,:), recv_Firstreq(:), NumOfObjs(:)
+      integer,       allocatable :: recv_req(:), recv_Firstreq(:), NumOfObjs(:)
       real(kind=RP), allocatable :: COORD_x(:), COORD_y(:), COORD_z(:), state(:)
 #endif
       if( .not. MPI_Process% isRoot ) return
@@ -1115,22 +1123,22 @@ contains
                 COORD_y(sum(NumOfObjs)),              &
                 COORD_z(sum(NumOfObjs)),              &
                 state(sum(NumOfObjs)),                &
-                recv_req(MPI_Process% nProcs-1,4)     )
+                recv_req(4)     )
  
       do nProcs = 2, MPI_Process% nProcs  
 
          start_index = sum(NumOfObjs(1:nProcs-2)) + 1 
          final_index = (start_index-1) + NumOfObjs(nProcs-1)
 
-         call mpi_irecv( COORD_x(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,1), ierr )
+         call mpi_irecv( COORD_x(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(1), ierr )
 
-         call mpi_irecv( COORD_y(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,2), ierr )
+         call mpi_irecv( COORD_y(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(2), ierr )
         
-         call mpi_irecv( COORD_z(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,3), ierr )
+         call mpi_irecv( COORD_z(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(3), ierr )
         
-         call mpi_irecv( state(start_index:final_index),   NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,4), ierr )
+         call mpi_irecv( state(start_index:final_index),   NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(4), ierr )
 
-         call mpi_waitall(4, recv_req(nProcs-1,:), array_of_statuses, ierr)  
+         call mpi_waitall(4, recv_req, array_of_statuses, ierr)  
 
       end do
       do i = 1, sum(NumOfObjs)
@@ -1230,7 +1238,7 @@ contains
 #ifdef _HAS_MPI_      
       integer                    :: ierr, nProcs, rank, ObjsSize, start_index,        &
                                     final_index, array_of_statuses(MPI_STATUS_SIZE,6)
-      integer,       allocatable :: recv_req(:,:), recv_Firstreq(:), NumOfObjs(:)
+      integer,       allocatable :: recv_req(:), recv_Firstreq(:), NumOfObjs(:)
       real(kind=RP), allocatable :: COORD_x(:), COORD_y(:), COORD_z(:), state_x(:),   &
                                     state_y(:), state_z(:)
 #endif
@@ -1267,26 +1275,26 @@ contains
                 state_x(sum(NumOfObjs)),                &
                 state_y(sum(NumOfObjs)),                &
                 state_z(sum(NumOfObjs)),                & 
-                recv_req(MPI_Process% nProcs-1,6)       )
+                recv_req(6)       )
 
       do nProcs = 2, MPI_Process% nProcs  
 
          start_index = sum(NumOfObjs(1:nProcs-2)) + 1 
          final_index = (start_index-1) + NumOfObjs(nProcs-1)
 
-         call mpi_irecv( COORD_x(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,1), ierr )
+         call mpi_irecv( COORD_x(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(1), ierr )
          
-         call mpi_irecv( COORD_y(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,2), ierr )
+         call mpi_irecv( COORD_y(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(2), ierr )
         
-         call mpi_irecv( COORD_z(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,3), ierr )
+         call mpi_irecv( COORD_z(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(3), ierr )
         
-         call mpi_irecv( state_x(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,4), ierr )
+         call mpi_irecv( state_x(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(4), ierr )
         
-         call mpi_irecv( state_y(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,5), ierr )
+         call mpi_irecv( state_y(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(5), ierr )
 
-         call mpi_irecv( state_z(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(nProcs-1,6), ierr )
+         call mpi_irecv( state_z(start_index:final_index), NumOfObjs(nProcs-1), MPI_DOUBLE, nProcs-1, MPI_ANY_TAG, MPI_COMM_WORLD, recv_req(6), ierr )
 
-         call mpi_waitall(6, recv_req(nProcs-1,:), array_of_statuses, ierr)    
+         call mpi_waitall(6, recv_req, array_of_statuses, ierr)    
            
       end do
 
