@@ -33,6 +33,8 @@ module ProbeClass
       real(kind=RP), allocatable      :: values(:,:)
       real(kind=RP), allocatable      :: lxi(:) , leta(:), lzeta(:)
       real(kind=RP), allocatable      :: var(:,:,:)
+      real(kind=RP)                   :: saveTimestep
+      real(kind=RP)                   :: lastSavedTime
       character(len=STR_LEN_MONITORS) :: fileName
       character(len=STR_LEN_MONITORS) :: monitorName
       character(len=STR_LEN_MONITORS), allocatable :: variableNames(:)
@@ -114,6 +116,8 @@ module ProbeClass
 !           Allocate memory
 !           ---------------
             allocate ( self % values(self % nVars, BUFFER_SIZE) )
+            self % saveTimestep  = 0.0_RP
+            self % lastSavedTime = -huge(self % lastSavedTime)
 !
 !           Check the variables
 !           --------------------
@@ -524,12 +528,15 @@ module ProbeClass
             open( newunit = fID , file = trim ( self % fileName ) , action = "write" , access = "append" , status = "old" )
 
             do i = 1 , no_of_lines
+               if ( self % saveTimestep > 0.0_RP ) then
+                  if ( t(i) < self % lastSavedTime + self % saveTimestep ) cycle
+               end if
                write( fID , '(I10,2X,ES24.16)' , advance = "no" ) iter(i) , t(i)
                do v = 1 , self % nVars
                   write( fID , '(2X,ES24.16)' , advance = "no" ) self % values(v,i)
                end do
                write( fID , * )
-
+               self % lastSavedTime = t(i)
             end do
 
             close ( fID )
@@ -630,6 +637,8 @@ module ProbeClass
          allocate ( to % lzeta ( size(from % lzeta) ) )
          to % lzeta = from % lzeta
          
+         to % saveTimestep  = from % saveTimestep
+         to % lastSavedTime = from % lastSavedTime
          to % fileName = from % fileName
          to % monitorName = from % monitorName
 

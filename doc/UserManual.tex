@@ -1642,8 +1642,9 @@ probe in the file, and the probes-file block is defined like any other monitor b
 
 \begin{lstlisting}
 #define probe file
-   file      = MyProbes.dat
-   variables = pressure u v
+   file                = MyProbes.dat
+   variables           = pressure u v
+   probe save timestep = 1.4285714E-03
 #end
 \end{lstlisting}
 
@@ -1665,6 +1666,10 @@ file 	&
 variables 	&
 			\textit{CHARACTER}: Whitespace-separated list of variables to sample at every probe in the file. &
 							\textbf{Mandatory Keyword} \\ \hline
+
+probe save timestep 	&
+			\textit{REAL}: Minimum physical-time interval between consecutive writes to the \texttt{.probe} files. If omitted or set to zero, data is written every iteration. &
+							0 (every iteration) \\ \hline
 \end{longtable}
 
 \begin{lstlisting}

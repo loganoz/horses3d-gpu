@@ -34,6 +34,7 @@ module MonitorsClass
       integer                                    :: no_of_fileProbes = 0
       character(len=LINE_LENGTH)                 :: probesFileName = ""
       character(len=STR_LEN_MONITORS), allocatable :: probesVariables(:)
+      real(kind=RP)                              :: probeFileSaveTimestep = 0.0_RP
       integer                                    :: bufferLine
       integer                      , allocatable :: iter(:)
       integer                                    :: dt_restriction
@@ -94,6 +95,7 @@ module MonitorsClass
          character(len=STR_LEN_MONITORS), allocatable :: probesVariables(:)
          integer                         :: no_of_fileProbes
          integer                         :: no_of_probesVariables
+         real(kind=RP)                   :: probeFileSaveTimestep
 !
 !        Setup the buffer
 !        ----------------
@@ -131,7 +133,7 @@ module MonitorsClass
 !           variables to be sampled and saved for the same probe location
 !           ---------------------------------------------------------------
 #ifdef FLOW
-            call readProbesFileBlock( probesFileName, probesVariablesLine, no_of_probesVariables )
+            call readProbesFileBlock( probesFileName, probesVariablesLine, no_of_probesVariables, probeFileSaveTimestep )
 
             if ( len_trim(probesFileName) .gt. 0 ) then
                call countProbesInFile( trim(probesFileName), no_of_fileProbes )
@@ -179,8 +181,9 @@ module MonitorsClass
 
          if ( no_of_fileProbes .gt. 0 ) then
             call InitializeProbesFromFile( trim(probesFileName), Monitors % probes, Monitors % no_of_probes, &
-                                            mesh, solution_file, FirstCall, probesVariables )
-            Monitors % probesFileName = trim(probesFileName)
+                                            mesh, solution_file, FirstCall, probesVariables, probeFileSaveTimestep )
+            Monitors % probesFileName         = trim(probesFileName)
+            Monitors % probeFileSaveTimestep  = probeFileSaveTimestep
             allocate( Monitors % probesVariables(size(probesVariables)) )
             Monitors % probesVariables = probesVariables
          end if
@@ -634,6 +637,9 @@ module MonitorsClass
             write(STD_OUT,'(A)',advance="no") trim(self % probesVariables(j)) // " "
          end do
          write(STD_OUT,*)
+         if ( self % probeFileSaveTimestep .gt. 0.0_RP ) then
+            write(STD_OUT,'(30X,A,A28,ES14.6)') "->" , "Save timestep: " , self % probeFileSaveTimestep
+         end if
 
       end subroutine Monitor_WriteProbesFileSummary
 
@@ -682,6 +688,7 @@ module MonitorsClass
          to % no_of_loadBalancingMonitors = from % no_of_loadBalancingMonitors
          to % no_of_fileProbes            = from % no_of_fileProbes
          to % probesFileName              = from % probesFileName
+         to % probeFileSaveTimestep       = from % probeFileSaveTimestep
          if ( allocated(from % probesVariables) ) then
             safedeallocate ( to % probesVariables )
             allocate ( to % probesVariables ( size(from % probesVariables) ) )
@@ -848,15 +855,16 @@ end subroutine getNoOfMonitors
 !
 !///////////////////////////////////////////////////////////////////////////////////
 !
-   subroutine readProbesFileBlock(fileName, variablesLine, no_of_probesVariables)
+   subroutine readProbesFileBlock(fileName, variablesLine, no_of_probesVariables, saveTimestep)
 !
 !     ******************************************************************
 !        Reads the "#define probe file ... #end" block from the case
 !     file, if present:
 !
 !        #define probe file
-!           file      = Probe.dat
-!           variables = u
+!           file                = Probe.dat
+!           variables           = u
+!           probe save timestep = 1.0E-3
 !        #end
 !
 !     Note: this is a hand-rolled parser (rather than readValueInRegion)
@@ -869,19 +877,22 @@ end subroutine getNoOfMonitors
       character(len=LINE_LENGTH), intent(out) :: fileName
       character(len=LINE_LENGTH), intent(out) :: variablesLine
       integer,                    intent(out) :: no_of_probesVariables
+      real(kind=RP),              intent(out) :: saveTimestep
 !
 !     ---------------
 !     Local variables
 !     ---------------
 !
       character(len=LINE_LENGTH) :: paramFile
-      character(len=LINE_LENGTH) :: line, squashed
+      character(len=LINE_LENGTH) :: line, squashed, valStr
       integer                    :: fID, io, position
+
       logical                    :: inside
 
       fileName              = ""
       variablesLine         = ""
       no_of_probesVariables = 0
+      saveTimestep          = 0.0_RP
       inside                = .false.
 
       call get_command_argument(1, paramFile)
@@ -916,6 +927,9 @@ end subroutine getNoOfMonitors
             fileName = adjustl( removeQuotes( line(position+1:) ) )
          elseif ( getSquashedLine(line(1:position-1)) .eq. getSquashedLine("variables") ) then
             variablesLine = adjustl( removeQuotes( line(position+1:) ) )
+         elseif ( getSquashedLine(line(1:position-1)) .eq. getSquashedLine("probe save timestep") ) then
+            valStr = adjustl( removeQuotes( line(position+1:) ) )
+            read( valStr , * ) saveTimestep
          end if
       end do
 
@@ -1008,7 +1022,7 @@ end subroutine getNoOfMonitors
    end subroutine splitIntoTokens
 
 #ifdef FLOW
-   subroutine InitializeProbesFromFile(fileName, probes, offset, mesh, solution_file, FirstCall, variables)
+   subroutine InitializeProbesFromFile(fileName, probes, offset, mesh, solution_file, FirstCall, variables, saveTimestep)
       implicit none
       character(len=*),   intent(in)    :: fileName
       class(Probe_t),     intent(inout) :: probes(:)
@@ -1017,6 +1031,7 @@ end subroutine getNoOfMonitors
       character(len=*),   intent(in)    :: solution_file
       logical,            intent(in)    :: FirstCall
       character(len=*),   intent(in)    :: variables(:)
+      real(kind=RP),      intent(in)    :: saveTimestep
 !
 !     ---------------
 !     Local variables
@@ -1055,6 +1070,7 @@ end subroutine getNoOfMonitors
 
          call probes(idx) % Initialization( mesh, idx, solution_file, FirstCall, &
                                              x_in = x, variables_in = variables, name_in = trim(pname) )
+         probes(idx) % saveTimestep = saveTimestep
 
          deallocate(tokens)
       end do

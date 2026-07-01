@@ -105,15 +105,17 @@ probe in the file, and the probes-file block is defined like any other monitor b
 
 ```markdown
 #define probe file
-   file      = MyProbes.dat
-   variables = pressure u v
+   file                = MyProbes.dat
+   variables           = pressure u v
+   probe save timestep = 1.4285714E-03
 #end
 ```
 
-| Keyword   | Description                                                          | Default value          |
-|-----------|-----------------------------------------------------------------------|-------------------------|
-| file      | *CHARACTER*: Path to the `.dat` file defining the probes' coordinates. May optionally be wrapped in quotes (`"..."` or `'...'`); case is preserved. | **Mandatory Keyword** |
-| variables | *CHARACTER*: Whitespace-separated list of variables to sample at every probe in the file. | **Mandatory Keyword** |
+| Keyword             | Description                                                          | Default value          |
+|---------------------|-----------------------------------------------------------------------|-------------------------|
+| file                | *CHARACTER*: Path to the `.dat` file defining the probes' coordinates. May optionally be wrapped in quotes (`"..."` or `'...'`); case is preserved. | **Mandatory Keyword** |
+| variables           | *CHARACTER*: Whitespace-separated list of variables to sample at every probe in the file. | **Mandatory Keyword** |
+| probe save timestep | *REAL*: Minimum physical-time interval between consecutive writes to the `.probe` files. If omitted or set to zero, data is written every iteration. | 0 (every iteration) |
 
 ```
 # x       y      z
