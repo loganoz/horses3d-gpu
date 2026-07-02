@@ -507,11 +507,17 @@ module MonitorsClass
 
 #ifdef FLOW
 !
-!        Update probes
-!        -------------
-         do i = 1 , self % no_of_probes
+!        Update standard probes (GPU path with per-probe MPI)
+!        -----------------------------------------------------
+         do i = 1 , self % no_of_probes - self % no_of_fileProbes
             call self % probes(i) % Update( mesh , self % bufferLine )
          end do
+!
+!        Update file probes: OpenMP compute + single MPI_Allreduce
+!        ----------------------------------------------------------
+         if ( self % no_of_fileProbes .gt. 0 ) then
+            call Monitor_UpdateFileProbes( self, mesh, self % bufferLine )
+         end if
 #endif
 
 #if defined(NAVIERSTOKES) || defined(INCNS)
@@ -1094,6 +1100,69 @@ end subroutine getNoOfMonitors
    end subroutine splitIntoTokens
 
 #ifdef FLOW
+   subroutine Monitor_UpdateFileProbes(self, mesh, bufferPos)
+!
+!     Evaluates all file-probes using OpenMP threads (CPU path, no OpenACC),
+!     then performs a single MPI_Allreduce(SUM) to share results across ranks.
+!     This replaces N_fileProbes individual MPI_Bcast calls with one collective.
+!
+      use MPI_Process_Info
+#ifdef _HAS_MPI_
+      use mpi
+#endif
+      implicit none
+      class(Monitor_t), intent(inout) :: self
+      class(HexMesh),   intent(in)    :: mesh
+      integer,          intent(in)    :: bufferPos
+!
+!     ---------------
+!     Local variables
+!     ---------------
+!
+      integer        :: i, v, j, nfp, nv, fp_offset, ierr
+      real(kind=RP), allocatable :: buf(:)
+
+      nfp       = self % no_of_fileProbes
+      nv        = size(self % probesVariables)
+      fp_offset = self % no_of_probes - nfp
+
+      ! Parallel CPU computation — each probe writes to its own values(:,bufferPos).
+      ! Non-owning ranks store 0 so MPI_Allreduce(SUM) gives the correct result.
+      !$omp parallel do schedule(dynamic,16) default(shared)
+      do i = fp_offset + 1, self % no_of_probes
+         call self % probes(i) % ComputeLocal(mesh, bufferPos)
+      end do
+      !$omp end parallel do
+
+#ifdef _HAS_MPI_
+      if ( MPI_Process % doMPIAction ) then
+         ! Pack all file-probe values into a flat buffer
+         allocate( buf(nfp * nv) )
+         j = 0
+         do i = fp_offset + 1, self % no_of_probes
+            do v = 1, nv
+               j = j + 1
+               buf(j) = self % probes(i) % values(v, bufferPos)
+            end do
+         end do
+
+         ! Single collective instead of nfp individual Bcasts
+         call MPI_Allreduce(MPI_IN_PLACE, buf, nfp * nv, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
+
+         ! Unpack
+         j = 0
+         do i = fp_offset + 1, self % no_of_probes
+            do v = 1, nv
+               j = j + 1
+               self % probes(i) % values(v, bufferPos) = buf(j)
+            end do
+         end do
+         deallocate(buf)
+      end if
+#endif
+
+   end subroutine Monitor_UpdateFileProbes
+
    subroutine InitializeProbesFromFile(fileName, probes, offset, mesh, solution_file, FirstCall, variables, saveTimestep, outputFormat)
       implicit none
       character(len=*),   intent(in)    :: fileName

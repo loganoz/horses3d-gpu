@@ -41,6 +41,7 @@ module ProbeClass
       contains
          procedure   :: Initialization => Probe_Initialization
          procedure   :: Update         => Probe_Update
+         procedure   :: ComputeLocal   => Probe_ComputeLocal
          procedure   :: WriteLabel     => Probe_WriteLabel
          procedure   :: WriteValues    => Probe_WriteValue
          procedure   :: WriteToFile    => Probe_WriteToFile
@@ -502,6 +503,154 @@ module ProbeClass
 #endif
          end if
       end subroutine Probe_Update
+
+      subroutine Probe_ComputeLocal(self, mesh, bufferPosition)
+!
+!        *************************************************************
+!           CPU-only computation for file-probes, no MPI.
+!           Non-owning ranks set values to 0 so a caller can
+!           accumulate results with a single MPI_Allreduce(SUM).
+!        *************************************************************
+!
+         use Physics
+         use MPI_Process_Info
+         implicit none
+         class(Probe_t) :: self
+         type(HexMesh)  :: mesh
+         integer        :: bufferPosition
+!
+!        ---------------
+!        Local variables
+!        ---------------
+!
+         integer        :: i, j, k, v
+         real(kind=RP)  :: value
+
+         if ( .not. self % active ) then
+            self % values(:, bufferPosition) = 0.0_RP
+            return
+         end if
+
+         if ( MPI_Process % rank .ne. self % rank ) then
+            self % values(:, bufferPosition) = 0.0_RP
+            return
+         end if
+
+         do v = 1, self % nVars
+
+            select case (trim(self % variableNames(v)))
+#ifdef NAVIERSTOKES
+            case("pressure")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = Pressure(mesh % elements(self % eID) % storage % Q(:,i,j,k))
+               end do ; end do ; end do
+            case("velocity")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = sqrt(POW2(mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k)) + &
+                                           POW2(mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k)) + &
+                                           POW2(mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k)))/mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+               end do ; end do ; end do
+            case("u")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k) / mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+               end do ; end do ; end do
+            case("v")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k) / mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+               end do ; end do ; end do
+            case("w")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k) / mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+               end do ; end do ; end do
+            case("mach")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = (POW2(mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k)) + &
+                                       POW2(mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k)) + &
+                                       POW2(mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k)))/POW2(mesh % elements(self % eID) % storage % Q(IRHO,i,j,k))
+                  self % var(i,j,k) = sqrt( self % var(i,j,k) / ( thermodynamics % gamma*(thermodynamics % gamma-1.0_RP)*&
+                                           (mesh % elements(self % eID) % storage % Q(IRHOE,i,j,k)/mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)-0.5_RP * self % var(i,j,k)) ) )
+               end do ; end do ; end do
+            case("k")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = 0.5_RP * (POW2(mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k)) + &
+                                                 POW2(mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k)) + &
+                                                 POW2(mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k)))/mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+               end do ; end do ; end do
+            case("rho")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+               end do ; end do ; end do
+#endif
+#ifdef INCNS
+            case("pressure")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSP,i,j,k)
+               end do ; end do ; end do
+            case("velocity")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = sqrt(POW2(mesh % elements(self % eID) % storage % Q(INSRHOU,i,j,k)) + &
+                                           POW2(mesh % elements(self % eID) % storage % Q(INSRHOV,i,j,k)) + &
+                                           POW2(mesh % elements(self % eID) % storage % Q(INSRHOW,i,j,k)))/mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+               end do ; end do ; end do
+            case("u")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHOU,i,j,k) / mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+               end do ; end do ; end do
+            case("v")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHOV,i,j,k) / mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+               end do ; end do ; end do
+            case("w")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHOW,i,j,k) / mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+               end do ; end do ; end do
+            case("rho")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+               end do ; end do ; end do
+#endif
+#ifdef MULTIPHASE
+            case("static-pressure")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IMP,i,j,k) + mesh % elements(self % eID) % storage % Q(IMC,i,j,k)*mesh % elements(self % eID) % storage % mu(1,i,j,k) &
+                               - 12.0_RP*multiphase%sigma*multiphase%invEps*(POW2(mesh % elements(self % eID) % storage % Q(IMC,i,j,k)*(1.0_RP-mesh % elements(self % eID) % storage % Q(IMC,i,j,k)))) &
+                               - 0.25_RP*3.0_RP*multiphase % sigma * multiphase % eps * (POW2(mesh % elements(self % eID) % storage % c_x(1,i,j,k))+POW2(mesh % elements(self % eID) % storage % c_y(1,i,j,k))+POW2(mesh % elements(self % eID) % storage % c_z(1,i,j,k)))
+               end do ; end do ; end do
+#endif
+#ifdef ACOUSTIC
+            case("pressure")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = Q(ICAAP,i,j,k)
+               end do ; end do ; end do
+            case("density")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = Q(ICAARHO,i,j,k)
+               end do ; end do ; end do
+            case("u")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = Q(ICAAU,i,j,k)
+               end do ; end do ; end do
+            case("v")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = Q(ICAAV,i,j,k)
+               end do ; end do ; end do
+            case("w")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = Q(ICAAW,i,j,k)
+               end do ; end do ; end do
+#endif
+            end select
+
+            value = 0.0_RP
+            do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+               value = value + self % var(i,j,k) * self % lxi(i) * self % leta(j) * self % lzeta(k)
+            end do ; end do ; end do
+
+            self % values(v, bufferPosition) = value
+
+         end do
+
+      end subroutine Probe_ComputeLocal
 
       subroutine Probe_WriteLabel ( self )
 !
