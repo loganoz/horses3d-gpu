@@ -513,10 +513,13 @@ module MonitorsClass
             call self % probes(i) % Update( mesh , self % bufferLine )
          end do
 !
-!        Update file probes: OpenMP compute + single MPI_Allreduce
+!        Update file probes: compute into slot 1, then flush immediately.
+!        File probes use a size-1 values buffer to avoid large memory
+!        allocations when the number of probes is O(1e6).
 !        ----------------------------------------------------------
          if ( self % no_of_fileProbes .gt. 0 ) then
-            call Monitor_UpdateFileProbes( self, mesh, self % bufferLine )
+            call Monitor_UpdateFileProbes( self, mesh, 1 )
+            call Monitor_FlushFileProbesNow( self, t, iter )
          end if
 #endif
 
@@ -583,21 +586,6 @@ module MonitorsClass
             do i = 1 , self % no_of_probes - self % no_of_fileProbes
                call self % probes(i) % WriteToFile ( self % iter , self % t , self % bufferLine )
             end do
-            if ( self % no_of_fileProbes .gt. 0 ) then
-#ifdef HAS_HDF5
-               if ( trim(self % probeFileOutputFormat) .eq. "HDF5" ) then
-                  call Monitor_WriteFileProbesHDF5( self, self % iter, self % t, self % bufferLine )
-               else
-#endif
-                  !$omp parallel do schedule(dynamic,16) default(shared)
-                  do i = self % no_of_probes - self % no_of_fileProbes + 1, self % no_of_probes
-                     call self % probes(i) % WriteToFile ( self % iter , self % t , self % bufferLine )
-                  end do
-                  !$omp end parallel do
-#ifdef HAS_HDF5
-               end if
-#endif
-            end if
 #endif
 
 #if defined(NAVIERSTOKES) || defined(INCNS)
@@ -639,21 +627,6 @@ module MonitorsClass
                do i = 1 , self % no_of_probes - self % no_of_fileProbes
                   call self % probes(i) % WriteToFile ( self % iter , self % t , self % bufferLine )
                end do
-               if ( self % no_of_fileProbes .gt. 0 ) then
-#ifdef HAS_HDF5
-                  if ( trim(self % probeFileOutputFormat) .eq. "HDF5" ) then
-                     call Monitor_WriteFileProbesHDF5( self, self % iter, self % t, self % bufferLine )
-                  else
-#endif
-                     !$omp parallel do schedule(dynamic,16) default(shared)
-                     do i = self % no_of_probes - self % no_of_fileProbes + 1, self % no_of_probes
-                        call self % probes(i) % WriteToFile ( self % iter , self % t , self % bufferLine )
-                     end do
-                     !$omp end parallel do
-#ifdef HAS_HDF5
-                  end if
-#endif
-               end if
 #endif
 
 #if defined(NAVIERSTOKES) || defined(INCNS)
@@ -1104,6 +1077,45 @@ end subroutine getNoOfMonitors
    end subroutine splitIntoTokens
 
 #ifdef FLOW
+   subroutine Monitor_FlushFileProbesNow(self, t_now, iter_now)
+!
+!     Writes the current (single-slot) file-probe values to disk,
+!     applying the probeFileSaveTimestep filter.  Called every timestep
+!     from Monitor_UpdateValues after Monitor_UpdateFileProbes.
+!
+      use MPI_Process_Info
+      implicit none
+      class(Monitor_t), intent(inout) :: self
+      real(kind=RP),    intent(in)    :: t_now
+      integer,          intent(in)    :: iter_now
+!
+!     ---------------
+!     Local variables
+!     ---------------
+!
+      integer        :: i
+      integer        :: iter_arr(1)
+      real(kind=RP)  :: t_arr(1)
+
+      iter_arr(1) = iter_now
+      t_arr(1)   = t_now
+
+#ifdef HAS_HDF5
+      if ( trim(self % probeFileOutputFormat) .eq. "HDF5" ) then
+         call Monitor_WriteFileProbesHDF5( self, iter_arr, t_arr, 1 )
+      else
+#endif
+         !$omp parallel do schedule(dynamic,16) default(shared)
+         do i = self % no_of_probes - self % no_of_fileProbes + 1, self % no_of_probes
+            call self % probes(i) % WriteToFile( iter_arr, t_arr, 1 )
+         end do
+         !$omp end parallel do
+#ifdef HAS_HDF5
+      end if
+#endif
+
+   end subroutine Monitor_FlushFileProbesNow
+
    subroutine Monitor_UpdateFileProbes(self, mesh, bufferPos)
 !
 !     Evaluates all file-probes using OpenMP threads (CPU path, no OpenACC),

@@ -126,7 +126,11 @@ module ProbeClass
 !
 !           Allocate memory
 !           ---------------
-            allocate ( self % values(self % nVars, BUFFER_SIZE) )
+            if (self % isFileProbe) then
+               allocate ( self % values(self % nVars, 1) )
+            else
+               allocate ( self % values(self % nVars, BUFFER_SIZE) )
+            end if
             self % saveTimestep  = 0.0_RP
             self % lastSavedTime = -huge(self % lastSavedTime)
 !
