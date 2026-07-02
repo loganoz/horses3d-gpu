@@ -27,6 +27,7 @@ module MonitorsClass
 !  
    type Monitor_t
       character(len=LINE_LENGTH)                 :: solution_file
+      character(len=LINE_LENGTH)                 :: probes_solution_file = ""
       integer                                    :: no_of_probes
       integer                                    :: no_of_surfaceMonitors
       integer                                    :: no_of_volumeMonitors
@@ -73,9 +74,10 @@ module MonitorsClass
 !
 !///////////////////////////////////////////////////////////////////////////////////////
 !
-      subroutine Monitors_Construct( Monitors, mesh, controlVariables ) 
+      subroutine Monitors_Construct( Monitors, mesh, controlVariables )
          use FTValueDictionaryClass
          use mainKeywordsModule
+         use MPI_Process_Info
          implicit none
          class(Monitor_t)                     :: Monitors
          class(HexMesh), intent(in)           :: mesh
@@ -89,7 +91,7 @@ module MonitorsClass
          integer                         :: fID , io
          integer                         :: i
          character(len=STR_LEN_MONITORS) :: line
-         character(len=STR_LEN_MONITORS) :: solution_file                                            
+         character(len=STR_LEN_MONITORS) :: solution_file
          logical, save                   :: FirstCall = .TRUE.
          logical                         :: saveGradients
          character(len=LINE_LENGTH)      :: probesFileName
@@ -99,6 +101,9 @@ module MonitorsClass
          integer                         :: no_of_probesVariables
          real(kind=RP)                   :: probeFileSaveTimestep
          character(len=8)                :: probeFileOutputFormat
+         character(len=LINE_LENGTH)      :: probes_solution_file
+         character(len=LINE_LENGTH)      :: probes_dir
+         integer                         :: last_slash
 !
 !        Setup the buffer
 !        ----------------
@@ -119,6 +124,21 @@ module MonitorsClass
 !        -----------------------------
          solution_file = trim(getFileName(solution_file))
          Monitors % solution_file = trim(solution_file)
+!
+!        Build the probes output subdirectory: <dir>/probes/<base>
+!        ----------------------------------------------------------
+         last_slash = index(trim(solution_file), '/', back=.true.)
+         if (last_slash .gt. 0) then
+            probes_dir           = trim(solution_file(1:last_slash)) // "probes"
+            probes_solution_file = trim(solution_file(1:last_slash)) // "probes/" // trim(solution_file(last_slash+1:))
+         else
+            probes_dir           = "probes"
+            probes_solution_file = "probes/" // trim(solution_file)
+         end if
+         if (MPI_Process % isRoot) then
+            call execute_command_line('mkdir -p "' // trim(probes_dir) // '"', wait=.true.)
+         end if
+         Monitors % probes_solution_file = trim(probes_solution_file)
 !
 !        Search in case file for probes, surface monitors, and volume monitors
 !        ---------------------------------------------------------------------
@@ -179,12 +199,12 @@ module MonitorsClass
          allocate ( Monitors % probes ( Monitors % no_of_probes + no_of_fileProbes )  )
          !$acc update device(Monitors)
          do i = 1 , Monitors % no_of_probes
-            call Monitors % probes(i) % Initialization ( mesh , i, solution_file , FirstCall )
+            call Monitors % probes(i) % Initialization ( mesh , i, probes_solution_file , FirstCall )
          end do
 
          if ( no_of_fileProbes .gt. 0 ) then
             call InitializeProbesFromFile( trim(probesFileName), Monitors % probes, Monitors % no_of_probes, &
-                                            mesh, solution_file, FirstCall, probesVariables, probeFileSaveTimestep )
+                                            mesh, probes_solution_file, FirstCall, probesVariables, probeFileSaveTimestep )
             Monitors % probesFileName         = trim(probesFileName)
             Monitors % probeFileSaveTimestep  = probeFileSaveTimestep
             Monitors % probeFileOutputFormat  = probeFileOutputFormat
@@ -719,6 +739,7 @@ module MonitorsClass
          !------------------------------------------------
          
          to % solution_file               = from % solution_file
+         to % probes_solution_file        = from % probes_solution_file
          to % no_of_probes                = from % no_of_probes
          to % no_of_surfaceMonitors       = from % no_of_surfaceMonitors
          to % no_of_volumeMonitors        = from % no_of_volumeMonitors
@@ -1168,7 +1189,7 @@ end subroutine getNoOfMonitors
       fp_offset = self % no_of_probes  ! probes are allocated 1..no_of_probes+no_of_fileProbes
                                         ! but at this point no_of_probes has not yet been bumped
 
-      write(fname,'(A,A)') trim(self % solution_file), ".probes.h5"
+      write(fname,'(A,A)') trim(self % probes_solution_file), ".probes.h5"
 
       call h5open_f(iError)
       call h5fcreate_f(trim(fname), H5F_ACC_TRUNC_F, file_id, iError)
@@ -1289,7 +1310,7 @@ end subroutine getNoOfMonitors
          end if
       end do
 
-      write(fname,'(A,A)') trim(self % solution_file), ".probes.h5"
+      write(fname,'(A,A)') trim(self % probes_solution_file), ".probes.h5"
 
       call h5open_f(iError)
       call h5fopen_f(trim(fname), H5F_ACC_RDWR_F, file_id, iError)
