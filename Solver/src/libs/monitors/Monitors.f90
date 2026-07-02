@@ -589,9 +589,11 @@ module MonitorsClass
                   call Monitor_WriteFileProbesHDF5( self, self % iter, self % t, self % bufferLine )
                else
 #endif
+                  !$omp parallel do schedule(dynamic,16) default(shared)
                   do i = self % no_of_probes - self % no_of_fileProbes + 1, self % no_of_probes
                      call self % probes(i) % WriteToFile ( self % iter , self % t , self % bufferLine )
                   end do
+                  !$omp end parallel do
 #ifdef HAS_HDF5
                end if
 #endif
@@ -643,9 +645,11 @@ module MonitorsClass
                      call Monitor_WriteFileProbesHDF5( self, self % iter, self % t, self % bufferLine )
                   else
 #endif
+                     !$omp parallel do schedule(dynamic,16) default(shared)
                      do i = self % no_of_probes - self % no_of_fileProbes + 1, self % no_of_probes
                         call self % probes(i) % WriteToFile ( self % iter , self % t , self % bufferLine )
                      end do
+                     !$omp end parallel do
 #ifdef HAS_HDF5
                   end if
 #endif
