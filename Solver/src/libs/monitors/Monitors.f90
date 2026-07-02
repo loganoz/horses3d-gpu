@@ -996,7 +996,7 @@ end subroutine getNoOfMonitors
          elseif ( getSquashedLine(line(1:position-1)) .eq. getSquashedLine("output format") ) then
             valStr = adjustl( removeQuotes( line(position+1:) ) )
             valStr = adjustl( getSquashedLine(valStr) )
-            if ( index(valStr, "hdf5") .gt. 0 ) then
+            if ( index(valStr, "HDF5") .gt. 0 ) then
                outputFormat = "HDF5"
             else
                outputFormat = "ASCII"
@@ -1228,13 +1228,13 @@ end subroutine getNoOfMonitors
       call h5sclose_f(dspace_id, iError)
       call h5pclose_f(dcpl_id, iError)
 
-      ! /<varname>  (nProbes × extendible)
-      dims2(1)    = int(no_of_fileProbes, HSIZE_T)
-      dims2(2)    = 0
-      maxdims2(1) = int(no_of_fileProbes, HSIZE_T)
-      maxdims2(2) = H5S_UNLIMITED_F
-      chunk2(1)   = int(no_of_fileProbes, HSIZE_T)
-      chunk2(2)   = int(max(BUFFER_SIZE, 1), HSIZE_T)
+      ! /<varname>  (extendible × nProbes) — h5ls shows {nProbes, Inf}
+      dims2(1)    = 0
+      dims2(2)    = int(no_of_fileProbes, HSIZE_T)
+      maxdims2(1) = H5S_UNLIMITED_F
+      maxdims2(2) = int(no_of_fileProbes, HSIZE_T)
+      chunk2(1)   = int(max(BUFFER_SIZE, 1), HSIZE_T)
+      chunk2(2)   = int(no_of_fileProbes, HSIZE_T)
 
       do v = 1, nv
          call h5screate_simple_f(2, dims2, dspace_id, iError, maxdims2)
@@ -1295,20 +1295,13 @@ end subroutine getNoOfMonitors
             if ( t(i) .lt. self % fp_lastSavedTime + self % probeFileSaveTimestep ) cycle
          end if
          wmask(i) = .true.
+         self % fp_lastSavedTime = t(i)
       end do
       n_write = count(wmask)
       if ( n_write .eq. 0 ) then
          deallocate(wmask)
          return
       end if
-
-      ! Update lastSavedTime to the latest written time
-      do i = no_of_lines, 1, -1
-         if ( wmask(i) ) then
-            self % fp_lastSavedTime = t(i)
-            exit
-         end if
-      end do
 
       write(fname,'(A,A)') trim(self % probes_solution_file), ".probes.h5"
 
@@ -1371,12 +1364,12 @@ end subroutine getNoOfMonitors
       ! To limit peak memory we write one time step at a time (one row).
       allocate( vbuf(nfp) )
 
-      cur2(1) = int(nfp, HSIZE_T)
-      cur2(2) = cur1(1)
-      cnt2(1) = int(nfp, HSIZE_T)
-      cnt2(2) = 1
-      off2(1) = 0
-      new2(1) = int(nfp, HSIZE_T)
+      cur2(1) = cur1(1)            ! time offset = current time extent
+      cur2(2) = int(nfp, HSIZE_T) ! probe count (fixed)
+      cnt2(1) = int(1,   HSIZE_T) ! one time step at a time
+      cnt2(2) = int(nfp, HSIZE_T) ! all probes
+      off2(2) = int(0,   HSIZE_T) ! probes start at 0
+      new2(2) = int(nfp, HSIZE_T) ! probe count stays fixed
 
       do v = 1, nv
          call h5dopen_f(file_id, trim(self % probesVariables(v)), dset_id, iError)
@@ -1391,8 +1384,8 @@ end subroutine getNoOfMonitors
                vbuf(k) = self % probes(fp_offset + k) % values(v, i)
             end do
 
-            new2(2)  = cur2(2) + int(j, HSIZE_T)
-            off2(2)  = cur2(2) + int(j - 1, HSIZE_T)
+            new2(1)  = cur2(1) + int(j, HSIZE_T)
+            off2(1)  = cur2(1) + int(j - 1, HSIZE_T)
 
             call h5dextend_f(dset_id, new2, iError)
             call h5dget_space_f(dset_id, dspace_id, iError)
