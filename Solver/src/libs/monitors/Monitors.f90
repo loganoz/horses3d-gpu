@@ -1360,41 +1360,37 @@ end subroutine getNoOfMonitors
       call h5dclose_f(dset_id, iError)
       deallocate(rbuf)
 
-      ! Write each variable as a (nfp × n_write) hyperslab.
-      ! To limit peak memory we write one time step at a time (one row).
-      allocate( vbuf(nfp) )
+      ! Write each variable: one extend + one write per flush (avoids chunk waste).
+      ! vbuf2(nfp, n_write) packs all filtered timesteps into a contiguous 2D block.
+      off2(1) = cur1(1)             ! append after existing time steps
+      off2(2) = int(0,   HSIZE_T)
+      cnt2(1) = int(n_write, HSIZE_T)
+      cnt2(2) = int(nfp,    HSIZE_T)
+      new2(1) = cur1(1) + int(n_write, HSIZE_T)
+      new2(2) = int(nfp, HSIZE_T)
 
-      cur2(1) = cur1(1)            ! time offset = current time extent
-      cur2(2) = int(nfp, HSIZE_T) ! probe count (fixed)
-      cnt2(1) = int(1,   HSIZE_T) ! one time step at a time
-      cnt2(2) = int(nfp, HSIZE_T) ! all probes
-      off2(2) = int(0,   HSIZE_T) ! probes start at 0
-      new2(2) = int(nfp, HSIZE_T) ! probe count stays fixed
+      allocate( vbuf(nfp * n_write) )
 
       do v = 1, nv
          call h5dopen_f(file_id, trim(self % probesVariables(v)), dset_id, iError)
 
+         ! Pack filtered data into column-major 2D: vbuf(probe, time)
          j = 0
          do i = 1, no_of_lines
             if ( .not. wmask(i) ) cycle
             j = j + 1
-
-            ! Gather one time-step row from all file-probes
-            do concurrent (k = 1:nfp)
-               vbuf(k) = self % probes(fp_offset + k) % values(v, i)
+            do k = 1, nfp
+               vbuf( (j-1)*nfp + k ) = self % probes(fp_offset + k) % values(v, i)
             end do
-
-            new2(1)  = cur2(1) + int(j, HSIZE_T)
-            off2(1)  = cur2(1) + int(j - 1, HSIZE_T)
-
-            call h5dextend_f(dset_id, new2, iError)
-            call h5dget_space_f(dset_id, dspace_id, iError)
-            call h5sselect_hyperslab_f(dspace_id, H5S_SELECT_SET_F, off2, cnt2, iError)
-            call h5screate_simple_f(2, cnt2, mspace_id, iError)
-            call h5dwrite_f(dset_id, H5T_NATIVE_DOUBLE, vbuf, cnt2, iError, mspace_id, dspace_id)
-            call h5sclose_f(mspace_id, iError)
-            call h5sclose_f(dspace_id, iError)
          end do
+
+         call h5dextend_f(dset_id, new2, iError)
+         call h5dget_space_f(dset_id, dspace_id, iError)
+         call h5sselect_hyperslab_f(dspace_id, H5S_SELECT_SET_F, off2, cnt2, iError)
+         call h5screate_simple_f(2, cnt2, mspace_id, iError)
+         call h5dwrite_f(dset_id, H5T_NATIVE_DOUBLE, vbuf, cnt2, iError, mspace_id, dspace_id)
+         call h5sclose_f(mspace_id, iError)
+         call h5sclose_f(dspace_id, iError)
 
          call h5dclose_f(dset_id, iError)
       end do
