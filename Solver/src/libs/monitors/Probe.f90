@@ -52,7 +52,7 @@ module ProbeClass
 
    contains
 
-      subroutine Probe_Initialization(self, mesh, ID, solution_file, FirstCall, x_in, variables_in, name_in)
+      subroutine Probe_Initialization(self, mesh, ID, solution_file, FirstCall, x_in, variables_in, name_in, isFileProbe_in, outputFormat_in)
          use ParamfileRegions
          use MPI_Process_Info
          use Utilities, only: toLower
@@ -65,6 +65,8 @@ module ProbeClass
          real(kind=RP),     intent(in), optional :: x_in(NDIM)
          character(len=*),  intent(in), optional :: variables_in(:)
          character(len=*),  intent(in), optional :: name_in
+         logical,           intent(in), optional :: isFileProbe_in
+         character(len=*),  intent(in), optional :: outputFormat_in
 !
 !        ---------------
 !        Local variables
@@ -76,6 +78,14 @@ module ProbeClass
          character(len=STR_LEN_MONITORS)  :: paramFile
          character(len=STR_LEN_MONITORS)  :: coordinates
          character(len=STR_LEN_MONITORS)  :: variable
+         character(len=STR_LEN_MONITORS)  :: outputFormat
+
+         self % isFileProbe = .false.
+         if ( present(isFileProbe_in) ) self % isFileProbe = isFileProbe_in
+
+         outputFormat = "ASCII"
+         if ( present(outputFormat_in) ) outputFormat = trim(outputFormat_in)
+
 
          if (FirstCall) then
 !
@@ -262,10 +272,10 @@ module ProbeClass
 !        Prepare the file
 !        ****************
 !
-!        Create file
-!        -----------
-         if (FirstCall) then
-            open ( newunit = fID , file = trim(self % fileName) , status = "unknown" , action = "write" ) 
+!        Create file (skip for file-probes using HDF5 output)
+!        -----------------------------------------------------
+         if (FirstCall .and. .not. (self % isFileProbe .and. trim(outputFormat) .eq. "HDF5")) then
+            open ( newunit = fID , file = trim(self % fileName) , status = "unknown" , action = "write" )
 !
 !        Write the file headers
 !        ----------------------

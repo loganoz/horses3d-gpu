@@ -204,7 +204,8 @@ module MonitorsClass
 
          if ( no_of_fileProbes .gt. 0 ) then
             call InitializeProbesFromFile( trim(probesFileName), Monitors % probes, Monitors % no_of_probes, &
-                                            mesh, probes_solution_file, FirstCall, probesVariables, probeFileSaveTimestep )
+                                            mesh, probes_solution_file, FirstCall, probesVariables, probeFileSaveTimestep, &
+                                            probeFileOutputFormat )
             Monitors % probesFileName         = trim(probesFileName)
             Monitors % probeFileSaveTimestep  = probeFileSaveTimestep
             Monitors % probeFileOutputFormat  = probeFileOutputFormat
@@ -1093,7 +1094,7 @@ end subroutine getNoOfMonitors
    end subroutine splitIntoTokens
 
 #ifdef FLOW
-   subroutine InitializeProbesFromFile(fileName, probes, offset, mesh, solution_file, FirstCall, variables, saveTimestep)
+   subroutine InitializeProbesFromFile(fileName, probes, offset, mesh, solution_file, FirstCall, variables, saveTimestep, outputFormat)
       implicit none
       character(len=*),   intent(in)    :: fileName
       class(Probe_t),     intent(inout) :: probes(:)
@@ -1103,6 +1104,7 @@ end subroutine getNoOfMonitors
       logical,            intent(in)    :: FirstCall
       character(len=*),   intent(in)    :: variables(:)
       real(kind=RP),      intent(in)    :: saveTimestep
+      character(len=*),   intent(in)    :: outputFormat
 !
 !     ---------------
 !     Local variables
@@ -1140,7 +1142,8 @@ end subroutine getNoOfMonitors
          write(pname,'(A,I0)') "probe_", idx
 
          call probes(idx) % Initialization( mesh, idx, solution_file, FirstCall, &
-                                             x_in = x, variables_in = variables, name_in = trim(pname) )
+                                             x_in = x, variables_in = variables, name_in = trim(pname), &
+                                             isFileProbe_in = .true., outputFormat_in = trim(outputFormat) )
          probes(idx) % saveTimestep = saveTimestep
 
          deallocate(tokens)
