@@ -1229,11 +1229,13 @@ end subroutine getNoOfMonitors
       call h5pclose_f(dcpl_id, iError)
 
       ! /<varname>  (extendible × nProbes) — h5ls shows {nProbes, Inf}
+      ! chunk2(1)=1: one time step per chunk avoids pre-allocation waste when
+      ! the save-timestep filter makes n_write << BUFFER_SIZE per flush.
       dims2(1)    = 0
       dims2(2)    = int(no_of_fileProbes, HSIZE_T)
       maxdims2(1) = H5S_UNLIMITED_F
       maxdims2(2) = int(no_of_fileProbes, HSIZE_T)
-      chunk2(1)   = int(max(BUFFER_SIZE, 1), HSIZE_T)
+      chunk2(1)   = int(1, HSIZE_T)
       chunk2(2)   = int(no_of_fileProbes, HSIZE_T)
 
       do v = 1, nv
@@ -1374,13 +1376,14 @@ end subroutine getNoOfMonitors
       do v = 1, nv
          call h5dopen_f(file_id, trim(self % probesVariables(v)), dset_id, iError)
 
-         ! Pack filtered data into column-major 2D: vbuf(probe, time)
+         ! Pack into column-major 2D layout vbuf(n_write, nfp):
+         ! time index j varies fastest (Fortran column-major with cnt2=[n_write,nfp])
          j = 0
          do i = 1, no_of_lines
             if ( .not. wmask(i) ) cycle
             j = j + 1
             do k = 1, nfp
-               vbuf( (j-1)*nfp + k ) = self % probes(fp_offset + k) % values(v, i)
+               vbuf( j + (k-1)*n_write ) = self % probes(fp_offset + k) % values(v, i)
             end do
          end do
 
