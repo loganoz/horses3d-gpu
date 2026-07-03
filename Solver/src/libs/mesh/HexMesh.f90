@@ -4135,6 +4135,8 @@ slavecoord:             DO l = 1, 4
          else
             num_of_elems = self % no_of_elements
          end if
+
+         !$acc data copyin(self, Xwall) if(no_of_wallDOFS .gt. 0)
          do ii = 1, num_of_elems
             if ( present(elementList) ) then
                eID = elementList (ii)
@@ -4149,18 +4151,34 @@ slavecoord:             DO l = 1, 4
             endif
 
             if( .not. self% IBM% active ) then
-               do k = 0, e % Nxyz(3)   ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
-                  xP = e % geom % x(:,i,j,k)
+               if (no_of_wallDOFS .ne. 0) then
+                  !$acc data copyin(self % elements(eID), self % elements(eID) % geom, self % elements(eID) % geom % x) &
+                  !$acc& copyout(self % elements(eID) % geom % dWall)
+                  !$acc parallel loop gang collapse(3) present(self, Xwall) &
+                  !$acc& private(xP, currentDistance, minimumDistance) vector_length(128)
+                  do k = 0, self % elements(eID) % Nxyz(3)
+                     do j = 0, self % elements(eID) % Nxyz(2)
+                        do i = 0, self % elements(eID) % Nxyz(1)
+                           xP = self % elements(eID) % geom % x(:,i,j,k)
 
-                  minimumDistance = HUGE(1.0_RP)
-                  do fID = 1, no_of_wallDOFS
-                     currentDistance = sum(POW2(xP - Xwall(:,fID)))
-                     minimumDistance = min(minimumDistance, currentDistance)
+                           minimumDistance = HUGE(1.0_RP)
+                           !$acc loop vector reduction(min:minimumDistance) private(currentDistance)
+                           do fID = 1, no_of_wallDOFS
+                              currentDistance = POW2(xP(1) - Xwall(1,fID)) + &
+                                                POW2(xP(2) - Xwall(2,fID)) + &
+                                                POW2(xP(3) - Xwall(3,fID))
+                              minimumDistance = min(minimumDistance, currentDistance)
+                           end do
+
+                           self % elements(eID) % geom % dWall(i,j,k) = sqrt(minimumDistance)
+                        end do
+                     end do
                   end do
-
-                  e % geom % dWall(i,j,k) = sqrt(minimumDistance)
-
-               end do                  ; end do                ; end do
+                  !$acc end parallel loop
+                  !$acc end data
+               else
+                  e % geom % dWall = huge(1.0_RP)
+               end if
             end if
             
             end associate
@@ -4187,22 +4205,37 @@ slavecoord:             DO l = 1, 4
             endif
             
             if( .not. self% IBM% active ) then
-               do j = 0, fe % Nf(2) ; do i = 0, fe % Nf(1)
-                  xP = fe % geom % x(:,i,j)
+               if (no_of_wallDOFS .ne. 0) then
+                  !$acc data copyin(self % faces(eID), self % faces(eID) % geom, self % faces(eID) % geom % x) &
+                  !$acc& copyout(self % faces(eID) % geom % dWall)
+                  !$acc parallel loop gang collapse(2) present(self, Xwall) &
+                  !$acc& private(xP, currentDistance, minimumDistance) vector_length(128)
+                  do j = 0, self % faces(eID) % Nf(2)
+                     do i = 0, self % faces(eID) % Nf(1)
+                        xP = self % faces(eID) % geom % x(:,i,j)
 
-                  minimumDistance = HUGE(1.0_RP)
-                  do fID = 1, no_of_wallDOFS
-                     currentDistance = sum(POW2(xP - Xwall(:,fID)))
-                     minimumDistance = min(minimumDistance, currentDistance)
+                        minimumDistance = HUGE(1.0_RP)
+                        !$acc loop vector reduction(min:minimumDistance) private(currentDistance)
+                        do fID = 1, no_of_wallDOFS
+                           currentDistance = POW2(xP(1) - Xwall(1,fID)) + &
+                                             POW2(xP(2) - Xwall(2,fID)) + &
+                                             POW2(xP(3) - Xwall(3,fID))
+                           minimumDistance = min(minimumDistance, currentDistance)
+                        end do
+
+                        self % faces(eID) % geom % dWall(i,j) = sqrt(minimumDistance)
+                     end do
                   end do
-
-                  fe % geom % dWall(i,j) = sqrt(minimumDistance)
-
-                end do                ; end do
-            end if
+                  !$acc end parallel loop
+                  !$acc end data
+               else
+                  fe % geom % dWall = huge(1.0_RP)
+               end if
+            endif
             
             end associate
          end do
+         !$acc end data
 
          deallocate(Xwall)
 
