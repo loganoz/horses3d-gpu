@@ -1625,6 +1625,60 @@ position 	&
 							\textbf{Mandatory Keyword} \\ \hline
 \end{longtable}
 
+
+\subsection{Probes from a file}
+
+Instead of (or in addition to) defining probes one-by-one with \texttt{\#define probe} blocks,
+a set of probes can be defined in bulk through a plain text \texttt{.dat} file, each line
+holding the coordinates of a point. The same list of variables is sampled at every
+probe in the file, and the probes-file block is defined like any other monitor block:
+
+\begin{lstlisting}
+	#define probe file
+	file      = MyProbes.dat
+	variables = pressure u v
+	#end
+\end{lstlisting}
+
+\begin{longtable}{|p{4cm}|p{10cm}|p{2.2cm}|}
+	\caption{Keywords for probes from a file.} \label{tab:ProbesFileKey} \\
+	\hline
+	\multicolumn{1}{|c|}{\textbf{Keyword}} & \multicolumn{1}{c|}{\textbf{Description}} & \multicolumn{1}{c|}{\textbf{Default value}} \\ \hline
+	\endfirsthead
+	
+	\caption{Keywords for probes from a file - continued.} \\
+	\hline
+	\multicolumn{1}{|c|}{\textbf{Keyword}} & \multicolumn{1}{c|}{\textbf{Description}} & \multicolumn{1}{c|}{\textbf{Default value}} \\ \hline
+	\endhead
+	
+	file 	&
+	\textit{CHARACTER}: Path to the \texttt{.dat} file defining the probes' coordinates. May optionally be wrapped in quotes (\texttt{"..."} or \texttt{'...'}); case is preserved. &
+	\textbf{Mandatory Keyword} \\ \hline
+	
+	variables 	&
+	\textit{CHARACTER}: Whitespace-separated list of variables to sample at every probe in the file. &
+	\textbf{Mandatory Keyword} \\ \hline
+\end{longtable}
+
+\begin{lstlisting}
+	# x       y      z
+	0.5d0     0.d0   0.d0
+	1.0d0     0.d0   0.d0
+	2.0d0     1.d0   0.d0
+\end{lstlisting}
+
+Lines that are empty or start with \texttt{\#} are ignored; every remaining line holds the
+\texttt{x y z} coordinates of one probe. For each of these probes a dedicated output file
+\texttt{<solution\_file>.probe\_N.probe} is created (\texttt{N} being the probe's position in the
+file), with one column per variable (as listed in \texttt{variables}) and one row per saved
+time step (in addition to the \texttt{Iteration} and \texttt{Time} columns).
+
+To keep the per-iteration screen log readable when many probes are defined this way,
+file-based probes are excluded from it; their individual \texttt{.probe} files are still
+written normally. Instead, a summary of the probes-file monitor (file path, number of
+probes and sampled variables) is printed once in the startup log, right after the
+"Time integrator" section.
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 \section{Surface Monitors}
@@ -1995,23 +2049,23 @@ Some remarks:
 \item Dynamic p-adaptation is currently not supported.
 \end{itemize}
 
-\section{Probe Extraction Tool: \textit{horses2probes}}
+\section{Probe Extraction Tool: \textit{probes2tecplot}}
 
-HORSES3D provides a tool, \textit{horses2probes}, to extract solution variables at user-defined point locations (probes) from a solution file (*.hsol). For each probe, the host element of the mesh (*.hmesh) is located and the solution is interpolated at the requested point using the element's nodal (Lagrange) basis. The result can be written either in Tecplot ASCII format (*.tec) or as a plain text file. Usage:
+HORSES3D provides a tool, \textit{probes2tecplot}, to extract solution variables at user-defined point locations (probes) from a solution file (*.hsol). For each probe, the host element of the mesh (*.hmesh) is located and the solution is interpolated at the requested point using the element's nodal (Lagrange) basis. The result can be written either in Tecplot ASCII format (*.tec) or as a plain text file. Usage:
 
 \begin{lstlisting}[language=bash]
-  $ horses2probes control_file.probes
+  $ probes2tecplot control_file.probes
 \end{lstlisting}
 
-A control input file is required, with the keywords described in table \ref{tab:horses2probes}:
+A control input file is required, with the keywords described in table \ref{tab:probes2tecplot}:
 
 \begin{longtable}{|p{3.2cm}|p{9.5cm}|p{2.7cm}|}
-\caption{Keywords for \textit{horses2probes}.} \label{tab:horses2probes} \\
+\caption{Keywords for \textit{probes2tecplot}.} \label{tab:probes2tecplot} \\
 \hline
 \multicolumn{1}{|c|}{\textbf{Keyword}} & \multicolumn{1}{c|}{\textbf{Description}} & \multicolumn{1}{c|}{\textbf{Default value}} \\ \hline
 \endfirsthead
 
-\caption{Additional keywords for \textit{horses2probes}} \\
+\caption{Additional keywords for \textit{probes2tecplot}} \\
 \hline
 \multicolumn{1}{|c|}{\textbf{Keyword}} & \multicolumn{1}{c|}{\textbf{Description}} & \multicolumn{1}{c|}{\textbf{Default value}} \\ \hline
 \endhead
