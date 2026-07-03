@@ -57,11 +57,13 @@ TEST_CASES="./Euler/BoxAroundCircle \
             ./NavierStokes/CylinderVreman \
             ./NavierStokes/CylinderChandrasekarRoe \
             ./NavierStokes/CylinderEntropyConservingCentral \
-            ./NavierStokes/CylinderStandardCentral \
             ./NavierStokes/CylinderKennedyGruberLaxFriedrichs \
             ./NavierStokes/CylinderMorinishiLowDissipationRoe \
+            ./NavierStokes/CylinderRoePikePirozzoli \
+            ./NavierStokes/CylinderViscousStandard \
+            ./NavierStokes/CylinderUdissStandard \
+            ./NavierStokes/CylinderRusanovStandard \
             ./NavierStokes/CylinderDucrosMatrixDissipation \
-            ./NavierStokes/CylinderPirozzoliRoe \
             ./NavierStokes/Cylinderssprk33 \
             ./NavierStokes/Cylinderssprk43 \
             ./NavierStokes/IBM_Cylinder \
@@ -75,6 +77,7 @@ TEST_CASES="./Euler/BoxAroundCircle \
             ./NavierStokes/ForwardFacingStepSVV \
             ./NavierStokes/ForwardFacingStep_SSPRK33 \
             ./NavierStokes/ForwardFacingStep_SSPRK43 \
+            ./NavierStokes/LimiterTest \
             ./NavierStokes/TaylorGreenSVVLES \
             ./NavierStokes/ManufacturedSolutionsSA \
             ./NavierStokes/FlatPlateSA \

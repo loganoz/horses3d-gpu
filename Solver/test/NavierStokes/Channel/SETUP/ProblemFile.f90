@@ -397,8 +397,8 @@
 #if defined(NAVIERSTOKES)
             INTEGER                            :: iterations(3:7) = [100, 0, 0, 0, 0]
             real(kind=RP), parameter :: residuals(5) = [  0.0000006546361679_RP, &
-                                                          0.0624406739585925_RP, &
-                                                          0.0000012720347859_RP, &
+                                                          0.0624406738137102_RP, &
+                                                          0.0000012718821607_RP, &
                                                           0.0000000005267711_RP, &
                                                           0.0009699391747517_RP] 
 
@@ -454,7 +454,7 @@
       SUBROUTINE UserDefinedTermination
 !
 !        -----------------------------------------------
-!        Called at the the end of the main driver after 
+!        Called at the end of the main driver after 
 !        everything else is done.
 !        -----------------------------------------------
 !

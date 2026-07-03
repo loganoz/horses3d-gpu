@@ -74,25 +74,15 @@ module DGIntegrals
          integer   :: i, j, k, l, eq
 
          !$acc loop vector collapse(4)
-         do k = 0, Nxyz(3) ; do j = 0, Nxyz(2) ; do i = 0, Nxyz(1) ; do eq = 1, NEQ
+          do k = 0, Nxyz(3) ; do j = 0, Nxyz(2) ; do i = 0, Nxyz(1) ; do eq = 1, NEQ
             ! not initialize to 0 to be general for all Physics
             ! volInt(eq,i,j,k) = 0.0_RP
-            ! Keep one l-loop per direction.
-            ! 0:Nxyz(1) loop failed CUDA_ERROR_ILLEGAL_ADDRESS 
-            !$acc loop seq
+            !$acc loop seq 
             do l = 0, Nxyz(1)
-               volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(1)) % hatD(i,l) * F(eq,l,j,k,IX)
-            end do
-
-            !$acc loop seq
-            do l = 0, Nxyz(2)
-               volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(2)) % hatD(j,l) * F(eq,i,l,k,IY)
-            end do
-
-            !$acc loop seq
-            do l = 0, Nxyz(3)
-               volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(3)) % hatD(k,l) * F(eq,i,j,l,IZ)
-            end do
+               volInt(eq,i,j,k) = volInt(eq,i,j,k) +  NodalStorage(Nxyz(1)) % hatD(i,l) * F(eq,l,j,k,IX) &
+                                                   +  NodalStorage(Nxyz(2)) % hatD(j,l) * F(eq,i,l,k,IY) &
+                                                   +  NodalStorage(Nxyz(3)) % hatD(k,l) * F(eq,i,j,l,IZ)
+            end do             
          end do ; end do ; end do ; end do
 
       end subroutine ScalarWeakIntegrals_StdVolumeGreen
@@ -248,6 +238,7 @@ module DGIntegrals
 !        ---------------
 !
          integer            :: iXi, iEta, iZeta,eq
+  
          !$acc loop vector collapse(4)
          do iZeta = 0, Nxyz(3) 
             do iEta = 0, Nxyz(2) 
@@ -259,7 +250,7 @@ module DGIntegrals
                                                 + F_FR(eq, iXi, iZeta) * NodalStorage(Nxyz(2)) % b(iEta, LEFT)   &
                                                 + F_BK(eq, iXi, iZeta) * NodalStorage(Nxyz(2)) % b(iEta, RIGHT)  &
                                                 + F_BOT(eq, iXi, iEta) * NodalStorage(Nxyz(3)) % b(iZeta, LEFT)  &
-                                                + F_T(eq, iXi, iEta)   * NodalStorage(Nxyz(3)) % b(iZeta, RIGHT) )
+                                                + F_T(eq, iXi, iEta)   * NodalStorage(Nxyz(3)) % b(iZeta, RIGHT) ) 
                   enddo
                end do                 
             end do                
@@ -394,7 +385,6 @@ module DGIntegrals
             b_iEta_Right = NodalStorage(e % Nxyz(2)) % b(iEta, RIGHT)
             b_iZeta_left = NodalStorage(e % Nxyz(3)) % b(iZeta, LEFT)
             b_iZeta_Right = NodalStorage(e % Nxyz(3)) % b(iZeta, RIGHT)
-
             inv_jac = e % geom % InvJacobian(iXi,iEta,iZeta)
 
             faceInt_x(eq,iXi,iEta,iZeta) =  faceInt_x(eq,iXi,iEta,iZeta) &

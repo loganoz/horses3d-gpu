@@ -666,7 +666,6 @@
 #if defined(NAVIERSTOKES)
             if( sem % mesh % IBM % active ) call sem % mesh % IBM % SemiImplicitCorrection( sem % mesh % elements, dt )
 #endif
-            ! Need to fix this, Nvfortran does not like the pointer here - select function might solve the problem: Fixed
             select case (self % RKStep_key)
                case (EULER_KEY)
                   CALL TakeExplicitEulerStep(sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
@@ -680,6 +679,9 @@
                   CALL TakeSSPRK43Step(sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
                case (EULER_RK3_KEY)
                   CALL TakeEulerRK3Step(sem % mesh, sem % particles, t, dt, ComputeTimeDerivative, iter=k)
+               case default
+                  write(STD_OUT,'(A)') "TimeIntegrator :: Unknown explicit time integration method. Defaulting to RK3."
+                  CALL TakeRK3Step(sem % mesh, sem % particles, t, dt, ComputeTimeDerivative)
             end select
 #if defined(NAVIERSTOKES)
             if( sem % mesh % IBM % active ) call sem % mesh % IBM % SemiImplicitCorrection( sem % mesh % elements, dt )

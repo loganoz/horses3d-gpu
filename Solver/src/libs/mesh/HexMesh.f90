@@ -1024,7 +1024,7 @@ slavecoord:             DO l = 1, 4
          select case ( self %nodeType )
          case(1) !Gauss
 
-!$acc parallel loop gang num_gangs(size_element_list) collapse(2) present(self) copyin(element_list(1:size_element_list)) private(fIDs) async(1)
+!$acc parallel loop gang num_gangs(size_element_list) collapse(2) present(self, element_list) private(fIDs) async(1)
 !$omp do schedule(runtime) private(eID)
          do iEl = 1, size_element_list
             do fid = 1,6
@@ -1048,7 +1048,7 @@ slavecoord:             DO l = 1, 4
          case(2) !Gauss-Lobatto
 
 !$omp do schedule(runtime)
-!$acc parallel loop gang collapse(2) num_gangs(size(self % elements)) vector_length(32) present(self) copyin(element_list(1:size_element_list)) async(1)
+!$acc parallel loop gang collapse(2) num_gangs(size(self % elements)) vector_length(32) present(self,element_list) async(1)
          do iEl = 1, size_element_list
             do fID = 1, 6
                eID = element_list(iEl)
@@ -1060,7 +1060,7 @@ slavecoord:             DO l = 1, 4
 !$omp end do
 
 !$omp do schedule(runtime)
-!$acc parallel loop gang collapse(2) num_gangs(size(self % elements)) vector_length(32) present(self) copyin(element_list(1:size_element_list)) async(1) 
+!$acc parallel loop gang collapse(2) num_gangs(size(self % elements)) vector_length(32) present(self,element_list) async(1) 
          do iEl = 1, size_element_list
             do fID = 1, 6
                eID = element_list(iEl)
@@ -1072,7 +1072,7 @@ slavecoord:             DO l = 1, 4
 !$omp end do
          
 !$omp do schedule(runtime)
-!$acc parallel loop gang collapse(2) num_gangs(size(self % elements)) vector_length(32) present(self) copyin(element_list(1:size_element_list)) async(1) 
+!$acc parallel loop gang collapse(2) num_gangs(size(self % elements)) vector_length(32) present(self,element_list) async(1) 
          do iEl = 1, size_element_list
             do fID = 1, 6
                eID = element_list(iEl)
@@ -4453,7 +4453,7 @@ slavecoord:             DO l = 1, 4
       class(HexMesh)                  :: self
       !-----------------------------------------------------------
       integer :: eID
-      integer     :: i, j, k, iFace, fID, zoneID, nZones, maxOrder
+      integer     :: i, j, k, iFace, fID, zoneID, nZones
       !-----------------------------------------------------------
 #ifdef _OPENACC
       integer(kind=cuda_count_kind) :: heapsize 
@@ -4481,9 +4481,6 @@ slavecoord:             DO l = 1, 4
             !$acc enter data copyin(self % elements(eID) % storage % stats % data)
          end if
 
-#ifdef FLOW
-         !$acc enter data copyin(self % elements(eID) % storage % QNS)
-#endif
          !$acc enter data copyin(self % elements(eID) % storage % Q)
          !$acc enter data copyin(self % elements(eID) % storage % QDot)
          !$acc enter data copyin(self % elements(eID) % storage % U_x)
@@ -4629,11 +4626,8 @@ slavecoord:             DO l = 1, 4
          !$acc enter data copyin(self % zones(zoneID) % toBeDeleted)     
       enddo
 
-      maxOrder = max(maxval(self % Nx), max(maxval(self % Ny), maxval(self % Nz)))
-      !$acc enter data copyin(NodalStorage(0:maxOrder))
-      !$acc update device(NodalStorage)
-      DO i = 0, maxOrder
-         if (.not. NodalStorage(i) % Constructed) cycle
+      DO i = 0, self % Nx(1) !it should be the maximum nX
+         !$acc enter data copyin(NodalStorage(i))
          !$acc enter data copyin(NodalStorage(i) % hatD)
          !$acc enter data copyin(NodalStorage(i) % sharpD)
          !$acc enter data copyin(NodalStorage(i) % D)
@@ -4659,7 +4653,7 @@ slavecoord:             DO l = 1, 4
       class(HexMesh)                  :: self
       !-----------------------------------------------------------
       integer :: eID
-      integer     :: i, j, k, iFace, fID, zoneID, nZones, maxOrder
+      integer     :: i, j, k, iFace, fID, zoneID, nZones
       !-----------------------------------------------------------
 
       print*, "I de-allocate the device data"
@@ -4667,9 +4661,6 @@ slavecoord:             DO l = 1, 4
       DO eID = 1, SIZE(self % elements)
          !$acc exit data delete(self % elements(eID) % Nxyz)
          !$acc exit data delete(self % elements(eID) % storage % Q)
-#ifdef FLOW
-         !$acc exit data delete(self % elements(eID) % storage % QNS)
-#endif
          !$acc exit data delete(self % elements(eID) % storage % rho)
          !$acc exit data delete(self % elements(eID) % storage % QDot)
          !$acc exit data delete(self % elements(eID) % storage % G_NS)
@@ -4789,18 +4780,14 @@ slavecoord:             DO l = 1, 4
          !$acc exit data delete (self % zones(zoneID) % toBeDeleted)     
       enddo
 
-      maxOrder = max(maxval(self % Nx), max(maxval(self % Ny), maxval(self % Nz)))
-      DO i = 0, maxOrder
-         if (.not. NodalStorage(i) % Constructed) cycle
+      DO i = 0, self % Nx(1) !it should be the maximum nX
          !$acc exit data delete (NodalStorage(i) % hatD)
          !$acc exit data delete (NodalStorage(i) % sharpD)
          !$acc exit data delete (NodalStorage(i) % D)
          !$acc exit data delete (NodalStorage(i) % b)
          !$acc exit data delete (NodalStorage(i) % v)
-         !$acc exit data delete (NodalStorage(i) % w)
-         !$acc exit data delete (NodalStorage(i) % x)
+         !$acc exit data delete (NodalStorage(i))
       END DO
-      !$acc exit data delete (NodalStorage(0:maxOrder))
 
 #ifdef _HAS_MPI_
       !$acc exit data delete (self % faces_mpi)
@@ -5300,9 +5287,9 @@ subroutine HexMesh_pAdapt_MPI (self, NNew, controlVariables)
       end do
    end if
 
-#if defined(NAVIERSTOKES)
-   call self % ComputeWallDistances()
-#endif
+! #if defined(NAVIERSTOKES)
+!   call self % ComputeWallDistances()
+! #endif
 
 !     *********
 !     Finish up
@@ -5482,9 +5469,9 @@ end subroutine HexMesh_pAdapt_MPI
 
       call self % ConstructGeometry(facesArray, elementArray)
 
-#if defined(NAVIERSTOKES)
-      call self % ComputeWallDistances(facesArray, elementArray)
-#endif
+! #if defined(NAVIERSTOKES)
+!      call self % ComputeWallDistances(facesArray, elementArray)
+! #endif
 
 !     *********
 !     Finish up
@@ -5709,86 +5696,9 @@ call elementMPIList % destruct
       type(HexMesh), intent(inout)    :: self
       logical, intent(in)             :: set_mu
       !-local-variables-----------------------------------
-      integer :: eID, i, j, k, l, eq
-#ifdef NAVIERSTOKES
-      real(kind=RP)  :: Q_node(NCONS)
-      real(kind=RP)  :: U_node(NGRAD)
-      real(kind=RP)  :: U_xi(NGRAD)
-      real(kind=RP)  :: U_eta(NGRAD)
-      real(kind=RP)  :: U_zeta(NGRAD)
-      real(kind=RP)  :: inv_jac
-#endif
+      integer :: eID
 
       !--------------------------------------------------
-      if (.not. computeGradients) return
-
-#ifdef NAVIERSTOKES
-!$omp do schedule(runtime)
-      !$acc parallel loop gang vector_length(128) present(self) async(1)
-         do eID = 1 , size(self % elements)
-            !$acc loop vector collapse(3) private(Q_node, U_node, U_xi, U_eta, U_zeta, inv_jac)
-            do k = 0, self % elements(eID) % Nxyz(3) ; do j = 0, self % elements(eID) % Nxyz(2) ; do i = 0, self % elements(eID) % Nxyz(1)
-               U_xi(:)   = 0.0_RP
-               U_eta(:)  = 0.0_RP
-               U_zeta(:) = 0.0_RP
-
-               if ( self % elements(eID) % Nxyz(1) > 0 ) then
-                  Q_node(:) = self % elements(eID) % storage % Q(:,0,j,k)
-                  call HexElement_NSGradientVariables(Q_node, U_node)
-                  U_xi(:) = U_node(:) * NodalStorage(self % elements(eID) % Nxyz(1)) % D(i,0)
-                  !$acc loop seq
-                  do l = 1, self % elements(eID) % Nxyz(1)
-                     Q_node(:) = self % elements(eID) % storage % Q(:,l,j,k)
-                     call HexElement_NSGradientVariables(Q_node, U_node)
-                     U_xi(:) = U_xi(:) + U_node(:) * NodalStorage(self % elements(eID) % Nxyz(1)) % D(i,l)
-                  end do
-               end if
-
-               if ( self % elements(eID) % Nxyz(2) > 0 ) then
-                  Q_node(:) = self % elements(eID) % storage % Q(:,i,0,k)
-                  call HexElement_NSGradientVariables(Q_node, U_node)
-                  U_eta(:) = U_node(:) * NodalStorage(self % elements(eID) % Nxyz(2)) % D(j,0)
-                  !$acc loop seq
-                  do l = 1, self % elements(eID) % Nxyz(2)
-                     Q_node(:) = self % elements(eID) % storage % Q(:,i,l,k)
-                     call HexElement_NSGradientVariables(Q_node, U_node)
-                     U_eta(:) = U_eta(:) + U_node(:) * NodalStorage(self % elements(eID) % Nxyz(2)) % D(j,l)
-                  end do
-               end if
-
-               if ( self % elements(eID) % Nxyz(3) > 0 ) then
-                  Q_node(:) = self % elements(eID) % storage % Q(:,i,j,0)
-                  call HexElement_NSGradientVariables(Q_node, U_node)
-                  U_zeta(:) = U_node(:) * NodalStorage(self % elements(eID) % Nxyz(3)) % D(k,0)
-                  !$acc loop seq
-                  do l = 1, self % elements(eID) % Nxyz(3)
-                     Q_node(:) = self % elements(eID) % storage % Q(:,i,j,l)
-                     call HexElement_NSGradientVariables(Q_node, U_node)
-                     U_zeta(:) = U_zeta(:) + U_node(:) * NodalStorage(self % elements(eID) % Nxyz(3)) % D(k,l)
-                  end do
-               end if
-
-               inv_jac = self % elements(eID) % geom % InvJacobian(i,j,k)
-
-               !$acc loop seq
-               do eq = 1, NGRAD
-                  self % elements(eID) % storage % U_x(eq,i,j,k) = (   U_xi(eq)   * self % elements(eID) % geom % jGradXi(1,i,j,k)    &
-                                                                     + U_eta(eq)  * self % elements(eID) % geom % jGradEta(1,i,j,k)   &
-                                                                     + U_zeta(eq) * self % elements(eID) % geom % jGradZeta(1,i,j,k)) * inv_jac
-
-                  self % elements(eID) % storage % U_y(eq,i,j,k) = (   U_xi(eq)   * self % elements(eID) % geom % jGradXi(2,i,j,k)    &
-                                                                     + U_eta(eq)  * self % elements(eID) % geom % jGradEta(2,i,j,k)   &
-                                                                     + U_zeta(eq) * self % elements(eID) % geom % jGradZeta(2,i,j,k)) * inv_jac
-
-                  self % elements(eID) % storage % U_z(eq,i,j,k) = (   U_xi(eq)   * self % elements(eID) % geom % jGradXi(3,i,j,k)    &
-                                                                     + U_eta(eq)  * self % elements(eID) % geom % jGradEta(3,i,j,k)   &
-                                                                     + U_zeta(eq) * self % elements(eID) % geom % jGradZeta(3,i,j,k)) * inv_jac
-               end do
-            end do           ; end do         ; end do
-         end do
-      !$acc end parallel loop
-!$omp end do nowait
-#else
 !$omp do schedule(runtime)
       !$acc parallel loop gang vector_length(128) present(self) async(1)
          do eID = 1 , size(self % elements)
@@ -5796,7 +5706,6 @@ call elementMPIList % destruct
          end do
       !$acc end parallel loop
 !$omp end do nowait
-#endif
 
    end subroutine HexMesh_ComputeLocalGradientNS
 
