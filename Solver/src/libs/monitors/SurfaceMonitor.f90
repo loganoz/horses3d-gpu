@@ -314,6 +314,19 @@ module SurfaceMonitorClass
 
             close ( fID )
          end if
+
+         if (MPI_Process % isRoot) then
+            write(STD_OUT,'(/,30X,A,I0)') "** Surface monitor ", self % ID
+            write(STD_OUT,'(30X,A,A28,A)') "   ->", "Name: ", trim(self % monitorName)
+            write(STD_OUT,'(30X,A,A28,A)') "   ->", "Marker: ", trim(markerName)
+            write(STD_OUT,'(30X,A,A28,A)') "   ->", "Variable: ", trim(self % variable)
+            if ( self % isDimensionless .and. allocated(self % referenceSurface) ) then
+               write(STD_OUT,'(30X,A,A28,ES14.6)') "   ->", "Ref. surface: ", self % referenceSurface
+            end if
+            if ( len_trim(directionName) .gt. 0 ) then
+               write(STD_OUT,'(30X,A,A28,3ES12.4)') "   ->", "Direction: ", self % direction
+            end if
+         end if
       end subroutine SurfaceMonitor_Initialization
 
       subroutine SurfaceMonitor_Update ( self, mesh, bufferPosition, iter, autosave, dt )

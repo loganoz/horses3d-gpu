@@ -231,7 +231,18 @@ module ProbeClass
 !           Set the fileName
 !           ----------------
             write( self % fileName , '(A,A,A,A)') trim(solution_file) , "." , &
-                                               trim(self % monitorName) , ".probe"  
+                                               trim(self % monitorName) , ".probe"
+
+            if ( MPI_Process % isRoot .and. .not. self % isFileProbe ) then
+               write(STD_OUT,'(/,30X,A,I0)') "** Probe ", self % ID
+               write(STD_OUT,'(30X,A,A28,A)') "   ->", "Name: ", trim(self % monitorName)
+               write(STD_OUT,'(30X,A,A28,3ES12.4)') "   ->", "Position: ", self % x
+               write(STD_OUT,'(30X,A,A28)',advance="no") "   ->", "Variable(s): "
+               do v = 1, self % nVars
+                  write(STD_OUT,'(A,A)',advance="no") trim(self % variableNames(v)), "  "
+               end do
+               write(STD_OUT,*)
+            end if
          end if
 !
 !
