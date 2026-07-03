@@ -217,6 +217,16 @@ module MonitorsClass
                call Monitor_InitFileProbesHDF5( Monitors, no_of_fileProbes )
             end if
 #endif
+            if (MPI_Process % isRoot) then
+               write(STD_OUT,'(/,30X,A)')         "** File probe monitor activated"
+               write(STD_OUT,'(30X,A,I0)')        "   -> Probes:        ", no_of_fileProbes
+               write(STD_OUT,'(30X,A,A)')         "   -> Output format: ", trim(probeFileOutputFormat)
+               if (probeFileSaveTimestep .gt. 0.0_RP) then
+                  write(STD_OUT,'(30X,A,ES14.6)') "   -> Save timestep: ", probeFileSaveTimestep
+               else
+                  write(STD_OUT,'(30X,A)')        "   -> Save timestep: every step"
+               end if
+            end if
          end if
 
          Monitors % no_of_fileProbes = no_of_fileProbes
@@ -1096,6 +1106,7 @@ end subroutine getNoOfMonitors
       integer        :: i
       integer        :: iter_arr(1)
       real(kind=RP)  :: t_arr(1)
+      logical        :: do_write
 
       iter_arr(1) = iter_now
       t_arr(1)   = t_now
@@ -1105,11 +1116,21 @@ end subroutine getNoOfMonitors
          call Monitor_WriteFileProbesHDF5( self, iter_arr, t_arr, 1 )
       else
 #endif
-         !$omp parallel do schedule(dynamic,16) default(shared)
-         do i = self % no_of_probes - self % no_of_fileProbes + 1, self % no_of_probes
-            call self % probes(i) % WriteToFile( iter_arr, t_arr, 1 )
-         end do
-         !$omp end parallel do
+         ! Monitor-level timestep filter: skip the O(N) loop and N file opens entirely
+         do_write = .true.
+         if ( self % probeFileSaveTimestep .gt. 0.0_RP ) then
+            if ( t_now .lt. self % fp_lastSavedTime + self % probeFileSaveTimestep ) do_write = .false.
+         end if
+         if ( do_write ) then
+            self % fp_lastSavedTime = t_now
+            if ( MPI_Process % isRoot ) write(STD_OUT,'(30X,A,I10,A,ES12.4)') &
+               "** File probes ASCII: writing iter=", iter_now, ", t=", t_now
+            !$omp parallel do schedule(dynamic,16) default(shared)
+            do i = self % no_of_probes - self % no_of_fileProbes + 1, self % no_of_probes
+               call self % probes(i) % WriteToFile( iter_arr, t_arr, 1 )
+            end do
+            !$omp end parallel do
+         end if
 #ifdef HAS_HDF5
       end if
 #endif
@@ -1137,10 +1158,17 @@ end subroutine getNoOfMonitors
 !
       integer        :: i, v, j, nfp, nv, fp_offset, ierr
       real(kind=RP), allocatable :: buf(:)
+      logical, save  :: first_call_fp = .true.
 
       nfp       = self % no_of_fileProbes
       nv        = size(self % probesVariables)
       fp_offset = self % no_of_probes - nfp
+
+      if (first_call_fp .and. MPI_Process % isRoot) then
+         write(STD_OUT,'(30X,A,I0,A,I0,A)') &
+            "** File probes: first compute — ", nfp, " probes x ", nv, " variable(s) (OpenMP+MPI_Allreduce)"
+         first_call_fp = .false.
+      end if
 
       ! Parallel CPU computation — each probe writes to its own values(:,bufferPos).
       ! Non-owning ranks store 0 so MPI_Allreduce(SUM) gives the correct result.
@@ -1392,6 +1420,9 @@ end subroutine getNoOfMonitors
          deallocate(wmask)
          return
       end if
+
+      write(STD_OUT,'(30X,A,I0,A,ES12.4)') &
+         "** File probes HDF5: writing ", n_write, " step(s) at t=", t(no_of_lines)
 
       write(fname,'(A,A)') trim(self % probes_solution_file), ".probes.h5"
 
