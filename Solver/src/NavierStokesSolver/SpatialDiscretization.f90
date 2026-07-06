@@ -275,16 +275,16 @@ module SpatialDiscretization
 !        ------------------------------------------
 !        Apply the Boundary conditions to the state
 !        ------------------------------------------
-!        This was done in the compute boundary flux before 
+!        This was done in the compute boundary flux before
 !        but it was called twice because we call it once in this file
 !        and one in the Elliptic discretisation. So now we compute it
 !        only once at the begining of time derivative and store it
-! 
+!
          nZones = size(mesh % zones)
          do zoneID=1, nZones
-            CALL BCs(zoneID) % bc % FlowState(mesh, mesh % zones(zoneID))  
+            CALL BCs(zoneID) % bc % FlowState(mesh, mesh % zones(zoneID))
          enddo
-!  
+!
 !        -----------------
 !        Compute gradients
 !        -----------------
@@ -295,7 +295,7 @@ module SpatialDiscretization
          if ( computeGradients ) then
             call ViscousDiscretization % ComputeGradient( NCONS, NGRAD, mesh, time, GetGradients, HO_Elements)
          end if
-         
+
 !         call ComputeArtificialViscosity(mesh)
 !
 !        -----------------------
@@ -306,11 +306,11 @@ module SpatialDiscretization
             call TimeDerivative_ComputeQDotHO(mesh = mesh , &
                                           particles = particles, &
                                           t    = time)
-         else 
+         else
             call TimeDerivative_ComputeQDot(mesh = mesh , &
                                           particles = particles, &
                                           t    = time)
-         
+
          end if
 #ifndef _OPENACC
 !$omp end parallel
