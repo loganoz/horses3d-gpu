@@ -562,7 +562,6 @@ module SCsensorClass
 !     ---------------
 !     Local variables
 !     ---------------
-      type(Element), pointer :: e
       integer                :: eID
       integer                :: i
       integer                :: j
@@ -572,7 +571,7 @@ module SCsensorClass
 
 !$omp parallel do default(private) shared(sem, sensor, NodalStorage)
       do eID = 1, sem % mesh % no_of_elements
-         e => sem % mesh % elements(eID)
+         associate(e => sem % mesh % elements(eID))
          val = 0.0_RP
          do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
             contribution = GetSensedVariable( &
@@ -590,11 +589,9 @@ module SCsensorClass
          end do                ; end do                ; end do
 
          e % storage % sensor = SinRamp(sensor, sqrt(val))
-
+         end associate
       end do
 !$omp end parallel do
-
-      nullify(e)
 
    end subroutine Sensor_integral_sqrt
 !
@@ -613,7 +610,6 @@ module SCsensorClass
 !     ---------------
 !     Local variables
 !     ---------------
-      type(Element), pointer :: e
       integer                :: eID
       integer                :: i
       integer                :: j
@@ -623,7 +619,7 @@ module SCsensorClass
 
 !$omp parallel do default(private) shared(sem, sensor, NodalStorage)
       do eID = 1, sem % mesh % no_of_elements
-         e => sem % mesh % elements(eID)
+         associate(e => sem % mesh % elements(eID))
          val = 0.0_RP
          do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
             contribution = GetSensedVariable( &
@@ -640,10 +636,9 @@ module SCsensorClass
                       * contribution
          end do                ; end do                ; end do
          e % storage % sensor = SinRamp(sensor, val)
+         end associate
       end do
 !$omp end parallel do
-
-      nullify(e)
 
    end subroutine Sensor_integral
 !
@@ -667,7 +662,6 @@ module SCsensorClass
 !     ---------------
 !     Local variables
 !     ---------------
-      type(Element), pointer :: e
       integer                :: eID
       integer                :: i, j, k, r
       integer                :: maxNx, maxNy, maxNz
@@ -687,7 +681,7 @@ module SCsensorClass
 
 !$omp parallel do default(private) shared(sem, sensor, NodalStorage)
       do eID = 1, sem % mesh % no_of_elements
-         e => sem % mesh % elements(eID)
+         associate(e => sem % mesh % elements(eID))
          Nx = e % Nxyz(1)
          Ny = e % Nxyz(2)
          Nz = e % Nxyz(3)
@@ -776,11 +770,10 @@ module SCsensorClass
 
          ! Sensor value as the ratio of num / den
          e % storage % sensor = SinRamp(sensor, log10( num / den ))
-
+         end associate
       end do
 !$omp end parallel do
 
-      nullify(e)
       nullify(Lwx)
       nullify(Lwy)
       nullify(Lwz)
@@ -895,7 +888,6 @@ module SCsensorClass
 !     ---------------
 !     Local variables
 !     ---------------
-      type(Element),        pointer :: e
       type(NodalStorage_t), pointer :: spAxi, spAeta, spAzeta
       integer                       :: eID
       logical                       :: need_dealloc
@@ -914,7 +906,7 @@ module SCsensorClass
          select type (HyperbolicDiscretization)
          type is (SplitDG_t)
 
-         e       => sem % mesh % elements(eID)
+         associate(e => sem % mesh % elements(eID))
          spAxi   => NodalStorage(e % Nxyz(1))
          spAeta  => NodalStorage(e % Nxyz(2))
          spAzeta => NodalStorage(e % Nxyz(3))
@@ -965,12 +957,12 @@ module SCsensorClass
          else
             e % storage % sensor = SinRamp(sensor, log10(e % storage % sensor))
          end if
+         end associate
 
          end select
       end do
 !$omp end parallel do
 
-      nullify(e)
       nullify(spAxi)
       nullify(spAeta)
       nullify(spAzeta)
@@ -999,7 +991,6 @@ module SCsensorClass
 !     ---------------
 !     Local variables
 !     ---------------
-      type(Element), pointer :: e
       integer                :: eID
       integer                :: i, j, k
       integer                :: cnt
@@ -1016,9 +1007,7 @@ module SCsensorClass
 !     -----------------------------------------------------------------
       cnt = 0
       do eID = 1, sem % mesh % no_of_elements
-
-         e => sem % mesh % elements(eID)
-
+         associate(e => sem % mesh % elements(eID))
          do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
 
             cnt = cnt + 1
@@ -1101,7 +1090,7 @@ module SCsensorClass
             sensor % x(2,cnt) = dp(1)**2 + dp(2)**2 + dp(3)**2
 
          end do ;                end do ;                end do
-
+         end associate
       end do
 !
 !     Rescale the values
@@ -1119,7 +1108,7 @@ module SCsensorClass
       nclusters = sensor % gmm % nclusters
       cnt = 0
       do eID = 1, sem % mesh % no_of_elements
-         e => sem % mesh % elements(eID)
+         associate(e => sem % mesh % elements(eID))
          if (nclusters <= 1) then
             e % storage % sensor = 0.0_RP
          else
@@ -1128,9 +1117,8 @@ module SCsensorClass
             e % storage % sensor = real(cluster - 1, RP) / (nclusters - 1)
          end if
          cnt = cnt + n
+         end associate
       end do
-
-      nullify(e)
 
    end subroutine Sensor_GMM
 !
