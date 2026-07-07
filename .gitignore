@@ -1,0 +1,12 @@
+# Archivos auxiliares de LaTeX a ignorar
+doc/*.bbl
+doc/*.blg
+doc/*.fdb_latexmk
+doc/*.fls
+doc/*.synctex.gz
+doc/*.aux
+doc/*.log
+doc/*.out
+doc/*.toc
+# Binarios generados
+Solver/src/addons/probes2tecplot/bin/horses2plt.probes
