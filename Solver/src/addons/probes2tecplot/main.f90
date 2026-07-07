@@ -126,7 +126,7 @@ program probes2tecplot
          write(STD_OUT,'(A)') "Usage: probes2tecplot control_file.convert"
          write(STD_OUT,'(A)') "       probes2tecplot mesh.hmesh solution.hsol probes.dat [--output-variables=p,u,v,w]"
          call exit(1)
-      end if
+      end if 
 !
 !     ---- Control file mode ----
 !     ---------------------------

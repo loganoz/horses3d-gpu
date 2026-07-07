@@ -102,7 +102,7 @@ header: FORCE
 	@echo "================================"
 	@echo ">>   Building probes2tecplot"
 	@echo "================================"
-	@echo
+	@echo 
 	@echo
 
 ## Dummy target to make sure a rule is executed
