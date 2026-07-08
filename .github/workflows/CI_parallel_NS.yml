@@ -34,7 +34,7 @@ jobs:
         compiler: ['gfortran']
         mode: ['DEBUG']
         comm: ['PARALLEL']
-        enable_threads: ['NO']
+        enable_threads: ['NO','YES']
         mkl: ['NO']
         hdf5: ['YES']
         
