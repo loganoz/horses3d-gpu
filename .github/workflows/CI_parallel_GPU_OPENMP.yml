@@ -1,4 +1,4 @@
-name: CI PARALLEL (MPI) GPU
+name: CI PARALLEL (MPI) GPU OPENMP
 
 ########################################################################
 on:
