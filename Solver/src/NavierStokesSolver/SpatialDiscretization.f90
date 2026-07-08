@@ -258,7 +258,9 @@ module SpatialDiscretization
 !        Prolongation of the solution to the faces
 !        -----------------------------------------
 !
+#ifndef _OPENACC
 !$omp parallel shared(mesh, time)
+#endif
          call HexMesh_ProlongSolToFaces(mesh, NCONS)
 !        ----------------
 !        Update MPI Faces
@@ -310,7 +312,9 @@ module SpatialDiscretization
                                           t    = time)
          
          end if
+#ifndef _OPENACC
 !$omp end parallel
+#endif
 !
       END SUBROUTINE ComputeTimeDerivative
 !
@@ -343,7 +347,9 @@ module SpatialDiscretization
 !        Prolongation of the solution to the faces
 !        -----------------------------------------
 !
+#ifndef _OPENACC
 !$omp parallel shared(mesh, time)
+#endif
          call mesh % ProlongSolutionToFaces(NCONS)
 !
 !        -----------------------------------------------------
@@ -365,7 +371,9 @@ module SpatialDiscretization
 !
          call TimeDerivative_ComputeQDotIsolated(mesh = mesh , &
                                                  t    = time )
+#ifndef _OPENACC
 !$omp end parallel
+#endif
 !
       END SUBROUTINE ComputeTimeDerivativeIsolated
 
@@ -405,24 +413,33 @@ module SpatialDiscretization
 !        ***********************************************
 !
          if (flowIsNavierStokes) then
-!$omp do schedule(runtime) private(i,j,k)
+#ifdef _OPENACC
             !$acc parallel loop gang present(mesh) async(1)
+#else
+!$omp do schedule(runtime) private(i,j,k)
+#endif
             do eID = 1, size(mesh % elements)
                !$acc loop vector collapse(3)
                do k = 0, mesh % elements(eID) % Nxyz(3) ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
                   call get_laminar_mu_kappa(mesh % elements(eID) % storage % Q(:,i,j,k), &
-                                            mesh % elements(eID) % storage % mu_NS(1,i,j,k),& 
+                                            mesh % elements(eID) % storage % mu_NS(1,i,j,k),&
                                             mesh % elements(eID) % storage % mu_NS(2,i,j,k))
                end do                ; end do                ; end do
             end do
+#ifdef _OPENACC
             !$acc end parallel loop
+#else
 !$omp end do
+#endif
          end if
 
 
          if ( LESModel % active) then
-!$omp do schedule(runtime) private(i,j,k,delta,mu_smag)
+#ifdef _OPENACC
             !$acc parallel loop gang present(mesh, LESModel) async(1)
+#else
+!$omp do schedule(runtime) private(i,j,k,delta,mu_smag)
+#endif
             do eID = 1, size(mesh % elements)
                delta = (mesh % elements(eID) % geom % Volume / product(mesh % elements(eID) % Nxyz + 1)) ** (1.0_RP / 3.0_RP)
                !$acc loop vector collapse(3)
@@ -440,8 +457,11 @@ module SpatialDiscretization
                                                                     mesh % elements(eID) % storage % mu_turb_NS(i,j,k) * dimensionless % mu_to_kappa
                end do                ; end do                ; end do
             end do
+#ifdef _OPENACC
             !$acc end parallel loop
+#else
 !$omp end do
+#endif
       end if
 !
 !        Compute viscosity at interior and boundary faces
@@ -472,23 +492,35 @@ module SpatialDiscretization
 !        Compute Riemann solver of non-shared faces
 !        ******************************************
 !
-!$omp do schedule(runtime) private(fID)
+#ifdef _OPENACC
 !$acc parallel loop gang collapse(2) present(mesh) async(1)
+#else
+!$omp do schedule(runtime) private(fID)
+#endif
       do iFace = 1, size(mesh % faces_interior) ; do side = 1,2
          fID = mesh % faces_interior(iFace)
          call computeElementInterfaceFlux_viscous(mesh % faces(fID), side)
-      end do ; end do 
+      end do ; end do
+#ifdef _OPENACC
 !$acc end parallel loop
+#else
 !$omp end do
+#endif
       
-!$omp do schedule(runtime) private(fID)
+#ifdef _OPENACC
 !$acc parallel loop gang present(mesh) async(1)
+#else
+!$omp do schedule(runtime) private(fID)
+#endif
          do iFace = 1, size(mesh % faces_interior)
             fID = mesh % faces_interior(iFace)
             call computeElementInterfaceFlux(mesh % faces(fID))
          end do
+#ifdef _OPENACC
 !$acc end parallel loop
+#else
 !$omp end do nowait
+#endif
 
          call computeBoundaryFlux(mesh, t)
 !
@@ -496,14 +528,20 @@ module SpatialDiscretization
 !        Surface integrals and scaling of elements with non-shared faces
 !        ***************************************************************
 !
-!$omp do schedule(runtime) private(i,j,k,eID)
+#ifdef _OPENACC
 !$acc parallel loop gang num_gangs(size(mesh % elements_sequential)) vector_length(128) present(mesh) async(1)
+#else
+!$omp do schedule(runtime) private(i,j,k,eID)
+#endif
          do iEl = 1, size(mesh % elements_sequential)
             eID = mesh % elements_sequential(iEl)
             call TimeDerivative_FacesContribution(mesh % elements(eID), mesh)
          end do
-!$acc end parallel loop 
+#ifdef _OPENACC
+!$acc end parallel loop
+#else
 !$omp end do
+#endif
 !
 !        ****************************
 !        Wait until messages are sent
@@ -536,27 +574,39 @@ module SpatialDiscretization
 !           Compute Riemann solver of shared faces
 !           **************************************
 !
-!$omp do schedule(runtime) private(fID)
+#ifdef _OPENACC
 !$acc parallel loop gang num_gangs(size(mesh % faces_mpi)) present(mesh) private(fID) async(1)
+#else
+!$omp do schedule(runtime) private(fID)
+#endif
             do iFace = 1, size(mesh % faces_mpi)
                fID = mesh % faces_mpi(iFace)
                call computeMPIFaceFlux(mesh % faces(fID))
             end do
+#ifdef _OPENACC
 !$acc end parallel loop
+#else
 !$omp end do
+#endif
 !
 !           ***********************************************************
 !           Surface integrals and scaling of elements with shared faces
 !           ***********************************************************
 !
-!$omp do schedule(runtime) private(i,j,k,eID)
+#ifdef _OPENACC
 !$acc parallel loop gang present(mesh) async(1)
+#else
+!$omp do schedule(runtime) private(i,j,k,eID)
+#endif
             do iEl = 1, size(mesh % elements_mpi)
                eID = mesh % elements_mpi(iEl)
                call TimeDerivative_FacesContribution(mesh % elements(eID), mesh)
             end do
+#ifdef _OPENACC
 !$acc end parallel loop
+#else
 !$omp end do
+#endif
 !
 !           Add an MPI Barrier
 !           ------------------
@@ -646,42 +696,55 @@ module SpatialDiscretization
 !        ***********************
 !        Now add the source term
 !        ***********************
-!$omp do schedule(runtime) private(i,j,k)
+#ifdef _OPENACC
 !$acc parallel loop gang vector_length(128) present(mesh) async(1)
+#else
+!$omp do schedule(runtime) private(i,j,k)
+#endif
          do eID = 1, mesh % no_of_elements
             !$acc loop vector collapse(4)
             do k = 0, mesh % elements(eID) % Nxyz(3)   ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1) ; do eq = 1, NCONS
                mesh % elements(eID) % storage % QDot(eq,i,j,k) = mesh % elements(eID) % storage % QDot(eq,i,j,k) + mesh % elements(eID) % storage % S_NS(eq,i,j,k)
             end do   ;  end do   ;  end do   ;  end do
          end do
+#ifdef _OPENACC
 !$acc end parallel loop
+#else
 !$omp end do
+#endif
 !
 !        *********************
 !        Add IBM source term
 !        *********************
          if( mesh % IBM % active ) then
             if( .not. mesh % IBM % semiImplicit ) then 
-!$omp do schedule(runtime) private(i,j,k,Source,Q_target)
+#ifdef _OPENACC
                   ! Check if update(t) is required
                   !$acc parallel loop gang present(mesh) copyin(t) async(1)
-                  do eID = 1, mesh % no_of_elements  
+#else
+!$omp do schedule(runtime) private(i,j,k,Source,Q_target)
+                  ! Check if update(t) is required
+#endif
+                  do eID = 1, mesh % no_of_elements
                      !$acc loop vector collapse(3) private(Source, Q_target)
                      do k = 0, mesh % elements(eID) % Nxyz(3)   ; do j = 0, mesh % elements(eID) % Nxyz(2) ; do i = 0, mesh % elements(eID) % Nxyz(1)
                         if( mesh % elements(eID) % isInsideBody(i,j,k) ) then
-                           if( mesh % IBM % stl(mesh % elements(eID) % STL(i,j,k)) % move ) then 
+                           if( mesh % IBM % stl(mesh % elements(eID) % STL(i,j,k)) % move ) then
                               ! Q_target = IBM_MaskVelocity(mesh%IBM, mesh % elements(eID)% storage% Q(:,i,j,k), NCONS, mesh % elements(eID)% STL(i,j,k), mesh % elements(eID)% geom% x(:,i,j,k), t )
                               call IBM_MaskVelocity(mesh % IBM, mesh % elements(eID) % storage % Q(:,i,j,k), NCONS, mesh % elements(eID) % STL(i,j,k), mesh % elements(eID) % geom % x(:,i,j,k), t, Q_target )
                               call IBM_SourceTerm(mesh % IBM, eID = eID, Q = mesh % elements(eID) % storage % Q(:,i,j,k), Q_target = Q_target, Source = Source, wallfunction = .false. )
-                           else 
+                           else
                               call IBM_SourceTerm(mesh % IBM, eID = eID, Q = mesh % elements(eID) % storage % Q(:,i,j,k), Source = Source, wallfunction = .false. )
-                           end if 
+                           end if
                            mesh % elements(eID) % storage % QDot(:,i,j,k) = mesh % elements(eID) % storage % QDot(:,i,j,k) + Source
                         end if
                      end do                  ; end do                ; end do
                   end do
+#ifdef _OPENACC
                   !$acc end parallel loop
-!$omp end do       
+#else
+!$omp end do
+#endif       
                if( mesh % IBM % Wallfunction ) then
 !$omp single
                   call mesh % IBM % GetBandRegionStates( mesh % elements )
@@ -750,8 +813,11 @@ module SpatialDiscretization
          end if
 
          if ( LESModel % active) then
-            !$omp do schedule(runtime) private(i,j,k,delta,mu_smag)
+#ifdef _OPENACC
                         !$acc parallel loop gang present(mesh, LESModel)
+#else
+            !$omp do schedule(runtime) private(i,j,k,delta,mu_smag)
+#endif
                         do eID = 1, size(mesh % elements)
                            delta = (mesh % elements(eID) % geom % Volume / product(mesh % elements(eID) % Nxyz + 1)) ** (1.0_RP / 3.0_RP)
                            !$acc loop vector collapse(3)
@@ -771,8 +837,11 @@ module SpatialDiscretization
                                                                                 mesh % elements(eID) % storage % mu_turb_NS(i,j,k) * dimensionless % mu_to_kappa
                            end do                ; end do                ; end do
                         end do
+#ifdef _OPENACC
                         !$acc end parallel loop
+#else
             !$omp end do
+#endif
          end if
 !
 !        Compute viscosity at interior and boundary faces
@@ -1043,8 +1112,11 @@ module SpatialDiscretization
          real(kind=RP) :: delta, mu_smag
 
          if (flowIsNavierStokes) then
-!$omp do schedule(runtime) private(i,j)
+#ifdef _OPENACC
             !$acc parallel loop gang present(mesh, face_ids) async(1)
+#else
+!$omp do schedule(runtime) private(i,j)
+#endif
             do iFace = 1, no_of_faces
                fID = face_ids(iFace)
                !$acc loop vector collapse(3)
@@ -1056,13 +1128,19 @@ module SpatialDiscretization
                   end do
                end do              ; end do
             end do
+#ifdef _OPENACC
             !$acc end parallel loop
+#else
 !$omp end do
+#endif
          end if
 
          if ( LESModel % Active ) then
-!$omp do schedule(runtime) private(i,j,delta,mu_smag)
+#ifdef _OPENACC
             !$acc parallel loop gang present(mesh, LESModel, face_ids) async(1)
+#else
+!$omp do schedule(runtime) private(i,j,delta,mu_smag)
+#endif
             do iFace = 1, no_of_faces
                delta = sqrt(mesh % faces(face_ids(iFace)) % geom % surface / product(mesh % faces(face_ids(iFace)) % Nf + 1))
                !$acc loop vector collapse(3)
@@ -1079,8 +1157,11 @@ module SpatialDiscretization
                   end do
                end do              ; end do
             end do
+#ifdef _OPENACC
             !$acc end parallel loop
+#else
 !$omp end do
+#endif
          end if
 
       end subroutine compute_viscosity_at_faces
@@ -1309,8 +1390,11 @@ module SpatialDiscretization
 !
 !        Compute inviscid - viscous contravariant flux
 !        ---------------------------------------------
-         !$omp do schedule(runtime)
+#ifdef _OPENACC
          !$acc parallel loop gang vector_length(128) num_gangs(9700) present(mesh) async(1)
+#else
+         !$omp do schedule(runtime)
+#endif
          do eID = 1 , size(mesh % elements)
 
             !$acc loop vector collapse(3) private(inviscidFlux, viscousFlux)
@@ -1353,98 +1437,136 @@ module SpatialDiscretization
                                                      mesh % elements(eID) % storage % QDot)
       
          end do
-         !$acc end parallel loop 
+#ifdef _OPENACC
+         !$acc end parallel loop
+#else
          !$omp end do
+#endif
 
       end subroutine TimeDerivative_VolumetricContribution
 
 !
 !///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-!
+      subroutine TimeDerivative_VolumetricContribution_Split_StandardDG(mesh)
+         use HexMeshClass
+         use NodalStorageClass,    only: NodalStorage
+         use ElementClass
+         use DGIntegrals
+         use RiemannSolvers_NS, only: twopointflux_selector => StandardDG_TwoPointFlux
+         implicit none
+         type(HexMesh), intent(inout) :: mesh
+         integer       :: i, j, k, l, eq, eID
+         real(kind=RP) :: Flux(1:NCONS, 1:NDIM), Q_acc
+         include 'split_template.inc'
+      end subroutine
+
+      subroutine TimeDerivative_VolumetricContribution_Split_Morinishi(mesh)
+         use HexMeshClass
+         use NodalStorageClass,    only: NodalStorage
+         use ElementClass
+         use DGIntegrals
+         use RiemannSolvers_NS, only: twopointflux_selector => Morinishi_TwoPointFlux
+         implicit none
+         type(HexMesh), intent(inout) :: mesh
+         integer       :: i, j, k, l, eq, eID
+         real(kind=RP) :: Flux(1:NCONS, 1:NDIM), Q_acc
+         include 'split_template.inc'
+      end subroutine
+
+      subroutine TimeDerivative_VolumetricContribution_Split_Ducros(mesh)
+         use HexMeshClass
+         use NodalStorageClass,    only: NodalStorage
+         use ElementClass
+         use DGIntegrals
+         use RiemannSolvers_NS, only: twopointflux_selector => Ducros_TwoPointFlux
+         implicit none
+         type(HexMesh), intent(inout) :: mesh
+         integer       :: i, j, k, l, eq, eID
+         real(kind=RP) :: Flux(1:NCONS, 1:NDIM), Q_acc
+         include 'split_template.inc'
+      end subroutine
+
+      subroutine TimeDerivative_VolumetricContribution_Split_KennedyGruber(mesh)
+         use HexMeshClass
+         use NodalStorageClass,    only: NodalStorage
+         use ElementClass
+         use DGIntegrals
+         use RiemannSolvers_NS, only: twopointflux_selector => KennedyGruber_TwoPointFlux
+         implicit none
+         type(HexMesh), intent(inout) :: mesh
+         integer       :: i, j, k, l, eq, eID
+         real(kind=RP) :: Flux(1:NCONS, 1:NDIM), Q_acc
+         include 'split_template.inc'
+      end subroutine
+
+      subroutine TimeDerivative_VolumetricContribution_Split_Pirozzoli(mesh)
+         use HexMeshClass
+         use NodalStorageClass,    only: NodalStorage
+         use ElementClass
+         use DGIntegrals
+         use RiemannSolvers_NS, only: twopointflux_selector => Pirozzoli_TwoPointFlux
+         implicit none
+         type(HexMesh), intent(inout) :: mesh
+         integer       :: i, j, k, l, eq, eID
+         real(kind=RP) :: Flux(1:NCONS, 1:NDIM), Q_acc
+         include 'split_template.inc'
+      end subroutine
+
+      subroutine TimeDerivative_VolumetricContribution_Split_EntropyConserving(mesh)
+         use HexMeshClass
+         use NodalStorageClass,    only: NodalStorage
+         use ElementClass
+         use DGIntegrals
+         use RiemannSolvers_NS, only: twopointflux_selector => EntropyConserving_TwoPointFlux
+         implicit none
+         type(HexMesh), intent(inout) :: mesh
+         integer       :: i, j, k, l, eq, eID
+         real(kind=RP) :: Flux(1:NCONS, 1:NDIM), Q_acc
+         include 'split_template.inc'
+      end subroutine
+
+      subroutine TimeDerivative_VolumetricContribution_Split_Chandrasekar(mesh)
+         use HexMeshClass
+         use NodalStorageClass,    only: NodalStorage
+         use ElementClass
+         use DGIntegrals
+         use RiemannSolvers_NS, only: twopointflux_selector => Chandrasekar_TwoPointFlux
+         implicit none
+         type(HexMesh), intent(inout) :: mesh
+         integer       :: i, j, k, l, eq, eID
+         real(kind=RP) :: Flux(1:NCONS, 1:NDIM), Q_acc
+         include 'split_template.inc'
+      end subroutine
 
       subroutine TimeDerivative_VolumetricContribution_Split(mesh)
          use HexMeshClass
-         use NodalStorageClass, only: NodalStorage
-         use ElementClass
-         use DGIntegrals
-         use RiemannSolvers_NS
+         use RiemannSolvers_NSKeywordsModule
+         use RiemannSolvers_NS, only : whichAverage
          implicit none
-         type(HexMesh), intent (inout)           :: mesh
-!
-!        ---------------
-!        Local variables
-!        ---------------
-!
-         integer       :: i, j, k,l,eq, eID
-         real(kind=RP) :: Flux(1:NCONS, 1:NDIM)
+         type(HexMesh), intent(inout) :: mesh
 
-         !$acc parallel present(mesh) vector_length(128) num_gangs(9750) async(1)
-         !$acc loop gang
-         do eID = 1 , size(mesh % elements)
-         
-            !$acc loop vector collapse(3) private(Flux)
-            do k = 0, mesh % elements(eID) % Nxyz(3)  
-               do j = 0, mesh % elements(eID) % Nxyz(2)  
-                  do i = 0, mesh % elements(eID) % Nxyz(1)
+         select case (whichAverage)
+            case (STANDARD_AVG)
+               call TimeDerivative_VolumetricContribution_Split_StandardDG(mesh)
+            case (MORINISHI_AVG)
+               call TimeDerivative_VolumetricContribution_Split_Morinishi(mesh)
+            case (DUCROS_AVG)
+               call TimeDerivative_VolumetricContribution_Split_Ducros(mesh)
+            case (KENNEDYGRUBER_AVG)
+               call TimeDerivative_VolumetricContribution_Split_KennedyGruber(mesh)
+            case (PIROZZOLI_AVG)
+               call TimeDerivative_VolumetricContribution_Split_Pirozzoli(mesh)
+            case (ENTROPYCONS_AVG)
+               call TimeDerivative_VolumetricContribution_Split_EntropyConserving(mesh)
+            case (CHANDRASEKAR_AVG)
+               call TimeDerivative_VolumetricContribution_Split_Chandrasekar(mesh)
+            case default
+               print*, "Averaging not recognized."
+               errorMessage(STD_OUT)
+               error stop
+         end select
+      end subroutine
 
-                  call ViscousFlux_STATE( NCONS, NGRAD, mesh % elements(eID) % storage % Q(:,i,j,k), mesh % elements(eID) % storage % U_x(:,i,j,k), & 
-                                          mesh % elements(eID) % storage % U_y(:,i,j,k) , mesh % elements(eID) % storage % U_z(:,i,j,k), &
-                                          mesh % elements(eID) % storage % mu_ns(1,i,j,k), 0.0_RP, &
-                                          mesh % elements(eID) % storage % mu_ns(2,i,j,k), Flux)
-                  !$acc loop seq
-                  do eq = 1, NCONS
-              
-                     mesh % elements(eID) % storage % contravariantFlux(eq,i,j,k,IX)  = - Flux(eq,IX) * mesh % elements(eID) % geom % jGradXi(IX,i,j,k)  &
-                                                                                        - Flux(eq,IY) * mesh % elements(eID) % geom % jGradXi(IY,i,j,k)  &
-                                                                                        - Flux(eq,IZ) * mesh % elements(eID) % geom % jGradXi(IZ,i,j,k)
-
-                     mesh % elements(eID) % storage % contravariantFlux(eq,i,j,k,IY) = - Flux(eq,IX) * mesh % elements(eID) % geom % jGradEta(IX,i,j,k)  &
-                                                                                       - Flux(eq,IY) * mesh % elements(eID) % geom % jGradEta(IY,i,j,k)  &
-                                                                                       - Flux(eq,IZ) * mesh % elements(eID) % geom % jGradEta(IZ,i,j,k)
-                  
-                     mesh % elements(eID) % storage % contravariantFlux(eq,i,j,k,IZ) = - Flux(eq,IX) * mesh % elements(eID) % geom % jGradZeta(IX,i,j,k)  &
-                                                                                       - Flux(eq,IY) * mesh % elements(eID) % geom % jGradZeta(IY,i,j,k)  &
-                                                                                       - Flux(eq,IZ) * mesh % elements(eID) % geom % jGradZeta(IZ,i,j,k)
-                     ! initialize to 0 to accumulate
-                     mesh % elements(eID) % storage % Qdot(eq,i,j,k)  = 0.0_RP
-                  end do
-            end do               ; end do                ; end do
-
-         call ScalarWeakIntegrals_StdVolumeGreen( mesh % elements(eID) % Nxyz, NCONS, mesh % elements(eID) % storage % contravariantFlux, &
-                                                  mesh % elements(eID) % storage % QDot)
-!
-!        *************************************
-!        Compute interior contravariant fluxes
-!        *************************************
-!
-!        Compute inviscid contravariant flux
-!        -----------------------------------
-            !$acc loop vector collapse(3) private(Flux)
-            do k = 0, mesh % elements(eID) % Nxyz(3)  
-               do j = 0, mesh % elements(eID) % Nxyz(2)  
-                  do i = 0, mesh % elements(eID) % Nxyz(1)
-                     !$acc loop seq
-                     do l = 0, mesh % elements(eID) % Nxyz(1)
-                        call TwoPointFlux_Selector(mesh % elements(eID) % storage % Q(:,i,j,k), mesh % elements(eID) % storage % Q(:,l,j,k), mesh % elements(eID) % geom % jGradXi(:,i,j,k),  mesh % elements(eID) % geom % jGradXi(:,l,j,k), Flux(:,IX))
-                        call TwoPointFlux_Selector(mesh % elements(eID) % storage % Q(:,i,j,k), mesh % elements(eID) % storage % Q(:,i,l,k), mesh % elements(eID) % geom % jGradEta(:,i,j,k), mesh % elements(eID) % geom % jGradEta(:,i,l,k), Flux(:,IY))
-                        call TwoPointFlux_Selector(mesh % elements(eID) % storage % Q(:,i,j,k), mesh % elements(eID) % storage % Q(:,i,j,l), mesh % elements(eID) % geom % jGradZeta(:,i,j,k), mesh % elements(eID) % geom % jGradZeta(:,i,j,l), Flux(:,IZ))
-                        
-                        !$acc loop seq
-                        do eq = 1, NCONS
-                           mesh % elements(eID) % storage % QDot(eq,i,j,k) = mesh % elements(eID) % storage % QDot(eq,i,j,k) &
-                                                                           - NodalStorage(mesh % elements(eID) % Nxyz(1)) % sharpD(i,l) *  Flux(eq,IX) &
-                                                                           - NodalStorage(mesh % elements(eID) % Nxyz(2)) % sharpD(j,l) *  Flux(eq,IY) &
-                                                                           - NodalStorage(mesh % elements(eID) % Nxyz(3)) % sharpD(k,l) *  Flux(eq,IZ)
-                        end do
-                     end do 
-
-            end do               ; end do                ; end do
-
-         enddo
-         !$acc end parallel loop
-
-      end subroutine TimeDerivative_VolumetricContribution_Split
-!
 !///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 !
       subroutine TimeDerivative_FacesContribution(e, mesh)
