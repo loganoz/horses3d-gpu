@@ -67,3 +67,12 @@ horsesConverter
 
 #ford
 doc/doc_output
+*.aux
+*.fls
+*.out
+*.fdb_latexmk
+*.gz
+*.log
+*.toc
+*.blg
+*.bbl
