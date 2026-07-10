@@ -170,20 +170,14 @@ module EllipticBR1
 !        Compute Riemann solvers of non-shared faces
 !        *******************************************
 !
-#ifdef _OPENACC
-         !$acc parallel loop gang present(mesh, self) async(1)
-#else
 !$omp do schedule(runtime) private(fID)
-#endif
+         !$acc parallel loop gang present(mesh, self) async(1)
          do iFace = 1, size(mesh % faces_interior)
             fID = mesh % faces_interior(iFace)
             call BR1_ComputeElementInterfaceAverage(self, mesh % faces(fID), nEqn, nGradEqn)
          end do
-#ifdef _OPENACC
          !$acc end parallel loop
-#else
 !$omp end do nowait
-#endif
 
          nZones = size(mesh % zones)
 !$omp do schedule(runtime) private(zoneID)
@@ -192,11 +186,8 @@ module EllipticBR1
          enddo
 !$omp end do 
 
-#ifdef _OPENACC
-         !$acc parallel loop gang present(mesh) async(1)
-#else
 !$omp do schedule(runtime) private(eID)
-#endif
+         !$acc parallel loop gang present(mesh) async(1) 
          do iEl = 1, size(mesh % elements_sequential)
             eID = mesh % elements_sequential(iEl)
 !
@@ -204,11 +195,8 @@ module EllipticBR1
 !           -------------------------
             call BR1_GradientFaceLoop(nGradEqn, mesh % elements(eID), mesh)
          end do
-#ifdef _OPENACC
          !$acc end parallel loop
-#else
 !$omp end do
-#endif
 
          call HexMesh_ProlongGradientsToFaces(mesh, size(mesh % elements_sequential), mesh % elements_sequential, nGradEqn)
 
@@ -219,27 +207,18 @@ module EllipticBR1
          end if
 !$omp end single
 
-#ifdef _OPENACC
-         !$acc parallel loop gang present(mesh, self) async(1)
-#else
 !$omp do schedule(runtime) private(fID)
-#endif
+         !$acc parallel loop gang present(mesh, self) async(1) 
          do iFace = 1, size(mesh % faces_mpi)
             fID = mesh % faces_mpi(iFace)
             call BR1_ComputeMPIFaceAverage(self, mesh % faces(fID), nEqn, nGradEqn)
          end do
-#ifdef _OPENACC
          !$acc end parallel loop
-#else
-!$omp end do
-#endif
+!$omp end do 
 !
 
-#ifdef _OPENACC
-!$acc parallel loop gang vector_length(128) present(mesh, self) async(1)
-#else
 !$omp do schedule(runtime) private(eID)
-#endif
+!$acc parallel loop gang vector_length(128) present(mesh, self) async(1)
          do iEl = 1, size(mesh % elements_mpi)
             eID = mesh % elements_mpi(iEl)
 !
@@ -247,11 +226,8 @@ module EllipticBR1
 !           -------------------------
             call BR1_GradientFaceLoop(nGradEqn, mesh % elements(eID), mesh)
          end do
-#ifdef _OPENACC
-!$acc end parallel loop
-#else
 !$omp end do
-#endif
+!$acc end parallel loop
 !
 !           Prolong gradients
 !           -----------------

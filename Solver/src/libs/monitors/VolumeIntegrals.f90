@@ -607,11 +607,8 @@ module VolumeIntegrals
 
             case ( VELOCITY )
                 ! num_of_vars is equal to NDIM
-#ifdef _OPENACC
 !$acc parallel loop gang present(mesh) num_gangs(9700) reduction(+:val1,val2,val3) async(1)
-#else
 !$omp parallel do reduction(+:val1,val2,val3) private(val) schedule(guided)
-#endif
          do eID = 1, mesh % no_of_elements
 !
             local1 = 0.0_RP
@@ -648,19 +645,14 @@ module VolumeIntegrals
             val3 = val3 + local3
 
          end do
-#ifdef _OPENACC
-!$acc end parallel loop
-#else
 !$omp end parallel do
-#endif
+!$acc end parallel loop
+
 
             case ( MOMENTUM )
                 ! num_of_vars is equal to NDIM
-#ifdef _OPENACC
 !$acc parallel loop gang present(mesh) num_gangs(9700) reduction(+:val1,val2,val3)
-#else
 !$omp parallel do reduction(+:val1,val2,val3) private(val) schedule(guided)
-#endif
          do eID = 1, mesh % no_of_elements
 !
             local1 = 0.0_RP
@@ -692,11 +684,8 @@ module VolumeIntegrals
             val3 = val3 + local3
 
          end do
-#ifdef _OPENACC
-!$acc end parallel loop
-#else
 !$omp end parallel do
-#endif
+!$acc end parallel loop
 
 !            case ( PSOURCE )
 !                ! num_of_vars is equal to NCONS
@@ -741,11 +730,8 @@ module VolumeIntegrals
             case ( SOURCE )
                 ! num_of_vars is equal to NCONS
 
-#ifdef _OPENACC
 !$acc parallel loop gang present(mesh) num_gangs(9700) reduction(+:val1,val2,val3,val4,val5)
-#else
 !$omp parallel do reduction(+:val1,val2,val3,val4,val5) private(val) schedule(guided)
-#endif
          do eID = 1, mesh % no_of_elements
 !
             local1 = 0.0_RP
@@ -791,11 +777,8 @@ module VolumeIntegrals
             val5 = val5 + local5
 
          end do
-#ifdef _OPENACC
-!$acc end parallel loop
-#else
 !$omp end parallel do
-#endif
+!$acc end parallel loop
 !
 #endif
 !

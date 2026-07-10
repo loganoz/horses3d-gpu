@@ -265,20 +265,14 @@ module EllipticIP
             end do
 !$omp end do 
          else
-#ifdef _OPENACC
-!$acc parallel loop gang present(mesh)
-#else
 !$omp do schedule(runtime) private(fID)
-#endif
+!$acc parallel loop gang present(mesh)
             do iFace = 1, size(mesh % faces_interior)
                fID = mesh % faces_interior(iFace)
                call IP_GradientInterfaceSolution(self, mesh % faces(fID), nEqn, nGradEqn)
             end do
-#ifdef _OPENACC
 !$acc end parallel loop
-#else
-!$omp end do
-#endif
+!$omp end do 
          end if
 
          if (HOElements) then
@@ -290,21 +284,15 @@ module EllipticIP
             end do
 !$omp end do 
          else
-#ifdef _OPENACC
-!$acc parallel loop gang present(mesh)
-#else
 !$omp do schedule(runtime) private(fID)
-#endif
+!$acc parallel loop gang present(mesh)
             do iFace = 1, size(mesh % faces_boundary)
                fID = mesh % faces_boundary(iFace)
                zoneBCName = mesh % zones (mesh % faces(fID) % zone) % zoneBCName
                call IP_GradientInterfaceSolutionBoundary(self, mesh % faces(fID), zoneBCName, nEqn, nGradEqn, time)
             end do
-#ifdef _OPENACC
 !$acc end parallel loop
-#else
-!$omp end do
-#endif
+!$omp end do 
          end if
 !
 !        **********************
@@ -319,20 +307,14 @@ module EllipticIP
             end do
 !$omp end do
          else
-#ifdef _OPENACC
+!$omp do schedule(runtime) private(eID) 
 !$acc parallel loop gang present(mesh, self) copyin(self)
-#else
-!$omp do schedule(runtime) private(eID)
-#endif
             do iEl = 1, size(mesh % elements_sequential)
                eID = mesh % elements_sequential(iEl)
                call IP_ComputeGradientFaceIntegrals(self,nGradEqn, mesh % elements(eID), mesh)
             end do
-#ifdef _OPENACC
 !$acc end parallel loop
-#else
 !$omp end do
-#endif
          end if
 !
 !        ******************
@@ -350,20 +332,14 @@ module EllipticIP
 !        Compute MPI interface solutions
 !        *******************************
 !
-#ifdef _OPENACC
-!$acc parallel loop gang present(mesh)
-#else
 !$omp do schedule(runtime) private(fID)
-#endif
+!$acc parallel loop gang present(mesh)
          do iFace = 1, size(mesh % faces_mpi)
             fID = mesh % faces_mpi(iFace)
             call IP_GradientInterfaceSolutionMPI(self, mesh % faces(fID), nEqn, nGradEqn)
          end do
-#ifdef _OPENACC
 !$acc end parallel loop
-#else
-!$omp end do
-#endif
+!$omp end do 
 !
 !        **************************************************
 !        Compute face integrals for elements with MPI faces
@@ -377,20 +353,14 @@ module EllipticIP
             end do
 !$omp end do
          else
-#ifdef _OPENACC
-!$acc parallel loop gang present(mesh, self) copyin(self)
-#else
 !$omp do schedule(runtime) private(eID)
-#endif
+!$acc parallel loop gang present(mesh, self) copyin(self)
             do iEl = 1, size(mesh % elements_mpi)
                eID = mesh % elements_mpi(iEl)
                call IP_ComputeGradientFaceIntegrals(self,nGradEqn, mesh % elements(eID), mesh)
             end do
-#ifdef _OPENACC
 !$acc end parallel loop
-#else
 !$omp end do
-#endif
          end if
 #endif
 
