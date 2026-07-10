@@ -76,3 +76,5 @@ doc/doc_output
 *.toc
 *.blg
 *.bbl
+*.diff
+*.patch
