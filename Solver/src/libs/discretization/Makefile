@@ -96,6 +96,54 @@ LIB = discretization
 
 all: lib$(LIB)_ns.a lib$(LIB)_nssa.a lib$(LIB)_ins.a lib$(LIB)_ch.a lib$(LIB)_mu.a  lib$(LIB)_caa.a
 
+# nvfortran GPU: strip -fopenmp from files with mixed OMP/ACC directives
+FFLAGS_NO_OMP := $(filter-out -fopenmp -mp,$(FFLAGS))
+
+./build_ns/EllipticBR1.o \
+./build_ns/EllipticBR2.o \
+./build_ns/EllipticIP.o \
+./build_ns/DGSEMClass.o: ./build_ns/%.o: %.f90
+	@echo
+	@echo $<
+	$(FC) $(FFLAGS_NO_OMP) -DNAVIERSTOKES -I./include_ns $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDE)_ns -c $< -o $@ $(MOD_FLAG) ./include_ns
+
+./build_nssa/EllipticBR1.o \
+./build_nssa/EllipticBR2.o \
+./build_nssa/EllipticIP.o \
+./build_nssa/DGSEMClass.o: ./build_nssa/%.o: %.f90
+	@echo
+	@echo $<
+	$(FC) $(FFLAGS_NO_OMP) -DNAVIERSTOKES -DSPALARTALMARAS -I./include_nssa $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDE)_nssa -c $< -o $@ $(MOD_FLAG) ./include_nssa
+
+./build_ins/EllipticBR1.o \
+./build_ins/EllipticBR2.o \
+./build_ins/EllipticIP.o \
+./build_ins/DGSEMClass.o: ./build_ins/%.o: %.f90
+	@echo
+	@echo $<
+	$(FC) $(FFLAGS_NO_OMP) -DINCNS -I./include_ins $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDE)_ins -c $< -o $@ $(MOD_FLAG) ./include_ins
+
+./build_ch/EllipticBR1.o \
+./build_ch/EllipticBR2.o \
+./build_ch/EllipticIP.o \
+./build_ch/DGSEMClass.o: ./build_ch/%.o: %.f90
+	@echo
+	@echo $<
+	$(FC) $(FFLAGS_NO_OMP) -DCAHNHILLIARD -I./include_ch $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDE)_ch -c $< -o $@ $(MOD_FLAG) ./include_ch
+
+./build_mu/EllipticBR1.o \
+./build_mu/EllipticBR2.o \
+./build_mu/EllipticIP.o \
+./build_mu/DGSEMClass.o: ./build_mu/%.o: %.f90
+	@echo
+	@echo $<
+	$(FC) $(FFLAGS_NO_OMP) -DMULTIPHASE -DCAHNHILLIARD -I./include_mu $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDE)_mu -c $< -o $@ $(MOD_FLAG) ./include_mu
+
+./build_caa/DGSEMClass.o: ./build_caa/%.o: %.f90
+	@echo
+	@echo $<
+	$(FC) $(FFLAGS_NO_OMP) -DACOUSTIC -I./include_caa $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDE)_caa -c $< -o $@ $(MOD_FLAG) ./include_caa
+
 ./build_ns/%.o: %.f90
 	@echo
 	@echo $<

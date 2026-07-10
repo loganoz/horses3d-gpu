@@ -198,6 +198,39 @@ all: lib$(LIB)_ns.a lib$(LIB)_nssa.a lib$(LIB)_ins.a lib$(LIB)_ch.a lib$(LIB)_mu
 	@echo $<
 	$(FC) -cpp -O2 -ffree-line-length-0 -DACOUSTIC -I./include_caa $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDE)_caa -c $< -o $@ $(MOD_FLAG) ./include_caa
 
+# nvfortran GPU: strip -fopenmp from files with mixed OMP/ACC directives
+FFLAGS_NO_OMP := $(filter-out -fopenmp -mp,$(FFLAGS))
+
+./build_ns/HexMesh.o ./build_ns/IBMClass.o: ./build_ns/%.o: %.f90
+	@echo
+	@echo $<
+	$(FC) $(FFLAGS_NO_OMP) -DNAVIERSTOKES -I./include_ns $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDEO) $(INCLUDE)_ns -c $< -o $@ $(MOD_FLAG) ./include_ns
+
+./build_nssa/HexMesh.o ./build_nssa/IBMClass.o: ./build_nssa/%.o: %.f90
+	@echo
+	@echo $<
+	$(FC) $(FFLAGS_NO_OMP) -DNAVIERSTOKES -DSPALARTALMARAS -I./include_nssa $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDEO) $(INCLUDE)_nssa -c $< -o $@ $(MOD_FLAG) ./include_nssa
+
+./build_ins/HexMesh.o ./build_ins/IBMClass.o: ./build_ins/%.o: %.f90
+	@echo
+	@echo $<
+	$(FC) $(FFLAGS_NO_OMP) -DINCNS -I./include_ins $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDEO) $(INCLUDE)_ins -c $< -o $@ $(MOD_FLAG) ./include_ins
+
+./build_ch/HexMesh.o ./build_ch/IBMClass.o: ./build_ch/%.o: %.f90
+	@echo
+	@echo $<
+	$(FC) $(FFLAGS_NO_OMP) -DCAHNHILLIARD -I./include_ch $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDEO) $(INCLUDE)_ch -c $< -o $@ $(MOD_FLAG) ./include_ch
+
+./build_mu/HexMesh.o ./build_mu/IBMClass.o: ./build_mu/%.o: %.f90
+	@echo
+	@echo $<
+	$(FC) $(FFLAGS_NO_OMP) -DMULTIPHASE -DCAHNHILLIARD -I./include_mu $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDEO) $(INCLUDE)_mu -c $< -o $@ $(MOD_FLAG) ./include_mu
+
+./build_caa/HexMesh.o ./build_caa/IBMClass.o: ./build_caa/%.o: %.f90
+	@echo
+	@echo $<
+	$(FC) $(FFLAGS_NO_OMP) -DACOUSTIC -I./include_caa $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDEO) $(INCLUDE)_caa -c $< -o $@ $(MOD_FLAG) ./include_caa
+
 ./build_ns/%.o: %.f90
 	@echo
 	@echo $<
