@@ -524,7 +524,7 @@ end module ProblemFileFunctions
 !           Local variables
 !           ---------------
 !
-            CHARACTER(LEN=29)                  :: testName           = "Cylinder Pirozzoli Roe"
+            CHARACTER(LEN=29)                  :: testName           = "Cylinder Roe Pike Pirozzoli"
             REAL(KIND=RP)                      :: maxError
             REAL(KIND=RP), ALLOCATABLE         :: QExpected(:,:,:,:)
             INTEGER                            :: eID
@@ -532,16 +532,15 @@ end module ProblemFileFunctions
             TYPE(FTAssertionsManager), POINTER :: sharedManager
             LOGICAL                            :: success
             integer                            :: rank, io
-
-            real(kind=RP), parameter           :: cd =  35.380054657588104_RP
-            real(kind=RP), parameter           :: cl =  -2.1675480592953100E-4_RP
-            real(kind=RP), parameter           :: wake_u = 3.0675148576095859E-14_RP
-            real(kind=RP), parameter           :: res(5) = [  9.3478957716597240_RP, &
-                                                              23.979434461004804_RP, &
-                                                              0.22647324206784938_RP, &
-                                                              27.486657517616088_RP, &
-                                                              255.31420936461873_RP]
-
+            real(kind=RP), parameter :: cd = 35.519134305262078_RP
+            real(kind=RP), parameter :: cl = -2.1825423914800801E-004_RP
+            real(kind=RP), parameter :: wake_u = -3.3846956399656723E-015_RP
+            real(kind=RP), parameter :: res(5) = [  8.9886695091163809_RP, &
+                                                    24.665124852794371_RP, &
+                                                    0.23718849164102992_RP, &
+                                                    27.416347302877853_RP, &
+                                                    245.44091095230763_RP ]
+                     
 #if defined(NAVIERSTOKES)
 
             CALL initializeSharedAssertionsManager
@@ -612,7 +611,7 @@ end module ProblemFileFunctions
       SUBROUTINE UserDefinedTermination
 !
 !        -----------------------------------------------
-!        Called at the the end of the main driver after 
+!        Called at the end of the main driver after 
 !        everything else is done.
 !        -----------------------------------------------
 !
