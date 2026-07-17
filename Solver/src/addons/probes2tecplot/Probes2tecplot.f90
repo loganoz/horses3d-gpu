@@ -808,6 +808,6 @@ module Probes2tecplotModule
                        - A(1,2)*(A(2,1)*b(3) - b(2)*A(3,1))   &
                        + b(1)*(A(2,1)*A(3,2) - A(2,2)*A(3,1)) )
 
-   end function Solve3x3
+   end function Solve3x3 
 
 end module Probes2tecplotModule

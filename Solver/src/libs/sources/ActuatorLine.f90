@@ -752,6 +752,7 @@ contains
       enddo
     enddo
 !$omp end do
+
 !   update MPI partitions and look for points that have changed
 !   -----------------------------------------------------------
     if ( (MPI_Process % doMPIAction) ) then
