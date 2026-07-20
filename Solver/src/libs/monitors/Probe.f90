@@ -33,6 +33,7 @@ module ProbeClass
       real(kind=RP), allocatable      :: values(:,:)
       real(kind=RP), allocatable      :: lxi(:) , leta(:), lzeta(:)
       real(kind=RP), allocatable      :: var(:,:,:)
+      logical                         :: isFileProbe = .false.
       real(kind=RP)                   :: saveTimestep
       real(kind=RP)                   :: lastSavedTime
       character(len=STR_LEN_MONITORS) :: fileName
