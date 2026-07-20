@@ -34,7 +34,7 @@ jobs:
         compiler: ['gfortran']
         mode: ['DEBUG']
         comm: ['PARALLEL']
-        enable_threads: ['NO']
+        enable_threads: ['NO','YES']
 
     name: iNS - ${{ matrix.compiler }} - ${{ matrix.mode }} - ${{ matrix.comm }} - ${{ matrix.enable_threads }}
 
