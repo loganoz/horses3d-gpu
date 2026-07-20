@@ -306,6 +306,7 @@ module ShockCapturing
       if (.not. updated) then
          SCflux = 0.0_RP
          e % storage % artificialDiss = 0.0_RP
+!$acc update device(e % storage % artificialDiss) if_present
       end if
 
    end subroutine SC_viscosity
@@ -636,6 +637,11 @@ module ShockCapturing
 !///////////////////////////////////////////////////////////////////////////////
 !
    subroutine NoSVV_viscosity(self, mesh, e, switch, SCflux)
+      use PhysicsStorage, only: grad_vars, GRADVARS_STATE, &
+                                GRADVARS_ENTROPY, GRADVARS_ENERGY
+      use Physics,        only: ViscousFlux_STATE, ViscousFlux_ENTROPY, &
+                                ViscousFlux_ENERGY, GuermondPopovFlux_ENTROPY
+!$acc routine(GuermondPopovFlux_ENTROPY) seq
 !
 !     --------------------------------------------------------------------------
 !     TODO: Introduce alpha viscosity, which probably means reimplementing here
@@ -662,28 +668,60 @@ module ShockCapturing
       integer  :: i
       integer  :: j
       integer  :: k
+      integer  :: eq
       integer  :: fIDs(6)
+      integer  :: fluxType
+      integer  :: updateMethod
+#if !defined (SPALARTALMARAS)
+      integer  :: smagWallModel
+#endif
       real(RP) :: delta
       real(RP) :: kappa
+      real(RP) :: hn
+      real(RP) :: mu1
+      real(RP) :: mu2
+#if !defined (SPALARTALMARAS)
+      real(RP) :: smagC
+#endif
       real(RP) :: mu(0:e % Nxyz(1), 0:e % Nxyz(2), 0:e % Nxyz(3))
       real(RP) :: covariantFlux(1:NCONS, 1:NDIM)
 
 
+      updateMethod = self % updateMethod
+      fluxType     = self % fluxType
+      mu1          = self % mu1
+      mu2          = self % mu2
+      hn           = e % hn
+#if !defined (SPALARTALMARAS)
+      smagC         = self % smagorinsky % C
+      smagWallModel = self % smagorinsky % WallModel
+#endif
+
+!$acc data present(e) create(mu) copyout(SCflux)
       if (switch > 0.0_RP) then
 !
 !        Compute viscosity
 !        -----------------
-         select case (self % updateMethod)
+         select case (updateMethod)
          case (SC_CONST_ID)
-            mu = merge(self % mu2, self % mu1, switch >= 1.0_RP) * e % hn
+!$acc parallel loop gang vector collapse(3) present(e, mu) copyin(mu1, mu2, hn, switch) async(1)
+            do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
+               mu(i,j,k) = merge(mu2, mu1, switch >= 1.0_RP) * hn
+            end do                ; end do                ; end do
+!$acc end parallel loop
 
          case (SC_SENSOR_ID)
-            mu = (self % mu1 * (1.0_RP-switch) + self % mu2 * switch) * e % hn
+!$acc parallel loop gang vector collapse(3) present(e, mu) copyin(mu1, mu2, hn, switch) async(1)
+            do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
+               mu(i,j,k) = (mu1 * (1.0_RP-switch) + mu2 * switch) * hn
+            end do                ; end do                ; end do
+!$acc end parallel loop
 
 #if !defined (SPALARTALMARAS)
          case (SC_SMAG_ID)
 
             delta = (e % geom % Volume / product(e % Nxyz + 1)) ** (1.0_RP / 3.0_RP)
+!$acc parallel loop gang vector collapse(3) present(e, mu) copyin(delta, smagC, smagWallModel) async(1)
             do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
                call Smagorinsky_ComputeViscosity(delta, e % geom % dWall(i,j,k), &
                                                  e % storage % Q(:,i,j,k),       &
@@ -691,47 +729,156 @@ module ShockCapturing
                                                  e % storage % U_y(:,i,j,k),     &
                                                  e % storage % U_z(:,i,j,k),     &
                                                  mu(i,j,k),                      &
-                                                 self % smagorinsky % C,            &
-                                                 self % smagorinsky % WallModel)
+                                                 smagC,                           &
+                                                 smagWallModel)
             end do                ; end do                ; end do
+!$acc end parallel loop
 #endif
 
          end select
 !
 !        Compute the viscous flux
 !        ------------------------
-         do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
+         select case (fluxType)
+         case (SC_PHYS_ID)
+            select case (grad_vars)
+            case (GRADVARS_STATE)
+!$acc parallel loop gang vector collapse(3) present(e, mu, SCflux) private(covariantFlux, kappa) async(1)
+               do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
 
-            kappa = dimensionless % mu_to_kappa * mu(i,j,k)
-            call self % ViscousFlux(NCONS, NGRAD, e % storage % Q(:,i,j,k), &
-                                    e % storage % U_x(:,i,j,k),             &
-                                    e % storage % U_y(:,i,j,k),             &
-                                    e % storage % U_z(:,i,j,k),             &
-                                    mu(i,j,k), 0.0_RP, kappa,               &
-                                    covariantflux)
+                  kappa = dimensionless % mu_to_kappa * mu(i,j,k)
+                  call ViscousFlux_STATE(NCONS, NGRAD, e % storage % Q(:,i,j,k), &
+                                         e % storage % U_x(:,i,j,k),             &
+                                         e % storage % U_y(:,i,j,k),             &
+                                         e % storage % U_z(:,i,j,k),             &
+                                         mu(i,j,k), 0.0_RP, kappa,               &
+                                         covariantFlux)
 
-            SCflux(:,i,j,k,IX) = covariantFlux(:,IX) * e % geom % jGradXi(IX,i,j,k) &
-                               + covariantFlux(:,IY) * e % geom % jGradXi(IY,i,j,k) &
-                               + covariantFlux(:,IZ) * e % geom % jGradXi(IZ,i,j,k)
+                  do eq = 1, NCONS
+                     SCflux(eq,i,j,k,IX) = covariantFlux(eq,IX) * e % geom % jGradXi(IX,i,j,k) &
+                                         + covariantFlux(eq,IY) * e % geom % jGradXi(IY,i,j,k) &
+                                         + covariantFlux(eq,IZ) * e % geom % jGradXi(IZ,i,j,k)
+
+                     SCflux(eq,i,j,k,IY) = covariantFlux(eq,IX) * e % geom % jGradEta(IX,i,j,k) &
+                                         + covariantFlux(eq,IY) * e % geom % jGradEta(IY,i,j,k) &
+                                         + covariantFlux(eq,IZ) * e % geom % jGradEta(IZ,i,j,k)
+
+                     SCflux(eq,i,j,k,IZ) = covariantFlux(eq,IX) * e % geom % jGradZeta(IX,i,j,k) &
+                                         + covariantFlux(eq,IY) * e % geom % jGradZeta(IY,i,j,k) &
+                                         + covariantFlux(eq,IZ) * e % geom % jGradZeta(IZ,i,j,k)
+                  end do
+
+               end do                ; end do                ; end do
+!$acc end parallel loop
+
+            case (GRADVARS_ENTROPY)
+!$acc parallel loop gang vector collapse(3) present(e, mu, SCflux) private(covariantFlux, kappa) async(1)
+               do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
+
+                  kappa = dimensionless % mu_to_kappa * mu(i,j,k)
+                  call ViscousFlux_ENTROPY(NCONS, NGRAD, e % storage % Q(:,i,j,k), &
+                                           e % storage % U_x(:,i,j,k),             &
+                                           e % storage % U_y(:,i,j,k),             &
+                                           e % storage % U_z(:,i,j,k),             &
+                                           mu(i,j,k), 0.0_RP, kappa,               &
+                                           covariantFlux)
+
+                  do eq = 1, NCONS
+                     SCflux(eq,i,j,k,IX) = covariantFlux(eq,IX) * e % geom % jGradXi(IX,i,j,k) &
+                                         + covariantFlux(eq,IY) * e % geom % jGradXi(IY,i,j,k) &
+                                         + covariantFlux(eq,IZ) * e % geom % jGradXi(IZ,i,j,k)
+
+                     SCflux(eq,i,j,k,IY) = covariantFlux(eq,IX) * e % geom % jGradEta(IX,i,j,k) &
+                                         + covariantFlux(eq,IY) * e % geom % jGradEta(IY,i,j,k) &
+                                         + covariantFlux(eq,IZ) * e % geom % jGradEta(IZ,i,j,k)
+
+                     SCflux(eq,i,j,k,IZ) = covariantFlux(eq,IX) * e % geom % jGradZeta(IX,i,j,k) &
+                                         + covariantFlux(eq,IY) * e % geom % jGradZeta(IY,i,j,k) &
+                                         + covariantFlux(eq,IZ) * e % geom % jGradZeta(IZ,i,j,k)
+                  end do
+
+               end do                ; end do                ; end do
+!$acc end parallel loop
+
+            case (GRADVARS_ENERGY)
+!$acc parallel loop gang vector collapse(3) present(e, mu, SCflux) private(covariantFlux, kappa) async(1)
+               do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
+
+                  kappa = dimensionless % mu_to_kappa * mu(i,j,k)
+                  call ViscousFlux_ENERGY(NCONS, NGRAD, e % storage % Q(:,i,j,k), &
+                                          e % storage % U_x(:,i,j,k),             &
+                                          e % storage % U_y(:,i,j,k),             &
+                                          e % storage % U_z(:,i,j,k),             &
+                                          mu(i,j,k), 0.0_RP, kappa,               &
+                                          covariantFlux)
+
+                  do eq = 1, NCONS
+                     SCflux(eq,i,j,k,IX) = covariantFlux(eq,IX) * e % geom % jGradXi(IX,i,j,k) &
+                                         + covariantFlux(eq,IY) * e % geom % jGradXi(IY,i,j,k) &
+                                         + covariantFlux(eq,IZ) * e % geom % jGradXi(IZ,i,j,k)
+
+                     SCflux(eq,i,j,k,IY) = covariantFlux(eq,IX) * e % geom % jGradEta(IX,i,j,k) &
+                                         + covariantFlux(eq,IY) * e % geom % jGradEta(IY,i,j,k) &
+                                         + covariantFlux(eq,IZ) * e % geom % jGradEta(IZ,i,j,k)
+
+                     SCflux(eq,i,j,k,IZ) = covariantFlux(eq,IX) * e % geom % jGradZeta(IX,i,j,k) &
+                                         + covariantFlux(eq,IY) * e % geom % jGradZeta(IY,i,j,k) &
+                                         + covariantFlux(eq,IZ) * e % geom % jGradZeta(IZ,i,j,k)
+                  end do
+
+               end do                ; end do                ; end do
+!$acc end parallel loop
+            end select
+
+         case (SC_GP_ID)
+!$acc parallel loop gang vector collapse(3) present(e, mu, SCflux) private(covariantFlux, kappa) async(1)
+            do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
+
+               kappa = dimensionless % mu_to_kappa * mu(i,j,k)
+               call GuermondPopovFlux_ENTROPY(NCONS, NGRAD, e % storage % Q(:,i,j,k), &
+                                              e % storage % U_x(:,i,j,k),             &
+                                              e % storage % U_y(:,i,j,k),             &
+                                              e % storage % U_z(:,i,j,k),             &
+                                              mu(i,j,k), 0.0_RP, kappa,               &
+                                              covariantFlux)
+
+               do eq = 1, NCONS
+                  SCflux(eq,i,j,k,IX) = covariantFlux(eq,IX) * e % geom % jGradXi(IX,i,j,k) &
+                                      + covariantFlux(eq,IY) * e % geom % jGradXi(IY,i,j,k) &
+                                      + covariantFlux(eq,IZ) * e % geom % jGradXi(IZ,i,j,k)
 
 
-            SCflux(:,i,j,k,IY) = covariantFlux(:,IX) * e % geom % jGradEta(IX,i,j,k) &
-                               + covariantFlux(:,IY) * e % geom % jGradEta(IY,i,j,k) &
-                               + covariantFlux(:,IZ) * e % geom % jGradEta(IZ,i,j,k)
+                  SCflux(eq,i,j,k,IY) = covariantFlux(eq,IX) * e % geom % jGradEta(IX,i,j,k) &
+                                      + covariantFlux(eq,IY) * e % geom % jGradEta(IY,i,j,k) &
+                                      + covariantFlux(eq,IZ) * e % geom % jGradEta(IZ,i,j,k)
 
 
-            SCflux(:,i,j,k,IZ) = covariantFlux(:,IX) * e % geom % jGradZeta(IX,i,j,k) &
-                               + covariantFlux(:,IY) * e % geom % jGradZeta(IY,i,j,k) &
-                               + covariantFlux(:,IZ) * e % geom % jGradZeta(IZ,i,j,k)
+                  SCflux(eq,i,j,k,IZ) = covariantFlux(eq,IX) * e % geom % jGradZeta(IX,i,j,k) &
+                                      + covariantFlux(eq,IY) * e % geom % jGradZeta(IY,i,j,k) &
+                                      + covariantFlux(eq,IZ) * e % geom % jGradZeta(IZ,i,j,k)
+               end do
 
-         end do                ; end do                ; end do
+            end do                ; end do                ; end do
+!$acc end parallel loop
+         end select
 
       else
 
          e % storage % artificialDiss = 0.0_RP
-         SCflux = 0.0_RP
+!$acc update device(e % storage % artificialDiss) async(1)
+!$acc parallel loop gang vector collapse(4) present(e, SCflux) async(1)
+         do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
+            do eq = 1, NCONS
+               SCflux(eq,i,j,k,IX) = 0.0_RP
+               SCflux(eq,i,j,k,IY) = 0.0_RP
+               SCflux(eq,i,j,k,IZ) = 0.0_RP
+            end do
+         end do                ; end do                ; end do
+!$acc end parallel loop
 
       end if
+!$acc wait(1)
+!$acc end data
 !
 !     Project to faces
 !     ----------------
@@ -945,6 +1092,7 @@ module ShockCapturing
       else
 
          e % storage % artificialDiss = 0.0_RP
+!$acc update device(e % storage % artificialDiss) if_present
          SCflux = 0.0_RP
 
       end if

@@ -234,6 +234,7 @@
 !//////////////////////////////////////////////////////////////////////////////////////////
 !
       pure subroutine ViscousFlux_STATE(nEqn, nGradEqn, Q, Q_x, Q_y, Q_z, mu, beta, kappa, F)
+         !$acc routine seq
          implicit none
          integer,       intent(in)  :: nEqn
          integer,       intent(in)  :: nGradEqn
@@ -304,6 +305,7 @@
       end subroutine ViscousFlux_STATE
       
       pure subroutine ViscousFlux_ENTROPY(nEqn, nGradEqn, Q, Q_x, Q_y, Q_z, mu, beta, kappa, F)
+         !$acc routine seq
          implicit none
          integer,       intent(in)  :: nEqn
          integer,       intent(in)  :: nGradEqn
@@ -359,6 +361,7 @@
       end subroutine ViscousFlux_ENTROPY
 
       pure subroutine ViscousFlux_ENERGY(nEqn, nGradEqn, Q, Q_x, Q_y, Q_z, mu, beta, kappa, F)
+         !$acc routine seq
          implicit none
          integer,       intent(in)  :: nEqn
          integer,       intent(in)  :: nGradEqn
@@ -414,6 +417,7 @@
       end subroutine ViscousFlux_ENERGY
 
       pure subroutine GuermondPopovFlux_ENTROPY(nEqn, nGradEqn, Q, Q_x, Q_y, Q_z, mu, beta, kappa, F)
+         !$acc routine seq
 !
 !        //////////////////////////////////////////////////////////////////////////////
 !
