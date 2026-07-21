@@ -572,7 +572,7 @@ flux )
          !        Local variables
          !        ---------------
          !
-         integer :: fID, i, j, eq, ii, jj
+         integer :: fID, i, j, eq
          real(kind=RP)     :: sigma0
 
 #ifdef MULTIPHASE
@@ -581,10 +581,9 @@ flux )
           
          !$acc loop vector collapse(3)
          do j = 0, f % Nf(2) ;  do i = 0, f % Nf(1) ; do eq = 1, nEqn
-               call leftIndexes2Right(i, j, f % NfRight(1), f % NfRight(2), f % rotation, ii, jj)
-               flux (eq,i,j) = 0.5_RP * (f % storage(1) % unStar(eq,IX,i,j) + f % storage(2) % unStar(eq,IX,ii,jj)) * f % geom % normal(IX,i,j) + &
-                               0.5_RP * (f % storage(1) % unStar(eq,IY,i,j) + f % storage(2) % unStar(eq,IY,ii,jj)) * f % geom % normal(IY,i,j) + &
-                               0.5_RP * (f % storage(1) % unStar(eq,IZ,i,j) + f % storage(2) % unStar(eq,IZ,ii,jj)) * f % geom % normal(IZ,i,j) 
+               flux (eq,i,j) = 0.5_RP * (f % storage(1) % unStar(eq,IX,i,j) + f % storage(2) % unStar(eq,IX,i,j)) * f % geom % normal(IX,i,j) + &
+                               0.5_RP * (f % storage(1) % unStar(eq,IY,i,j) + f % storage(2) % unStar(eq,IY,i,j)) * f % geom % normal(IY,i,j) + &
+                               0.5_RP * (f % storage(1) % unStar(eq,IZ,i,j) + f % storage(2) % unStar(eq,IZ,i,j)) * f % geom % normal(IZ,i,j) 
 #ifdef MULTIPHASE
                flux (eq,i,j) = flux (eq,i,j) - sigma0 * sigma(eq) * (f % storage(1) % Q(eq,i,j) - f % storage(2) % Q(eq,i,j))
 #endif

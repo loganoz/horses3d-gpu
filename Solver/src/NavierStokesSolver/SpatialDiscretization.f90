@@ -1511,7 +1511,7 @@ module SpatialDiscretization
          implicit none
          type(Face)   , intent(inout) :: fc
          
-         integer       :: i, j, eq, ii, jj
+         integer       :: i, j, eq
 
          call BR1_RiemannSolver_acc(fc, NCONS, NGRAD, fc % storage(2) % FStar)
 
@@ -1529,8 +1529,7 @@ module SpatialDiscretization
 !        ------------------------
          !$acc loop vector collapse(3)
          do j = 0, fc % Nf(2) ; do i = 0, fc % Nf(1) ; do eq = 1, NCONS
-               call leftIndexes2Right(i, j, fc % NfRight(1), fc % NfRight(2), fc % rotation, ii, jj)
-               fc % storage(1) % FStar(eq,i,j) = (fc % storage(1) % FStar(eq,i,j) - fc % storage(2) % FStar(eq,ii,jj)) * fc % geom % jacobian(i,j)
+               fc % storage(1) % FStar(eq,i,j) = (fc % storage(1) % FStar(eq,i,j) - fc % storage(2) % FStar(eq,i,j)) * fc % geom % jacobian(i,j)
          end do ; end do ;  end do
 !
 !        ---------------------------
@@ -1549,7 +1548,7 @@ module SpatialDiscretization
          use EllipticBR1
          implicit none
          type(Face)   , intent(inout) :: fc
-         integer       :: i, j, eq, maxId, ii, jj
+         integer       :: i, j, eq, maxId
          integer       :: Sidearray
 !
 !        ---------------------------
@@ -1602,8 +1601,7 @@ module SpatialDiscretization
          do j = 0, fc % Nf(2) ; do i = 0, fc % Nf(1)
             !$acc loop seq
             do eq = 1, NCONS
-               call leftIndexes2Right(i, j, fc % NfRight(1), fc % NfRight(2), fc % rotation, ii, jj)
-               fc % storage(1) % FStar(eq,i,j) = (fc % storage(1) % FStar(eq,i,j) - fc % storage(2) % FStar(eq,ii,jj)) * fc % geom % jacobian(i,j)
+               fc % storage(1) % FStar(eq,i,j) = (fc % storage(1) % FStar(eq,i,j) - fc % storage(2) % FStar(eq,i,j)) * fc % geom % jacobian(i,j)
             enddo
          end do ;  end do
 !
