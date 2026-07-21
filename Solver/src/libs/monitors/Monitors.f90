@@ -1125,11 +1125,9 @@ end subroutine getNoOfMonitors
             self % fp_lastSavedTime = t_now
             if ( MPI_Process % isRoot ) write(STD_OUT,'(30X,A,I10,A,ES12.4)') &
                "** File probes ASCII: writing iter=", iter_now, ", t=", t_now
-            !$omp parallel do schedule(dynamic,16) default(shared)
             do i = self % no_of_probes - self % no_of_fileProbes + 1, self % no_of_probes
                call self % probes(i) % WriteToFile( iter_arr, t_arr, 1 )
             end do
-            !$omp end parallel do
          end if
 #ifdef HAS_HDF5
       end if
@@ -1139,7 +1137,7 @@ end subroutine getNoOfMonitors
 
    subroutine Monitor_UpdateFileProbes(self, mesh, bufferPos)
 !
-!     Evaluates all file-probes using OpenMP threads (CPU path, no OpenACC),
+!     Evaluates all file-probes (CPU path, no OpenACC/OpenMP),
 !     then performs a single MPI_Allreduce(SUM) to share results across ranks.
 !     This replaces N_fileProbes individual MPI_Bcast calls with one collective.
 !
@@ -1166,17 +1164,15 @@ end subroutine getNoOfMonitors
 
       if (first_call_fp .and. MPI_Process % isRoot) then
          write(STD_OUT,'(30X,A,I0,A,I0,A)') &
-            "** File probes: first compute — ", nfp, " probes x ", nv, " variable(s) (OpenMP+MPI_Allreduce)"
+            "** File probes: first compute — ", nfp, " probes x ", nv, " variable(s) (MPI_Allreduce)"
          first_call_fp = .false.
       end if
 
-      ! Parallel CPU computation — each probe writes to its own values(:,bufferPos).
+      ! Serial CPU computation — each probe writes to its own values(:,bufferPos).
       ! Non-owning ranks store 0 so MPI_Allreduce(SUM) gives the correct result.
-      !$omp parallel do schedule(dynamic,16) default(shared)
       do i = fp_offset + 1, self % no_of_probes
          call self % probes(i) % ComputeLocal(mesh, bufferPos)
       end do
-      !$omp end parallel do
 
 #ifdef _HAS_MPI_
       if ( MPI_Process % doMPIAction ) then
