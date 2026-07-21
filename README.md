@@ -56,7 +56,7 @@ The following external routines/libraries can be used with **HORSES3D**, but are
 
     - COMM=PARALLEL/**SEQUENTIAL**
 
-    - ENABLE_THREADS=NO/**YES**
+    - ENABLE_THREADS=YES/**NO**
 
     - WITH_PETSC=YES/**NO**
 
