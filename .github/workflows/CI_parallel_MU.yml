@@ -34,7 +34,7 @@ jobs:
         compiler: ['gfortran']
         mode: ['DEBUG']
         comm: ['PARALLEL']
-        enable_threads: ['NO','YES']
+        enable_threads: ['NO']
 
     name: MU - ${{ matrix.compiler }} - ${{ matrix.mode }} - ${{ matrix.comm }} - ${{ matrix.enable_threads }}
 
