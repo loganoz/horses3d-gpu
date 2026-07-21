@@ -20,6 +20,20 @@ module MonitorsClass
 
    private
    public      Monitor_t
+
+#ifdef _OPENACC
+   integer, parameter :: FPVAR_UNKNOWN    = 0
+   integer, parameter :: FPVAR_PRESSURE   = 1
+   integer, parameter :: FPVAR_VELOCITY   = 2
+   integer, parameter :: FPVAR_U          = 3
+   integer, parameter :: FPVAR_V          = 4
+   integer, parameter :: FPVAR_W          = 5
+   integer, parameter :: FPVAR_MACH       = 6
+   integer, parameter :: FPVAR_K          = 7
+   integer, parameter :: FPVAR_RHO        = 8
+   integer, parameter :: FPVAR_STATICPRES = 9
+   integer, parameter :: FPVAR_DENSITY    = 10
+#endif
 !
 !  *****************************
 !  Main monitor class definition
@@ -50,6 +64,16 @@ module MonitorsClass
       class(LoadBalancingMonitor_t), allocatable :: loadBalancingMonitors(:)
 #ifdef FLOW
       class(Probe_t)               , allocatable :: probes(:)
+#endif
+#ifdef _OPENACC
+      integer                                    :: fp_Nmax = 0
+      integer             , allocatable          :: fp_eID(:)
+      logical             , allocatable          :: fp_ownsProbe(:)
+      real(kind=RP)       , allocatable          :: fp_lxi(:,:)
+      real(kind=RP)       , allocatable          :: fp_leta(:,:)
+      real(kind=RP)       , allocatable          :: fp_lzeta(:,:)
+      integer             , allocatable          :: fp_varCodes(:)
+      real(kind=RP)       , allocatable          :: fp_values_gpu(:,:)
 #endif
 #if defined(NAVIERSTOKES) || defined(INCNS)
       class(SurfaceMonitor_t)      , allocatable :: surfaceMonitors(:)
@@ -231,6 +255,9 @@ module MonitorsClass
 
          Monitors % no_of_fileProbes = no_of_fileProbes
          Monitors % no_of_probes = Monitors % no_of_probes + no_of_fileProbes
+#ifdef _OPENACC
+         if ( no_of_fileProbes .gt. 0 ) call Monitor_InitFileProbesGPU( Monitors, no_of_fileProbes )
+#endif
 #endif
 
 #if defined(NAVIERSTOKES) || defined(INCNS)
@@ -715,6 +742,16 @@ module MonitorsClass
          call self % probes % destruct
          safedeallocate (self % probes)
 #endif
+#ifdef _OPENACC
+         if ( allocated(self % fp_eID) ) then
+            !$acc exit data delete(self % fp_eID, self % fp_ownsProbe)
+            !$acc exit data delete(self % fp_lxi, self % fp_leta, self % fp_lzeta)
+            !$acc exit data delete(self % fp_varCodes, self % fp_values_gpu)
+            deallocate(self % fp_eID, self % fp_ownsProbe)
+            deallocate(self % fp_lxi, self % fp_leta, self % fp_lzeta)
+            deallocate(self % fp_varCodes, self % fp_values_gpu)
+         end if
+#endif
          
 #if defined(NAVIERSTOKES) || defined(INCNS)
          call self % surfaceMonitors % destruct
@@ -784,7 +821,20 @@ module MonitorsClass
          allocate ( to % probes ( size(from % probes) ) )
          to % probes = from % probes
 #endif
-         
+
+#ifdef _OPENACC
+         to % fp_Nmax = from % fp_Nmax
+         if ( allocated(from % fp_eID) ) then
+            safedeallocate(to % fp_eID)       ; allocate(to % fp_eID(size(from % fp_eID)))             ; to % fp_eID       = from % fp_eID
+            safedeallocate(to % fp_ownsProbe) ; allocate(to % fp_ownsProbe(size(from % fp_ownsProbe))) ; to % fp_ownsProbe = from % fp_ownsProbe
+            safedeallocate(to % fp_lxi)       ; allocate(to % fp_lxi(size(from%fp_lxi,1),size(from%fp_lxi,2)))        ; to % fp_lxi       = from % fp_lxi
+            safedeallocate(to % fp_leta)      ; allocate(to % fp_leta(size(from%fp_leta,1),size(from%fp_leta,2)))     ; to % fp_leta      = from % fp_leta
+            safedeallocate(to % fp_lzeta)     ; allocate(to % fp_lzeta(size(from%fp_lzeta,1),size(from%fp_lzeta,2))) ; to % fp_lzeta     = from % fp_lzeta
+            safedeallocate(to % fp_varCodes)  ; allocate(to % fp_varCodes(size(from % fp_varCodes)))   ; to % fp_varCodes  = from % fp_varCodes
+            safedeallocate(to % fp_values_gpu); allocate(to % fp_values_gpu(size(from%fp_values_gpu,1),size(from%fp_values_gpu,2))) ; to % fp_values_gpu = from % fp_values_gpu
+         end if
+#endif
+
 #if defined(NAVIERSTOKES) || defined(INCNS)
          safedeallocate ( to % surfaceMonitors )
          allocate ( to % surfaceMonitors ( size(from % surfaceMonitors) ) )
@@ -1134,12 +1184,8 @@ end subroutine getNoOfMonitors
    end subroutine Monitor_FlushFileProbesNow
 
    subroutine Monitor_UpdateFileProbes(self, mesh, bufferPos)
-!
-!     Evaluates all file-probes (CPU path, no OpenACC/OpenMP),
-!     then performs a single MPI_Allreduce(SUM) to share results across ranks.
-!     This replaces N_fileProbes individual MPI_Bcast calls with one collective.
-!
       use MPI_Process_Info
+      use Physics
 #ifdef _HAS_MPI_
       use mpi
 #endif
@@ -1160,16 +1206,159 @@ end subroutine getNoOfMonitors
       nv        = size(self % probesVariables)
       fp_offset = self % no_of_probes - nfp
 
+      if (first_call_fp .and. MPI_Process % isRoot) then
+#ifdef _OPENACC
+         write(STD_OUT,'(30X,A,I0,A,I0,A)') &
+            "** File probes: first compute — ", nfp, " probes x ", nv, " variable(s) (GPU+MPI_Allreduce)"
+#else
+         write(STD_OUT,'(30X,A,I0,A,I0,A)') &
+            "** File probes: first compute — ", nfp, " probes x ", nv, " variable(s) (MPI_Allreduce)"
+#endif
+         first_call_fp = .false.
+      end if
 
-      ! Serial CPU computation — each probe writes to its own values(:,bufferPos).
-      ! Non-owning ranks store 0 so MPI_Allreduce(SUM) gives the correct result.
+#ifdef _OPENACC
+!
+!     GPU path: parallel evaluation of all file-probes on device.
+!     Lagrange weights and element IDs are pre-loaded in SoA arrays by Monitor_InitFileProbesGPU.
+!     Non-owning ranks skip computation (fp_ownsProbe=.false.) and contribute 0 to MPI_Allreduce.
+!
+      block
+         integer        :: probe_idx, var_idx, ii, jj, kk, eID_loc
+         integer        :: Nm
+         real(kind=RP)  :: val, q_val
+
+         Nm = self % fp_Nmax
+
+         !$acc parallel loop gang &
+         !$acc& present(mesh, self % fp_eID, self % fp_ownsProbe) &
+         !$acc& present(self % fp_lxi, self % fp_leta, self % fp_lzeta) &
+         !$acc& present(self % fp_varCodes, self % fp_values_gpu)
+         do probe_idx = 1, nfp
+            if ( .not. self % fp_ownsProbe(probe_idx) ) then
+               do var_idx = 1, nv
+                  self % fp_values_gpu(var_idx, probe_idx) = 0.0_RP
+               end do
+            else
+               eID_loc = self % fp_eID(probe_idx)
+               do var_idx = 1, nv
+                  val = 0.0_RP
+                  !$acc loop vector collapse(3) reduction(+:val)
+                  do kk = 0, Nm ; do jj = 0, Nm ; do ii = 0, Nm
+                     select case (self % fp_varCodes(var_idx))
+#ifdef NAVIERSTOKES
+                     case(FPVAR_PRESSURE)
+                        q_val = Pressure(mesh % elements(eID_loc) % storage % Q(:,ii,jj,kk))
+                     case(FPVAR_VELOCITY)
+                        q_val = sqrt(POW2(mesh % elements(eID_loc) % storage % Q(IRHOU,ii,jj,kk)) + &
+                                     POW2(mesh % elements(eID_loc) % storage % Q(IRHOV,ii,jj,kk)) + &
+                                     POW2(mesh % elements(eID_loc) % storage % Q(IRHOW,ii,jj,kk))) / &
+                                mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
+                     case(FPVAR_U)
+                        q_val = mesh % elements(eID_loc) % storage % Q(IRHOU,ii,jj,kk) / &
+                                mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
+                     case(FPVAR_V)
+                        q_val = mesh % elements(eID_loc) % storage % Q(IRHOV,ii,jj,kk) / &
+                                mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
+                     case(FPVAR_W)
+                        q_val = mesh % elements(eID_loc) % storage % Q(IRHOW,ii,jj,kk) / &
+                                mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
+                     case(FPVAR_MACH)
+                        q_val = (POW2(mesh % elements(eID_loc) % storage % Q(IRHOU,ii,jj,kk)) + &
+                                 POW2(mesh % elements(eID_loc) % storage % Q(IRHOV,ii,jj,kk)) + &
+                                 POW2(mesh % elements(eID_loc) % storage % Q(IRHOW,ii,jj,kk))) / &
+                                POW2(mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk))
+                        q_val = sqrt( q_val / ( thermodynamics % gamma * (thermodynamics % gamma - 1.0_RP) * &
+                                ( mesh % elements(eID_loc) % storage % Q(IRHOE,ii,jj,kk) / &
+                                  mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk) - 0.5_RP * q_val ) ) )
+                     case(FPVAR_K)
+                        q_val = 0.5_RP * (POW2(mesh % elements(eID_loc) % storage % Q(IRHOU,ii,jj,kk)) + &
+                                          POW2(mesh % elements(eID_loc) % storage % Q(IRHOV,ii,jj,kk)) + &
+                                          POW2(mesh % elements(eID_loc) % storage % Q(IRHOW,ii,jj,kk))) / &
+                                mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
+                     case(FPVAR_RHO)
+                        q_val = mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
+#endif
+#ifdef INCNS
+                     case(FPVAR_PRESSURE)
+                        q_val = mesh % elements(eID_loc) % storage % Q(INSP,ii,jj,kk)
+                     case(FPVAR_VELOCITY)
+                        q_val = sqrt(POW2(mesh % elements(eID_loc) % storage % Q(INSRHOU,ii,jj,kk)) + &
+                                     POW2(mesh % elements(eID_loc) % storage % Q(INSRHOV,ii,jj,kk)) + &
+                                     POW2(mesh % elements(eID_loc) % storage % Q(INSRHOW,ii,jj,kk))) / &
+                                mesh % elements(eID_loc) % storage % Q(INSRHO,ii,jj,kk)
+                     case(FPVAR_U)
+                        q_val = mesh % elements(eID_loc) % storage % Q(INSRHOU,ii,jj,kk) / &
+                                mesh % elements(eID_loc) % storage % Q(INSRHO,ii,jj,kk)
+                     case(FPVAR_V)
+                        q_val = mesh % elements(eID_loc) % storage % Q(INSRHOV,ii,jj,kk) / &
+                                mesh % elements(eID_loc) % storage % Q(INSRHO,ii,jj,kk)
+                     case(FPVAR_W)
+                        q_val = mesh % elements(eID_loc) % storage % Q(INSRHOW,ii,jj,kk) / &
+                                mesh % elements(eID_loc) % storage % Q(INSRHO,ii,jj,kk)
+                     case(FPVAR_RHO)
+                        q_val = mesh % elements(eID_loc) % storage % Q(INSRHO,ii,jj,kk)
+#endif
+#ifdef MULTIPHASE
+                     case(FPVAR_STATICPRES)
+                        q_val = mesh % elements(eID_loc) % storage % Q(IMP,ii,jj,kk) &
+                              + mesh % elements(eID_loc) % storage % Q(IMC,ii,jj,kk) &
+                                * mesh % elements(eID_loc) % storage % mu(1,ii,jj,kk) &
+                              - 12.0_RP*multiphase%sigma*multiphase%invEps &
+                                * POW2(mesh % elements(eID_loc) % storage % Q(IMC,ii,jj,kk) &
+                                       * (1.0_RP - mesh % elements(eID_loc) % storage % Q(IMC,ii,jj,kk))) &
+                              - 0.75_RP*multiphase%sigma*multiphase%eps &
+                                * (POW2(mesh % elements(eID_loc) % storage % c_x(1,ii,jj,kk)) &
+                                 + POW2(mesh % elements(eID_loc) % storage % c_y(1,ii,jj,kk)) &
+                                 + POW2(mesh % elements(eID_loc) % storage % c_z(1,ii,jj,kk)))
+#endif
+#ifdef ACOUSTIC
+                     case(FPVAR_PRESSURE)
+                        q_val = mesh % elements(eID_loc) % storage % Q(ICAAP,ii,jj,kk)
+                     case(FPVAR_DENSITY)
+                        q_val = mesh % elements(eID_loc) % storage % Q(ICAARHO,ii,jj,kk)
+                     case(FPVAR_U)
+                        q_val = mesh % elements(eID_loc) % storage % Q(ICAAU,ii,jj,kk)
+                     case(FPVAR_V)
+                        q_val = mesh % elements(eID_loc) % storage % Q(ICAAV,ii,jj,kk)
+                     case(FPVAR_W)
+                        q_val = mesh % elements(eID_loc) % storage % Q(ICAAW,ii,jj,kk)
+#endif
+                     case default
+                        q_val = 0.0_RP
+                     end select
+                     val = val + q_val * self%fp_lxi(ii,probe_idx) &
+                                       * self%fp_leta(jj,probe_idx) &
+                                       * self%fp_lzeta(kk,probe_idx)
+                  end do ; end do ; end do
+                  self % fp_values_gpu(var_idx, probe_idx) = val
+               end do
+            end if
+         end do
+         !$acc end parallel loop
+
+         !$acc update host(self % fp_values_gpu)
+
+         do probe_idx = 1, nfp
+            do var_idx = 1, nv
+               self % probes(fp_offset + probe_idx) % values(var_idx, bufferPos) = &
+                  self % fp_values_gpu(var_idx, probe_idx)
+            end do
+         end do
+      end block
+
+#else
+!
+!     CPU path: serial evaluation, each rank computes only its owned probes.
+!     Non-owning ranks write 0; MPI_Allreduce(SUM) then gives the correct result.
+!
       do i = fp_offset + 1, self % no_of_probes
          call self % probes(i) % ComputeLocal(mesh, bufferPos)
       end do
+#endif
 
 #ifdef _HAS_MPI_
       if ( MPI_Process % doMPIAction ) then
-         ! Pack all file-probe values into a flat buffer
          allocate( buf(nfp * nv) )
          j = 0
          do i = fp_offset + 1, self % no_of_probes
@@ -1179,10 +1368,8 @@ end subroutine getNoOfMonitors
             end do
          end do
 
-         ! Single collective instead of nfp individual Bcasts
          call MPI_Allreduce(MPI_IN_PLACE, buf, nfp * nv, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
 
-         ! Unpack
          j = 0
          do i = fp_offset + 1, self % no_of_probes
             do v = 1, nv
@@ -1195,6 +1382,78 @@ end subroutine getNoOfMonitors
 #endif
 
    end subroutine Monitor_UpdateFileProbes
+
+#ifdef _OPENACC
+   subroutine Monitor_InitFileProbesGPU(self, nfp)
+!
+!     Build Structure-of-Arrays (SoA) representation of all file-probe Lagrange weights
+!     and element IDs, then transfer the six resulting arrays to the GPU in one batch.
+!     This replaces 7*nfp individual !$acc enter data copyin calls with 6 total transfers.
+!     Assumes uniform polynomial order (Nmax derived from the first probe).
+!
+      use MPI_Process_Info
+      implicit none
+      class(Monitor_t), intent(inout) :: self
+      integer,          intent(in)    :: nfp
+!
+!     Local variables
+!
+      integer :: i, v, fp_offset, Nmax
+
+      if (nfp .eq. 0) return
+
+      fp_offset = self % no_of_probes - nfp
+      Nmax      = size(self % probes(fp_offset + 1) % lxi) - 1
+      self % fp_Nmax = Nmax
+
+      ! Map variable name strings to integer codes (done once at init, not per timestep)
+      allocate( self % fp_varCodes(size(self % probesVariables)) )
+      do v = 1, size(self % probesVariables)
+         select case (trim(self % probesVariables(v)))
+         case("pressure")      ; self % fp_varCodes(v) = FPVAR_PRESSURE
+         case("velocity")      ; self % fp_varCodes(v) = FPVAR_VELOCITY
+         case("u")             ; self % fp_varCodes(v) = FPVAR_U
+         case("v")             ; self % fp_varCodes(v) = FPVAR_V
+         case("w")             ; self % fp_varCodes(v) = FPVAR_W
+         case("mach")          ; self % fp_varCodes(v) = FPVAR_MACH
+         case("k")             ; self % fp_varCodes(v) = FPVAR_K
+         case("rho")           ; self % fp_varCodes(v) = FPVAR_RHO
+         case("static-pressure"); self % fp_varCodes(v) = FPVAR_STATICPRES
+         case("density")       ; self % fp_varCodes(v) = FPVAR_DENSITY
+         case default          ; self % fp_varCodes(v) = FPVAR_UNKNOWN
+         end select
+      end do
+
+      ! Allocate SoA arrays
+      allocate( self % fp_eID      (nfp) )
+      allocate( self % fp_ownsProbe(nfp) )
+      allocate( self % fp_lxi  (0:Nmax, nfp) )
+      allocate( self % fp_leta (0:Nmax, nfp) )
+      allocate( self % fp_lzeta(0:Nmax, nfp) )
+      allocate( self % fp_values_gpu(size(self % probesVariables), nfp) )
+      self % fp_values_gpu = 0.0_RP
+
+      ! Fill from per-probe data
+      do i = 1, nfp
+         self % fp_eID      (i)   = self % probes(fp_offset + i) % eID
+         self % fp_ownsProbe(i)   = ( self % probes(fp_offset + i) % active .and. &
+                                      self % probes(fp_offset + i) % rank .eq. MPI_Process % rank )
+         self % fp_lxi  (:, i)   = self % probes(fp_offset + i) % lxi
+         self % fp_leta (:, i)   = self % probes(fp_offset + i) % leta
+         self % fp_lzeta(:, i)   = self % probes(fp_offset + i) % lzeta
+      end do
+
+      ! Six bulk copyin calls instead of 7*nfp per-probe copyin calls
+      !$acc enter data copyin(self % fp_eID)
+      !$acc enter data copyin(self % fp_ownsProbe)
+      !$acc enter data copyin(self % fp_lxi)
+      !$acc enter data copyin(self % fp_leta)
+      !$acc enter data copyin(self % fp_lzeta)
+      !$acc enter data copyin(self % fp_varCodes)
+      !$acc enter data create(self % fp_values_gpu)
+
+   end subroutine Monitor_InitFileProbesGPU
+#endif
 
    subroutine InitializeProbesFromFile(fileName, probes, offset, mesh, solution_file, FirstCall, variables, saveTimestep, outputFormat)
       implicit none

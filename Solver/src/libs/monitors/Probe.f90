@@ -277,13 +277,17 @@ module ProbeClass
          safedeallocate(self % var  ) ; allocate( self % var(0 : e % Nxyz(1),0 : e % Nxyz(2),0 : e % Nxyz(3)) )
          self % var = 0.0_RP
          
-         !$acc enter data copyin(self)
-         !$acc enter data copyin(self % eiD)
-         !$acc enter data copyin(self % id)
-         !$acc enter data copyin(self % var)
-         !$acc enter data copyin(self % lxi)
-         !$acc enter data copyin(self % leta)
-         !$acc enter data copyin(self % lzeta)
+         ! File-probes use SoA arrays in Monitor_t (Monitor_InitFileProbesGPU);
+         ! skip per-probe GPU copyin to avoid O(N) individual transfer overhead.
+         if ( .not. self % isFileProbe ) then
+            !$acc enter data copyin(self)
+            !$acc enter data copyin(self % eiD)
+            !$acc enter data copyin(self % id)
+            !$acc enter data copyin(self % var)
+            !$acc enter data copyin(self % lxi)
+            !$acc enter data copyin(self % leta)
+            !$acc enter data copyin(self % lzeta)
+         end if
 !
 !        ****************
 !        Prepare the file
