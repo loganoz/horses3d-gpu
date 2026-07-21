@@ -15,9 +15,6 @@ module MonitorsClass
    use StatisticsMonitor
    use SurfaceMonitorClass
 #endif
-#ifdef _OPENACC
-   use Physics
-#endif
    implicit none
 !
 
@@ -1188,6 +1185,7 @@ end subroutine getNoOfMonitors
 
    subroutine Monitor_UpdateFileProbes(self, mesh, bufferPos)
       use MPI_Process_Info
+      use Physics
 #ifdef _HAS_MPI_
       use mpi
 #endif
