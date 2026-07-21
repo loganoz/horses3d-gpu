@@ -1123,8 +1123,6 @@ end subroutine getNoOfMonitors
          end if
          if ( do_write ) then
             self % fp_lastSavedTime = t_now
-            if ( MPI_Process % isRoot ) write(STD_OUT,'(30X,A,I10,A,ES12.4)') &
-               "** File probes ASCII: writing iter=", iter_now, ", t=", t_now
             do i = self % no_of_probes - self % no_of_fileProbes + 1, self % no_of_probes
                call self % probes(i) % WriteToFile( iter_arr, t_arr, 1 )
             end do
@@ -1162,11 +1160,6 @@ end subroutine getNoOfMonitors
       nv        = size(self % probesVariables)
       fp_offset = self % no_of_probes - nfp
 
-      if (first_call_fp .and. MPI_Process % isRoot) then
-         write(STD_OUT,'(30X,A,I0,A,I0,A)') &
-            "** File probes: first compute — ", nfp, " probes x ", nv, " variable(s) (MPI_Allreduce)"
-         first_call_fp = .false.
-      end if
 
       ! Serial CPU computation — each probe writes to its own values(:,bufferPos).
       ! Non-owning ranks store 0 so MPI_Allreduce(SUM) gives the correct result.
@@ -1416,9 +1409,6 @@ end subroutine getNoOfMonitors
          deallocate(wmask)
          return
       end if
-
-      write(STD_OUT,'(30X,A,I0,A,ES12.4)') &
-         "** File probes HDF5: writing ", n_write, " step(s) at t=", t(no_of_lines)
 
       write(fname,'(A,A)') trim(self % probes_solution_file), ".probes.h5"
 
