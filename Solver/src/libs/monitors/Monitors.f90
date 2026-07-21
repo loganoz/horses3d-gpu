@@ -1201,6 +1201,10 @@ end subroutine getNoOfMonitors
       integer        :: i, v, j, nfp, nv, fp_offset, ierr
       real(kind=RP), allocatable :: buf(:)
       logical, save  :: first_call_fp = .true.
+#ifdef _OPENACC
+      integer        :: probe_idx, var_idx, ii, jj, kk, eID_loc, Nm
+      real(kind=RP)  :: val, q_val
+#endif
 
       nfp       = self % no_of_fileProbes
       nv        = size(self % probesVariables)
@@ -1223,11 +1227,6 @@ end subroutine getNoOfMonitors
 !     Lagrange weights and element IDs are pre-loaded in SoA arrays by Monitor_InitFileProbesGPU.
 !     Non-owning ranks skip computation (fp_ownsProbe=.false.) and contribute 0 to MPI_Allreduce.
 !
-      block
-         integer        :: probe_idx, var_idx, ii, jj, kk, eID_loc
-         integer        :: Nm
-         real(kind=RP)  :: val, q_val
-
          Nm = self % fp_Nmax
 
          !$acc parallel loop gang &
@@ -1345,7 +1344,6 @@ end subroutine getNoOfMonitors
                   self % fp_values_gpu(var_idx, probe_idx)
             end do
          end do
-      end block
 
 #else
 !
