@@ -10,6 +10,9 @@ module MonitorsClass
    use FileReadingUtilities      , only: getFileName
 #ifdef FLOW
    use ProbeClass
+   use PhysicsStorage
+   use VariableConversion
+   use FluidData
 #endif
 #if defined(NAVIERSTOKES) || defined(INCNS)
    use StatisticsMonitor
@@ -1185,7 +1188,6 @@ end subroutine getNoOfMonitors
 
    subroutine Monitor_UpdateFileProbes(self, mesh, bufferPos)
       use MPI_Process_Info
-      use Physics
 #ifdef _HAS_MPI_
       use mpi
 #endif
