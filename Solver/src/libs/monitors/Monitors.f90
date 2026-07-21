@@ -1389,38 +1389,57 @@ end subroutine getNoOfMonitors
 !     Build Structure-of-Arrays (SoA) representation of all file-probe Lagrange weights
 !     and element IDs, then transfer the six resulting arrays to the GPU in one batch.
 !     This replaces 7*nfp individual !$acc enter data copyin calls with 6 total transfers.
-!     Assumes uniform polynomial order (Nmax derived from the first probe).
+!     Assumes uniform polynomial order (Nmax derived from an owned probe + MPI_Allreduce).
 !
       use MPI_Process_Info
+#ifdef _HAS_MPI_
+      use mpi
+#endif
       implicit none
       class(Monitor_t), intent(inout) :: self
       integer,          intent(in)    :: nfp
 !
 !     Local variables
 !
-      integer :: i, v, fp_offset, Nmax
+      integer :: i, v, fp_offset, Nmax, ierr
+      logical :: owns
 
       if (nfp .eq. 0) return
 
       fp_offset = self % no_of_probes - nfp
-      Nmax      = size(self % probes(fp_offset + 1) % lxi) - 1
+
+      ! Nmax: derived from an owned probe; MPI_Allreduce(MAX) to agree across ranks.
+      ! Ranks that own no probes (or whose first probe is unowned) contribute 0.
+      Nmax = 0
+      do i = 1, nfp
+         if ( self % probes(fp_offset + i) % active .and. &
+              self % probes(fp_offset + i) % rank .eq. MPI_Process % rank ) then
+            Nmax = size(self % probes(fp_offset + i) % lxi) - 1
+            exit
+         end if
+      end do
+#ifdef _HAS_MPI_
+      if ( MPI_Process % doMPIAction ) then
+         call MPI_Allreduce(MPI_IN_PLACE, Nmax, 1, MPI_INTEGER, MPI_MAX, MPI_COMM_WORLD, ierr)
+      end if
+#endif
       self % fp_Nmax = Nmax
 
       ! Map variable name strings to integer codes (done once at init, not per timestep)
       allocate( self % fp_varCodes(size(self % probesVariables)) )
       do v = 1, size(self % probesVariables)
          select case (trim(self % probesVariables(v)))
-         case("pressure")      ; self % fp_varCodes(v) = FPVAR_PRESSURE
-         case("velocity")      ; self % fp_varCodes(v) = FPVAR_VELOCITY
-         case("u")             ; self % fp_varCodes(v) = FPVAR_U
-         case("v")             ; self % fp_varCodes(v) = FPVAR_V
-         case("w")             ; self % fp_varCodes(v) = FPVAR_W
-         case("mach")          ; self % fp_varCodes(v) = FPVAR_MACH
-         case("k")             ; self % fp_varCodes(v) = FPVAR_K
-         case("rho")           ; self % fp_varCodes(v) = FPVAR_RHO
+         case("pressure")       ; self % fp_varCodes(v) = FPVAR_PRESSURE
+         case("velocity")       ; self % fp_varCodes(v) = FPVAR_VELOCITY
+         case("u")              ; self % fp_varCodes(v) = FPVAR_U
+         case("v")              ; self % fp_varCodes(v) = FPVAR_V
+         case("w")              ; self % fp_varCodes(v) = FPVAR_W
+         case("mach")           ; self % fp_varCodes(v) = FPVAR_MACH
+         case("k")              ; self % fp_varCodes(v) = FPVAR_K
+         case("rho")            ; self % fp_varCodes(v) = FPVAR_RHO
          case("static-pressure"); self % fp_varCodes(v) = FPVAR_STATICPRES
-         case("density")       ; self % fp_varCodes(v) = FPVAR_DENSITY
-         case default          ; self % fp_varCodes(v) = FPVAR_UNKNOWN
+         case("density")        ; self % fp_varCodes(v) = FPVAR_DENSITY
+         case default           ; self % fp_varCodes(v) = FPVAR_UNKNOWN
          end select
       end do
 
@@ -1431,16 +1450,23 @@ end subroutine getNoOfMonitors
       allocate( self % fp_leta (0:Nmax, nfp) )
       allocate( self % fp_lzeta(0:Nmax, nfp) )
       allocate( self % fp_values_gpu(size(self % probesVariables), nfp) )
+      self % fp_lxi       = 0.0_RP
+      self % fp_leta      = 0.0_RP
+      self % fp_lzeta     = 0.0_RP
       self % fp_values_gpu = 0.0_RP
 
-      ! Fill from per-probe data
+      ! Fill from per-probe data; only copy lxi/leta/lzeta for owned probes
+      ! (non-owning ranks have lxi/leta/lzeta unallocated).
       do i = 1, nfp
-         self % fp_eID      (i)   = self % probes(fp_offset + i) % eID
-         self % fp_ownsProbe(i)   = ( self % probes(fp_offset + i) % active .and. &
-                                      self % probes(fp_offset + i) % rank .eq. MPI_Process % rank )
-         self % fp_lxi  (:, i)   = self % probes(fp_offset + i) % lxi
-         self % fp_leta (:, i)   = self % probes(fp_offset + i) % leta
-         self % fp_lzeta(:, i)   = self % probes(fp_offset + i) % lzeta
+         owns = ( self % probes(fp_offset + i) % active .and. &
+                  self % probes(fp_offset + i) % rank .eq. MPI_Process % rank )
+         self % fp_eID      (i) = self % probes(fp_offset + i) % eID
+         self % fp_ownsProbe(i) = owns
+         if ( owns ) then
+            self % fp_lxi  (:, i) = self % probes(fp_offset + i) % lxi
+            self % fp_leta (:, i) = self % probes(fp_offset + i) % leta
+            self % fp_lzeta(:, i) = self % probes(fp_offset + i) % lzeta
+         end if
       end do
 
       ! Six bulk copyin calls instead of 7*nfp per-probe copyin calls
