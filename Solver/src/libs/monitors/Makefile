@@ -88,40 +88,6 @@ LIB = monitors
 
 all: lib$(LIB)_ns.a lib$(LIB)_nssa.a lib$(LIB)_ins.a lib$(LIB)_ch.a lib$(LIB)_mu.a  lib$(LIB)_caa.a
 
-# SurfaceIntegrals and VolumeIntegrals mix !$acc and !$omp — strip -fopenmp for GPU builds
-FFLAGS_NO_OMP := $(filter-out -fopenmp -mp,$(FFLAGS))
-
-./build_ns/SurfaceIntegrals.o ./build_ns/VolumeIntegrals.o: ./build_ns/%.o: %.f90
-	@echo
-	@echo $<
-	$(FC) $(FFLAGS_NO_OMP) -DNAVIERSTOKES -I./include_ns $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDEO) $(INCLUDE)_ns -c $< -o $@ $(MOD_FLAG) ./include_ns
-
-./build_nssa/SurfaceIntegrals.o ./build_nssa/VolumeIntegrals.o: ./build_nssa/%.o: %.f90
-	@echo
-	@echo $<
-	$(FC) $(FFLAGS_NO_OMP) -DNAVIERSTOKES -DSPALARTALMARAS -I./include_nssa $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDEO) $(INCLUDE)_nssa -c $< -o $@ $(MOD_FLAG) ./include_nssa
-
-./build_ins/SurfaceIntegrals.o ./build_ins/VolumeIntegrals.o: ./build_ins/%.o: %.f90
-	@echo
-	@echo $<
-	$(FC) $(FFLAGS_NO_OMP) -DINCNS -I./include_ins $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDEO) $(INCLUDE)_ins -c $< -o $@ $(MOD_FLAG) ./include_ins
-
-./build_ch/SurfaceIntegrals.o ./build_ch/VolumeIntegrals.o: ./build_ch/%.o: %.f90
-	@echo
-	@echo $<
-	$(FC) $(FFLAGS_NO_OMP) -DCAHNHILLIARD -I./include_ch $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDEO) $(INCLUDE)_ch -c $< -o $@ $(MOD_FLAG) ./include_ch
-
-./build_mu/SurfaceIntegrals.o ./build_mu/VolumeIntegrals.o: ./build_mu/%.o: %.f90
-	@echo
-	@echo $<
-	$(FC) $(FFLAGS_NO_OMP) -DMULTIPHASE -DCAHNHILLIARD -I./include_mu $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDEO) $(INCLUDE)_mu -c $< -o $@ $(MOD_FLAG) ./include_mu
-
-./build_caa/SurfaceIntegrals.o ./build_caa/VolumeIntegrals.o: ./build_caa/%.o: %.f90
-	@echo
-	@echo $<
-	$(FC) $(FFLAGS_NO_OMP) -DACOUSTIC -I./include_caa $(MACROS) $(EXTLIB_INC) $(INCLUDE) $(INCLUDEO) $(INCLUDE)_caa -c $< -o $@ $(MOD_FLAG) ./include_caa
-
-# All other files (including Probe.f90 and Monitors.f90): compiled with full FFLAGS
 ./build_ns/%.o: %.f90
 	@echo
 	@echo $<
