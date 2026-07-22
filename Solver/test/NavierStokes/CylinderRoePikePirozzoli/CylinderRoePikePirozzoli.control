@@ -15,10 +15,10 @@ solution file name    = "RESULTS/Cylinder.hsol"
 save gradients with solution = .true.
 restart               = .false.
 restart file name     = "RESULTS/Cylinder.hsol"
-riemann solver          = Central 
+riemann solver          = Roe-Pike
 Discretization nodes    = Gauss-Lobatto
 inviscid discretization = Split-Form
-averaging               = Standard
+averaging               = Pirozzoli 
 Viscous discretization  = BR1
 
 #define boundary InnerCylinder

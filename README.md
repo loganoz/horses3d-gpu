@@ -56,7 +56,7 @@ The following external routines/libraries can be used with **HORSES3D**, but are
 
     - COMM=PARALLEL/**SEQUENTIAL**
 
-    - ENABLE_THREADS=NO/**YES**
+    - ENABLE_THREADS=YES/**NO**
 
     - WITH_PETSC=YES/**NO**
 
@@ -113,12 +113,6 @@ Gradient Variables     = Energy
 viscous discretization = BR2
 
 viscous discretization = IP
-
-The next Riemman solvers are 4-5 times slower than Roe Riemman solver:
-
-Low dissipation Roe
-
-Matrix dissipation
 
 
 ## Acknowledgments

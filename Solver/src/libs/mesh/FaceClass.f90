@@ -34,7 +34,7 @@
 !           1) Rotation: faces are not oriented in the same direction.
 !              --------  The direction adopted is always that of the left
 !                        element.
-!           2) Different polynomial order: elements at each sidecan have different
+!           2) Different polynomial order: elements at each side can have different
 !              --------------------------  polynomial orders.
 !
 !        We have defined the following quantities:
@@ -344,6 +344,8 @@
 
    end subroutine Face_AdaptSolutionToFace
    
+   ! Simplified version of Face_AdaptSolutionToFace, which takes into account rotation
+   ! but not projections. I.e., non-conforming (mortar) faces are not supported
    subroutine Face_AdaptSolToFace(self, nEqn, Nelx, Nely, Qe, side)
       !$acc routine vector
       use MappedGeometryClass
@@ -363,7 +365,7 @@
       select case (side)
       case(1)
             !$acc loop vector collapse(2)
-            do j = 0, self % NfRight(2)   ; do i = 0, self % NfRight(1)
+            do j = 0, self % NfLeft(2)   ; do i = 0, self % NfLeft(1)
                !$acc loop seq
                do eq = 1, nEqn
                   self % storage(1) % Q(eq,i,j) = Qe(eq,i,j)

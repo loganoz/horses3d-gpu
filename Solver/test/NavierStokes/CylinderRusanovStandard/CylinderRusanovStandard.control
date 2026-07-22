@@ -15,11 +15,13 @@ solution file name    = "RESULTS/Cylinder.hsol"
 save gradients with solution = .true.
 restart               = .false.
 restart file name     = "RESULTS/Cylinder.hsol"
-riemann solver          = Roe !Matrix Dissipation !Low dissipation roe !roe! Lax-Friedrichs !
+riemann solver          = Rusanov 
 Discretization nodes    = Gauss-Lobatto
 inviscid discretization = Split-Form
-averaging               = Pirozzoli !Ducros !Morinishi! Kennedy-Gruber
+averaging               = Standard
 Viscous discretization  = BR1
+Time integration = Explicit
+Explicit method = rk5
 
 #define boundary InnerCylinder
       type = NoSlipWall

@@ -72,27 +72,30 @@ module DGIntegrals
 !        ---------------
 !
          integer   :: i, j, k, l, eq
+         real(kind=RP) :: r_volInt
 
-         !$acc loop vector collapse(4)
-         do k = 0, Nxyz(3) ; do j = 0, Nxyz(2) ; do i = 0, Nxyz(1) ; do eq = 1, NEQ
-            ! not initialize to 0 to be general for all Physics
+         !$acc loop vector collapse(4) private(r_volInt)
+          do k = 0, Nxyz(3) ; do j = 0, Nxyz(2) ; do i = 0, Nxyz(1) ; do eq = 1, NEQ
             ! volInt(eq,i,j,k) = 0.0_RP
-            ! Keep one l-loop per direction.
-            ! 0:Nxyz(1) loop failed CUDA_ERROR_ILLEGAL_ADDRESS 
-            !$acc loop seq
+            r_volInt = volInt(eq,i,j,k)
+            
+            !$acc loop seq 
             do l = 0, Nxyz(1)
-               volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(1)) % hatD(i,l) * F(eq,l,j,k,IX)
-            end do
-
-            !$acc loop seq
+               r_volInt = r_volInt + NodalStorage(Nxyz(1)) % hatD(i,l) * F(eq,l,j,k,IX)
+            end do  
+            
+            !$acc loop seq 
             do l = 0, Nxyz(2)
-               volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(2)) % hatD(j,l) * F(eq,i,l,k,IY)
-            end do
-
-            !$acc loop seq
+               r_volInt = r_volInt + NodalStorage(Nxyz(2)) % hatD(j,l) * F(eq,i,l,k,IY)
+            end do  
+            
+            !$acc loop seq 
             do l = 0, Nxyz(3)
-               volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(3)) % hatD(k,l) * F(eq,i,j,l,IZ)
-            end do
+               r_volInt = r_volInt + NodalStorage(Nxyz(3)) % hatD(k,l) * F(eq,i,j,l,IZ)
+            end do             
+            
+            ! Write back to global memory
+            volInt(eq,i,j,k) = r_volInt        
          end do ; end do ; end do ; end do
 
       end subroutine ScalarWeakIntegrals_StdVolumeGreen
