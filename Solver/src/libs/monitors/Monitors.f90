@@ -70,13 +70,13 @@ module MonitorsClass
 #endif
 #ifdef _OPENACC
       integer                                    :: fp_Nmax = 0
-      integer             , allocatable, target   :: fp_eID(:)
-      logical             , allocatable, target   :: fp_ownsProbe(:)
-      real(kind=RP)       , allocatable, target   :: fp_lxi(:,:)
-      real(kind=RP)       , allocatable, target   :: fp_leta(:,:)
-      real(kind=RP)       , allocatable, target   :: fp_lzeta(:,:)
-      integer             , allocatable, target   :: fp_varCodes(:)
-      real(kind=RP)       , allocatable, target   :: fp_values_gpu(:,:)
+      integer             , allocatable          :: fp_eID(:)
+      logical             , allocatable          :: fp_ownsProbe(:)
+      real(kind=RP)       , allocatable          :: fp_lxi(:,:)
+      real(kind=RP)       , allocatable          :: fp_leta(:,:)
+      real(kind=RP)       , allocatable          :: fp_lzeta(:,:)
+      integer             , allocatable          :: fp_varCodes(:)
+      real(kind=RP)       , allocatable          :: fp_values_gpu(:,:)
 #endif
 #if defined(NAVIERSTOKES) || defined(INCNS)
       class(SurfaceMonitor_t)      , allocatable :: surfaceMonitors(:)
@@ -1204,13 +1204,7 @@ end subroutine getNoOfMonitors
       real(kind=RP), allocatable :: buf(:)
       logical, save  :: first_call_fp = .true.
 #ifdef _OPENACC
-      integer        :: probe_idx, var_idx, ii, jj, kk, eID_loc, Nm
-      real(kind=RP)  :: val, q_val
-      integer,       pointer, contiguous :: l_eID(:)
-      logical,       pointer, contiguous :: l_own(:)
-      real(kind=RP), pointer, contiguous :: l_lxi(:,:), l_leta(:,:), l_lzeta(:,:)
-      integer,       pointer, contiguous :: l_varCodes(:)
-      real(kind=RP), pointer, contiguous :: l_vals(:,:)
+      integer        :: Nm
 #endif
 
       nfp       = self % no_of_fileProbes
@@ -1233,128 +1227,20 @@ end subroutine getNoOfMonitors
 !     GPU path: parallel evaluation of all file-probes on device.
 !     Lagrange weights and element IDs are pre-loaded in SoA arrays by Monitor_InitFileProbesGPU.
 !     Non-owning ranks skip computation (fp_ownsProbe=.false.) and contribute 0 to MPI_Allreduce.
+!     The kernel is in Monitor_FileProbeKernel so arrays arrive as dummy arguments — this avoids
+!     NVFORTRAN accessing them through the host-side 'self' struct pointer on the GPU.
 !
          Nm = self % fp_Nmax
+         call Monitor_FileProbeKernel(self % fp_eID, self % fp_ownsProbe, &
+                                      self % fp_lxi, self % fp_leta, self % fp_lzeta, &
+                                      self % fp_varCodes, self % fp_values_gpu, &
+                                      mesh, nfp, nv, Nm)
+         !$acc update host(self % fp_values_gpu)
 
-         l_eID      => self % fp_eID
-         l_own      => self % fp_ownsProbe
-         l_lxi      => self % fp_lxi
-         l_leta     => self % fp_leta
-         l_lzeta    => self % fp_lzeta
-         l_varCodes => self % fp_varCodes
-         l_vals     => self % fp_values_gpu
-
-         !$acc parallel loop gang &
-         !$acc& present(mesh, l_eID, l_own, l_lxi, l_leta, l_lzeta, l_varCodes, l_vals)
-         do probe_idx = 1, nfp
-            if ( .not. l_own(probe_idx) ) then
-               do var_idx = 1, nv
-                  l_vals(var_idx, probe_idx) = 0.0_RP
-               end do
-            else
-               eID_loc = l_eID(probe_idx)
-               do var_idx = 1, nv
-                  val = 0.0_RP
-                  !$acc loop vector collapse(3) reduction(+:val)
-                  do kk = 0, Nm ; do jj = 0, Nm ; do ii = 0, Nm
-                     select case (l_varCodes(var_idx))
-#ifdef NAVIERSTOKES
-                     case(FPVAR_PRESSURE)
-                        q_val = Pressure(mesh % elements(eID_loc) % storage % Q(:,ii,jj,kk))
-                     case(FPVAR_VELOCITY)
-                        q_val = sqrt(POW2(mesh % elements(eID_loc) % storage % Q(IRHOU,ii,jj,kk)) + &
-                                     POW2(mesh % elements(eID_loc) % storage % Q(IRHOV,ii,jj,kk)) + &
-                                     POW2(mesh % elements(eID_loc) % storage % Q(IRHOW,ii,jj,kk))) / &
-                                mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
-                     case(FPVAR_U)
-                        q_val = mesh % elements(eID_loc) % storage % Q(IRHOU,ii,jj,kk) / &
-                                mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
-                     case(FPVAR_V)
-                        q_val = mesh % elements(eID_loc) % storage % Q(IRHOV,ii,jj,kk) / &
-                                mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
-                     case(FPVAR_W)
-                        q_val = mesh % elements(eID_loc) % storage % Q(IRHOW,ii,jj,kk) / &
-                                mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
-                     case(FPVAR_MACH)
-                        q_val = (POW2(mesh % elements(eID_loc) % storage % Q(IRHOU,ii,jj,kk)) + &
-                                 POW2(mesh % elements(eID_loc) % storage % Q(IRHOV,ii,jj,kk)) + &
-                                 POW2(mesh % elements(eID_loc) % storage % Q(IRHOW,ii,jj,kk))) / &
-                                POW2(mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk))
-                        q_val = sqrt( q_val / ( thermodynamics % gamma * (thermodynamics % gamma - 1.0_RP) * &
-                                ( mesh % elements(eID_loc) % storage % Q(IRHOE,ii,jj,kk) / &
-                                  mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk) - 0.5_RP * q_val ) ) )
-                     case(FPVAR_K)
-                        q_val = 0.5_RP * (POW2(mesh % elements(eID_loc) % storage % Q(IRHOU,ii,jj,kk)) + &
-                                          POW2(mesh % elements(eID_loc) % storage % Q(IRHOV,ii,jj,kk)) + &
-                                          POW2(mesh % elements(eID_loc) % storage % Q(IRHOW,ii,jj,kk))) / &
-                                mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
-                     case(FPVAR_RHO)
-                        q_val = mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
-#endif
-#ifdef INCNS
-                     case(FPVAR_PRESSURE)
-                        q_val = mesh % elements(eID_loc) % storage % Q(INSP,ii,jj,kk)
-                     case(FPVAR_VELOCITY)
-                        q_val = sqrt(POW2(mesh % elements(eID_loc) % storage % Q(INSRHOU,ii,jj,kk)) + &
-                                     POW2(mesh % elements(eID_loc) % storage % Q(INSRHOV,ii,jj,kk)) + &
-                                     POW2(mesh % elements(eID_loc) % storage % Q(INSRHOW,ii,jj,kk))) / &
-                                mesh % elements(eID_loc) % storage % Q(INSRHO,ii,jj,kk)
-                     case(FPVAR_U)
-                        q_val = mesh % elements(eID_loc) % storage % Q(INSRHOU,ii,jj,kk) / &
-                                mesh % elements(eID_loc) % storage % Q(INSRHO,ii,jj,kk)
-                     case(FPVAR_V)
-                        q_val = mesh % elements(eID_loc) % storage % Q(INSRHOV,ii,jj,kk) / &
-                                mesh % elements(eID_loc) % storage % Q(INSRHO,ii,jj,kk)
-                     case(FPVAR_W)
-                        q_val = mesh % elements(eID_loc) % storage % Q(INSRHOW,ii,jj,kk) / &
-                                mesh % elements(eID_loc) % storage % Q(INSRHO,ii,jj,kk)
-                     case(FPVAR_RHO)
-                        q_val = mesh % elements(eID_loc) % storage % Q(INSRHO,ii,jj,kk)
-#endif
-#ifdef MULTIPHASE
-                     case(FPVAR_STATICPRES)
-                        q_val = mesh % elements(eID_loc) % storage % Q(IMP,ii,jj,kk) &
-                              + mesh % elements(eID_loc) % storage % Q(IMC,ii,jj,kk) &
-                                * mesh % elements(eID_loc) % storage % mu(1,ii,jj,kk) &
-                              - 12.0_RP*multiphase%sigma*multiphase%invEps &
-                                * POW2(mesh % elements(eID_loc) % storage % Q(IMC,ii,jj,kk) &
-                                       * (1.0_RP - mesh % elements(eID_loc) % storage % Q(IMC,ii,jj,kk))) &
-                              - 0.75_RP*multiphase%sigma*multiphase%eps &
-                                * (POW2(mesh % elements(eID_loc) % storage % c_x(1,ii,jj,kk)) &
-                                 + POW2(mesh % elements(eID_loc) % storage % c_y(1,ii,jj,kk)) &
-                                 + POW2(mesh % elements(eID_loc) % storage % c_z(1,ii,jj,kk)))
-#endif
-#ifdef ACOUSTIC
-                     case(FPVAR_PRESSURE)
-                        q_val = mesh % elements(eID_loc) % storage % Q(ICAAP,ii,jj,kk)
-                     case(FPVAR_DENSITY)
-                        q_val = mesh % elements(eID_loc) % storage % Q(ICAARHO,ii,jj,kk)
-                     case(FPVAR_U)
-                        q_val = mesh % elements(eID_loc) % storage % Q(ICAAU,ii,jj,kk)
-                     case(FPVAR_V)
-                        q_val = mesh % elements(eID_loc) % storage % Q(ICAAV,ii,jj,kk)
-                     case(FPVAR_W)
-                        q_val = mesh % elements(eID_loc) % storage % Q(ICAAW,ii,jj,kk)
-#endif
-                     case default
-                        q_val = 0.0_RP
-                     end select
-                     val = val + q_val * l_lxi(ii,probe_idx) &
-                                       * l_leta(jj,probe_idx) &
-                                       * l_lzeta(kk,probe_idx)
-                  end do ; end do ; end do
-                  l_vals(var_idx, probe_idx) = val
-               end do
-            end if
-         end do
-         !$acc end parallel loop
-
-         !$acc update host(l_vals)
-
-         do probe_idx = 1, nfp
-            do var_idx = 1, nv
-               self % probes(fp_offset + probe_idx) % values(var_idx, bufferPos) = &
-                  l_vals(var_idx, probe_idx)
+         do i = 1, nfp
+            do v = 1, nv
+               self % probes(fp_offset + i) % values(v, bufferPos) = &
+                  self % fp_values_gpu(v, i)
             end do
          end do
 
@@ -1490,6 +1376,128 @@ end subroutine getNoOfMonitors
       !$acc enter data create(self % fp_values_gpu)
 
    end subroutine Monitor_InitFileProbesGPU
+
+   subroutine Monitor_FileProbeKernel(l_eID, l_own, l_lxi, l_leta, l_lzeta, &
+                                       l_varCodes, l_vals, mesh, nfp, nv, Nm)
+      implicit none
+      integer,          intent(in)    :: l_eID(:)
+      logical,          intent(in)    :: l_own(:)
+      real(kind=RP),    intent(in)    :: l_lxi(0:,1:)
+      real(kind=RP),    intent(in)    :: l_leta(0:,1:)
+      real(kind=RP),    intent(in)    :: l_lzeta(0:,1:)
+      integer,          intent(in)    :: l_varCodes(:)
+      real(kind=RP),    intent(inout) :: l_vals(:,:)
+      class(HexMesh),   intent(in)    :: mesh
+      integer,          intent(in)    :: nfp, nv, Nm
+      integer        :: probe_idx, var_idx, ii, jj, kk, eID_loc
+      real(kind=RP)  :: val, q_val
+
+      !$acc parallel loop gang &
+      !$acc& present(mesh, l_eID, l_own, l_lxi, l_leta, l_lzeta, l_varCodes, l_vals)
+      do probe_idx = 1, nfp
+         if ( .not. l_own(probe_idx) ) then
+            do var_idx = 1, nv
+               l_vals(var_idx, probe_idx) = 0.0_RP
+            end do
+         else
+            eID_loc = l_eID(probe_idx)
+            do var_idx = 1, nv
+               val = 0.0_RP
+               !$acc loop vector collapse(3) reduction(+:val)
+               do kk = 0, Nm ; do jj = 0, Nm ; do ii = 0, Nm
+                  select case (l_varCodes(var_idx))
+#ifdef NAVIERSTOKES
+                  case(FPVAR_PRESSURE)
+                     q_val = Pressure(mesh % elements(eID_loc) % storage % Q(:,ii,jj,kk))
+                  case(FPVAR_VELOCITY)
+                     q_val = sqrt(POW2(mesh % elements(eID_loc) % storage % Q(IRHOU,ii,jj,kk)) + &
+                                  POW2(mesh % elements(eID_loc) % storage % Q(IRHOV,ii,jj,kk)) + &
+                                  POW2(mesh % elements(eID_loc) % storage % Q(IRHOW,ii,jj,kk))) / &
+                             mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
+                  case(FPVAR_U)
+                     q_val = mesh % elements(eID_loc) % storage % Q(IRHOU,ii,jj,kk) / &
+                             mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
+                  case(FPVAR_V)
+                     q_val = mesh % elements(eID_loc) % storage % Q(IRHOV,ii,jj,kk) / &
+                             mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
+                  case(FPVAR_W)
+                     q_val = mesh % elements(eID_loc) % storage % Q(IRHOW,ii,jj,kk) / &
+                             mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
+                  case(FPVAR_MACH)
+                     q_val = (POW2(mesh % elements(eID_loc) % storage % Q(IRHOU,ii,jj,kk)) + &
+                              POW2(mesh % elements(eID_loc) % storage % Q(IRHOV,ii,jj,kk)) + &
+                              POW2(mesh % elements(eID_loc) % storage % Q(IRHOW,ii,jj,kk))) / &
+                             POW2(mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk))
+                     q_val = sqrt( q_val / ( thermodynamics % gamma * (thermodynamics % gamma - 1.0_RP) * &
+                             ( mesh % elements(eID_loc) % storage % Q(IRHOE,ii,jj,kk) / &
+                               mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk) - 0.5_RP * q_val ) ) )
+                  case(FPVAR_K)
+                     q_val = 0.5_RP * (POW2(mesh % elements(eID_loc) % storage % Q(IRHOU,ii,jj,kk)) + &
+                                       POW2(mesh % elements(eID_loc) % storage % Q(IRHOV,ii,jj,kk)) + &
+                                       POW2(mesh % elements(eID_loc) % storage % Q(IRHOW,ii,jj,kk))) / &
+                             mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
+                  case(FPVAR_RHO)
+                     q_val = mesh % elements(eID_loc) % storage % Q(IRHO,ii,jj,kk)
+#endif
+#ifdef INCNS
+                  case(FPVAR_PRESSURE)
+                     q_val = mesh % elements(eID_loc) % storage % Q(INSP,ii,jj,kk)
+                  case(FPVAR_VELOCITY)
+                     q_val = sqrt(POW2(mesh % elements(eID_loc) % storage % Q(INSRHOU,ii,jj,kk)) + &
+                                  POW2(mesh % elements(eID_loc) % storage % Q(INSRHOV,ii,jj,kk)) + &
+                                  POW2(mesh % elements(eID_loc) % storage % Q(INSRHOW,ii,jj,kk))) / &
+                             mesh % elements(eID_loc) % storage % Q(INSRHO,ii,jj,kk)
+                  case(FPVAR_U)
+                     q_val = mesh % elements(eID_loc) % storage % Q(INSRHOU,ii,jj,kk) / &
+                             mesh % elements(eID_loc) % storage % Q(INSRHO,ii,jj,kk)
+                  case(FPVAR_V)
+                     q_val = mesh % elements(eID_loc) % storage % Q(INSRHOV,ii,jj,kk) / &
+                             mesh % elements(eID_loc) % storage % Q(INSRHO,ii,jj,kk)
+                  case(FPVAR_W)
+                     q_val = mesh % elements(eID_loc) % storage % Q(INSRHOW,ii,jj,kk) / &
+                             mesh % elements(eID_loc) % storage % Q(INSRHO,ii,jj,kk)
+                  case(FPVAR_RHO)
+                     q_val = mesh % elements(eID_loc) % storage % Q(INSRHO,ii,jj,kk)
+#endif
+#ifdef MULTIPHASE
+                  case(FPVAR_STATICPRES)
+                     q_val = mesh % elements(eID_loc) % storage % Q(IMP,ii,jj,kk) &
+                           + mesh % elements(eID_loc) % storage % Q(IMC,ii,jj,kk) &
+                             * mesh % elements(eID_loc) % storage % mu(1,ii,jj,kk) &
+                           - 12.0_RP*multiphase%sigma*multiphase%invEps &
+                             * POW2(mesh % elements(eID_loc) % storage % Q(IMC,ii,jj,kk) &
+                                    * (1.0_RP - mesh % elements(eID_loc) % storage % Q(IMC,ii,jj,kk))) &
+                           - 0.75_RP*multiphase%sigma*multiphase%eps &
+                             * (POW2(mesh % elements(eID_loc) % storage % c_x(1,ii,jj,kk)) &
+                              + POW2(mesh % elements(eID_loc) % storage % c_y(1,ii,jj,kk)) &
+                              + POW2(mesh % elements(eID_loc) % storage % c_z(1,ii,jj,kk)))
+#endif
+#ifdef ACOUSTIC
+                  case(FPVAR_PRESSURE)
+                     q_val = mesh % elements(eID_loc) % storage % Q(ICAAP,ii,jj,kk)
+                  case(FPVAR_DENSITY)
+                     q_val = mesh % elements(eID_loc) % storage % Q(ICAARHO,ii,jj,kk)
+                  case(FPVAR_U)
+                     q_val = mesh % elements(eID_loc) % storage % Q(ICAAU,ii,jj,kk)
+                  case(FPVAR_V)
+                     q_val = mesh % elements(eID_loc) % storage % Q(ICAAV,ii,jj,kk)
+                  case(FPVAR_W)
+                     q_val = mesh % elements(eID_loc) % storage % Q(ICAAW,ii,jj,kk)
+#endif
+                  case default
+                     q_val = 0.0_RP
+                  end select
+                  val = val + q_val * l_lxi(ii,probe_idx) &
+                                    * l_leta(jj,probe_idx) &
+                                    * l_lzeta(kk,probe_idx)
+               end do ; end do ; end do
+               l_vals(var_idx, probe_idx) = val
+            end do
+         end if
+      end do
+      !$acc end parallel loop
+
+   end subroutine Monitor_FileProbeKernel
 #endif
 
    subroutine InitializeProbesFromFile(fileName, probes, offset, mesh, solution_file, FirstCall, variables, saveTimestep, outputFormat)
