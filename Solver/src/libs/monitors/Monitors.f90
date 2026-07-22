@@ -70,13 +70,13 @@ module MonitorsClass
 #endif
 #ifdef _OPENACC
       integer                                    :: fp_Nmax = 0
-      integer             , allocatable          :: fp_eID(:)
-      logical             , allocatable          :: fp_ownsProbe(:)
-      real(kind=RP)       , allocatable          :: fp_lxi(:,:)
-      real(kind=RP)       , allocatable          :: fp_leta(:,:)
-      real(kind=RP)       , allocatable          :: fp_lzeta(:,:)
-      integer             , allocatable          :: fp_varCodes(:)
-      real(kind=RP)       , allocatable          :: fp_values_gpu(:,:)
+      integer             , allocatable, target   :: fp_eID(:)
+      logical             , allocatable, target   :: fp_ownsProbe(:)
+      real(kind=RP)       , allocatable, target   :: fp_lxi(:,:)
+      real(kind=RP)       , allocatable, target   :: fp_leta(:,:)
+      real(kind=RP)       , allocatable, target   :: fp_lzeta(:,:)
+      integer             , allocatable, target   :: fp_varCodes(:)
+      real(kind=RP)       , allocatable, target   :: fp_values_gpu(:,:)
 #endif
 #if defined(NAVIERSTOKES) || defined(INCNS)
       class(SurfaceMonitor_t)      , allocatable :: surfaceMonitors(:)
