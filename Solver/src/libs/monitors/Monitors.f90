@@ -278,7 +278,13 @@ module MonitorsClass
          Monitors % write_dt_restriction = controlVariables % logicalValueForKey( "write dt restriction" )
          
          Monitors % bufferLine = 0
-         
+
+         if ( MPI_Process % isRoot ) then
+            write(STD_OUT,'(A,I0,A,L1)') "DEBUG Construct-end: iterAlloc=", merge(1,0,allocated(Monitors % iter)), &
+               " bufferLine=", (Monitors % bufferLine .eq. 0)
+            flush(STD_OUT)
+         end if
+
          FirstCall = .FALSE.
 !
 !        Include the latest changes in the GPU
@@ -780,13 +786,20 @@ module MonitorsClass
       end subroutine
       
       impure elemental subroutine Monitor_Assign ( to, from )
+         use MPI_Process_Info
          implicit none
          !-arguments--------------------------------------
          class(Monitor_t), intent(inout)  :: to
          type(Monitor_t) , intent(in)     :: from
          !-local-variables--------------------------------
          !------------------------------------------------
-         
+
+         if ( MPI_Process % isRoot ) then
+            write(STD_OUT,'(A,I0,A,I0)') "DEBUG Monitor_Assign called: from%iterAlloc=", &
+               merge(1,0,allocated(from % iter)), " from%bufferLine=", from % bufferLine
+            flush(STD_OUT)
+         end if
+
          to % solution_file               = from % solution_file
          to % probes_solution_file        = from % probes_solution_file
          to % no_of_probes                = from % no_of_probes
