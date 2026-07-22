@@ -74,9 +74,8 @@ module DGIntegrals
          integer   :: i, j, k, l, eq
          real(kind=RP) :: r_volInt
 
-         !$acc loop vector collapse(4)
+         !$acc loop vector collapse(4) private(r_volInt)
           do k = 0, Nxyz(3) ; do j = 0, Nxyz(2) ; do i = 0, Nxyz(1) ; do eq = 1, NEQ
-            ! not initialize to 0 to be general for all Physics
             ! volInt(eq,i,j,k) = 0.0_RP
             r_volInt = volInt(eq,i,j,k)
             
