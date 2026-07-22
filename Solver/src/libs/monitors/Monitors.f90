@@ -1206,6 +1206,11 @@ end subroutine getNoOfMonitors
 #ifdef _OPENACC
       integer        :: probe_idx, var_idx, ii, jj, kk, eID_loc, Nm
       real(kind=RP)  :: val, q_val
+      integer,       pointer, contiguous :: l_eID(:)
+      logical,       pointer, contiguous :: l_own(:)
+      real(kind=RP), pointer, contiguous :: l_lxi(:,:), l_leta(:,:), l_lzeta(:,:)
+      integer,       pointer, contiguous :: l_varCodes(:)
+      real(kind=RP), pointer, contiguous :: l_vals(:,:)
 #endif
 
       nfp       = self % no_of_fileProbes
@@ -1231,22 +1236,28 @@ end subroutine getNoOfMonitors
 !
          Nm = self % fp_Nmax
 
+         l_eID      => self % fp_eID
+         l_own      => self % fp_ownsProbe
+         l_lxi      => self % fp_lxi
+         l_leta     => self % fp_leta
+         l_lzeta    => self % fp_lzeta
+         l_varCodes => self % fp_varCodes
+         l_vals     => self % fp_values_gpu
+
          !$acc parallel loop gang &
-         !$acc& present(mesh, self % fp_eID, self % fp_ownsProbe) &
-         !$acc& present(self % fp_lxi, self % fp_leta, self % fp_lzeta) &
-         !$acc& present(self % fp_varCodes, self % fp_values_gpu)
+         !$acc& present(mesh, l_eID, l_own, l_lxi, l_leta, l_lzeta, l_varCodes, l_vals)
          do probe_idx = 1, nfp
-            if ( .not. self % fp_ownsProbe(probe_idx) ) then
+            if ( .not. l_own(probe_idx) ) then
                do var_idx = 1, nv
-                  self % fp_values_gpu(var_idx, probe_idx) = 0.0_RP
+                  l_vals(var_idx, probe_idx) = 0.0_RP
                end do
             else
-               eID_loc = self % fp_eID(probe_idx)
+               eID_loc = l_eID(probe_idx)
                do var_idx = 1, nv
                   val = 0.0_RP
                   !$acc loop vector collapse(3) reduction(+:val)
                   do kk = 0, Nm ; do jj = 0, Nm ; do ii = 0, Nm
-                     select case (self % fp_varCodes(var_idx))
+                     select case (l_varCodes(var_idx))
 #ifdef NAVIERSTOKES
                      case(FPVAR_PRESSURE)
                         q_val = Pressure(mesh % elements(eID_loc) % storage % Q(:,ii,jj,kk))
@@ -1328,22 +1339,22 @@ end subroutine getNoOfMonitors
                      case default
                         q_val = 0.0_RP
                      end select
-                     val = val + q_val * self%fp_lxi(ii,probe_idx) &
-                                       * self%fp_leta(jj,probe_idx) &
-                                       * self%fp_lzeta(kk,probe_idx)
+                     val = val + q_val * l_lxi(ii,probe_idx) &
+                                       * l_leta(jj,probe_idx) &
+                                       * l_lzeta(kk,probe_idx)
                   end do ; end do ; end do
-                  self % fp_values_gpu(var_idx, probe_idx) = val
+                  l_vals(var_idx, probe_idx) = val
                end do
             end if
          end do
          !$acc end parallel loop
 
-         !$acc update host(self % fp_values_gpu)
+         !$acc update host(l_vals)
 
          do probe_idx = 1, nfp
             do var_idx = 1, nv
                self % probes(fp_offset + probe_idx) % values(var_idx, bufferPos) = &
-                  self % fp_values_gpu(var_idx, probe_idx)
+                  l_vals(var_idx, probe_idx)
             end do
          end do
 
