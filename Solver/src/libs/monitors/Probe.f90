@@ -546,6 +546,9 @@ module ProbeClass
          integer        :: i, j, k, v
          real(kind=RP)  :: value
 
+         write(STD_OUT,'(A,A,A,L1,A,I0,A,I0)') "DEBUG ComputeLocal: probe=", trim(self % monitorName), &
+            " active=", self % active, " rank=", self % rank, " myrank=", MPI_Process % rank
+         flush(STD_OUT)
          if ( .not. self % active ) then
             self % values(:, bufferPosition) = 0.0_RP
             return
@@ -733,6 +736,9 @@ module ProbeClass
                if ( self % saveTimestep > 0.0_RP ) then
                   if ( t(i) < self % lastSavedTime + self % saveTimestep ) cycle
                end if
+               write(STD_OUT,'(A,A,A,I0,A,I0)') "DEBUG WriteToFile: probe=", trim(self % monitorName), &
+                  " i=", i, " iter(i)=", iter(i)
+               flush(STD_OUT)
                write( fID , '(I10,2X,ES24.16)' , advance = "no" ) iter(i) , t(i)
                do v = 1 , self % nVars
                   write( fID , '(2X,ES24.16)' , advance = "no" ) self % values(v,i)

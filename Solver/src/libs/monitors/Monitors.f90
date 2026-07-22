@@ -442,7 +442,10 @@ module MonitorsClass
 !
 !        Print iteration and time
 !        ------------------------
-         write ( STD_OUT , ' ( I10            ) ' , advance = "no" ) self % iter    ( self % bufferLine ) 
+         write(STD_OUT,'(A,I0,A,I0,A,L1)') "DEBUG MonitorWriteValues: bufferLine=", self % bufferLine, &
+            " iterAlloc=", merge(1,0,allocated(self % iter)), " active=", MPI_Process % isRoot
+         flush(STD_OUT)
+         write ( STD_OUT , ' ( I10            ) ' , advance = "no" ) self % iter    ( self % bufferLine )
          write ( STD_OUT , ' ( 1X,A,1X,ES10.3 ) ' , advance = "no" ) "|" , self % t ( self % bufferLine ) 
 !
 !        Print residuals
@@ -558,8 +561,20 @@ module MonitorsClass
 !        allocations when the number of probes is O(1e6).
 !        ----------------------------------------------------------
          if ( self % no_of_fileProbes .gt. 0 ) then
+            if ( MPI_Process % isRoot ) then
+               write(STD_OUT,'(A,I0)') "DEBUG UpdateValues: calling UpdateFileProbes, no_of_fileProbes=", self % no_of_fileProbes
+               flush(STD_OUT)
+            end if
             call Monitor_UpdateFileProbes( self, mesh, 1 )
+            if ( MPI_Process % isRoot ) then
+               write(STD_OUT,'(A)') "DEBUG UpdateValues: UpdateFileProbes done, calling FlushFileProbesNow"
+               flush(STD_OUT)
+            end if
             call Monitor_FlushFileProbesNow( self, t, iter )
+            if ( MPI_Process % isRoot ) then
+               write(STD_OUT,'(A)') "DEBUG UpdateValues: FlushFileProbesNow done"
+               flush(STD_OUT)
+            end if
          end if
 #endif
 
