@@ -4116,12 +4116,12 @@ slavecoord:             DO l = 1, 4
          integer        :: eID, i, n
          integer        :: ix, iy, iz, ixlo, ixhi, iylo, iyhi, izlo, izhi
          real(kind=RP)  :: eXlo(3), eXhi(3), pad
-         type(MeshSpatialIndex_t), pointer :: idx
 
          n = 20
          if ( present(ng_in) .and. ng_in .gt. 0 ) n = ng_in
 
-         idx => self % spatialIndex
+         associate(idx => self % spatialIndex)
+
          idx % ng = n
 
 !        Compute global bounding box from element corners
@@ -4172,17 +4172,17 @@ slavecoord:             DO l = 1, 4
             izhi = min(n, int((eXhi(3) - idx % xlo(3)) / idx % cell(3)) + 1)
 
 !           For each overlapping voxel prepend eID to the linked list.
-!           A single element can appear in multiple voxels; the Newton
-!           search that follows will confirm the actual containment.
             do iz = izlo, izhi
                do iy = iylo, iyhi
                   do ix = ixlo, ixhi
-                     idx % next(eID)      = idx % head(ix, iy, iz)
+                     idx % next(eID)        = idx % head(ix, iy, iz)
                      idx % head(ix, iy, iz) = eID
                   end do
                end do
             end do
          end do
+
+         end associate
 
       end subroutine HexMesh_BuildSpatialIndex
 !
@@ -4205,12 +4205,11 @@ slavecoord:             DO l = 1, 4
 !
          integer       :: ix, iy, iz, candidate
          logical       :: success
-         type(MeshSpatialIndex_t), pointer :: idx
 
          HexMesh_FindPointWithSpatialIndex = .false.
          eID = -1
-         idx => self % spatialIndex
 
+         associate(idx => self % spatialIndex)
 !        Map point to voxel
          ix = int((x(1) - idx % xlo(1)) / idx % cell(1)) + 1
          iy = int((x(2) - idx % xlo(2)) / idx % cell(2)) + 1
@@ -4241,6 +4240,7 @@ slavecoord:             DO l = 1, 4
 
 !        Not found in voxel candidates: fall back to full search
          HexMesh_FindPointWithSpatialIndex = HexMesh_FindPointWithCoords(self, x, eID, xi)
+         end associate
 
       end function HexMesh_FindPointWithSpatialIndex
 !
