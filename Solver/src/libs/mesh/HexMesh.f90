@@ -1704,6 +1704,7 @@ slavecoord:             DO l = 1, 4
       integer           :: zoneID
       integer           :: no_of_bdry_faces
       integer           :: no_of_faces
+      integer           :: Nmin, Nmax
       integer, allocatable :: facesPerZone(:)
       character(len=LINE_LENGTH) :: str
       !----------------------------------------------------
@@ -1743,10 +1744,19 @@ slavecoord:             DO l = 1, 4
 
       call SubSection_Header('Mesh file "' // trim(fileName) // '".')
 
+      Nmin = minval(self % Nx)
+      Nmax = maxval(self % Nx)
+
       write(STD_OUT,'(30X,A,A28,I10)') "->" , "Number of elements: " , self % no_of_allElements
       write(STD_OUT,'(30X,A,A28,I10)') "->" , "Number of faces: " , no_of_faces
-
       write(STD_OUT,'(30X,A,A28,I10)') "->" , "Number of boundary faces: " , no_of_bdry_faces
+      if ( Nmin .eq. Nmax ) then
+         write(STD_OUT,'(30X,A,A28,I10)')      "->" , "Polynomial order: " , Nmin
+      else
+         write(STD_OUT,'(30X,A,A28,I4,A,I4)') "->" , "Polynomial order: " , Nmin, " -", Nmax
+      end if
+      write(STD_OUT,'(30X,A,A28,I10)') "->" , "Degrees of freedom: " , &
+         sum( (self % Nx + 1) * (self % Ny + 1) * (self % Nz + 1) )
       write(STD_OUT,'(30X,A,A28,I10)') "->" , "Order of curved faces: " , bFaceOrder
       write(STD_OUT,'(30X,A,A28,L10)') "->" , "2D extruded mesh: " , self % meshIs2D
 
