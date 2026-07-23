@@ -40,7 +40,6 @@ from pathlib import Path
 # Full path to the horses3d.ns binary
 HORSES_BINARY = "../../../bin/horses3d.ns"
 
-# Directory containing the mesh files (meshN.h5)
 # Mesh files are the shared cube meshes in test/TestMeshes, named: MMS_cube{N}.h5
 MESH_DIR = "../../TestMeshes"
 
@@ -60,12 +59,12 @@ ERRORS_CSV = "errors.csv"
 #  SECTION 2 — Study parameters
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Mesh numbers, meshes are expected to be named meshN with changing N
-MESH_SIZES = [4, 5, 6, 7, 8]
+# Mesh files are the shared cube meshes in test/TestMeshes, named: MMS_cube{N}.h5
+MESH_SIZES = [4, 5, 6]
 
 # Polynomial orders to test, cannot be higher than the max p in problemfile generator
 # By default the max is set to 7
-P_VALUES = [1, 2, 3, 4, 5]
+P_VALUES = [2, 3, 4, 5, 6]
 
 # Time step — kept fixed across all cases to avoid introducing
 # variability in the errors. Choose conservative enough for the
