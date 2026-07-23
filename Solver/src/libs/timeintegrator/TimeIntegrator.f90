@@ -547,11 +547,6 @@
       maxResidual       = ComputeMaxResiduals(sem % mesh)
       sem % maxResidual = maxval(maxResidual)
       call Monitors % UpdateValues( sem % mesh, t, sem % numberOfTimeSteps, maxResidual, .false., dt )
-      if ( MPI_Process % isRoot ) then
-         write(STD_OUT,'(A,I0,A,I0)') "DEBUG post-UpdateValues: monitors%bufferLine=", monitors % bufferLine, &
-            " size(monitors%iter)=", size(monitors % iter)
-         flush(STD_OUT)
-      end if
       call self % Display(sem % mesh, monitors, sem  % numberOfTimeSteps)
 
       if (self % pAdaptator % adaptation_mode    == ADAPT_DYNAMIC_TIME .and. &
@@ -898,10 +893,6 @@
       integer, save           :: shown = 0
 
       if ( .not. MPI_Process % isRoot ) return
-
-      write(STD_OUT,'(A,I0,A,I0)') "DEBUG Display-entry: monitors%bufferLine=", monitors % bufferLine, &
-         " monitors%iterAlloc=", merge(1,0,allocated(monitors % iter))
-      flush(STD_OUT)
 
       if ( mod(shown, showLabels) .eq. 0 ) then
          if ( (self % integratorType .eq. TIME_ACCURATE) .and. (iter .gt. self % initial_iter+1) ) then
