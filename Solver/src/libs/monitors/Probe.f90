@@ -212,7 +212,7 @@ module ProbeClass
 !
 !           Find the requested point in the mesh
 !           ------------------------------------
-#ifndef __NVCOMPILER
+#ifndef _OPENACC
             if ( allocated(mesh % spatialIndex % head) ) then
                self % active = mesh % FindPointWithSpatialIndex(self % x, self % eID, self % xi)
             else
