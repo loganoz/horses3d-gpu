@@ -31,7 +31,7 @@ with the desired options (bold are default):
 - MODE=DEBUG/HPC/**RELEASE**
 - COMPILER=ifort/**gfortran**
 - COMM=PARALLEL/**SEQUENTIAL**
-- ENABLE_THREADS=NO/**YES**
+- ENABLE_THREADS=YES/**NO**
 - WITH_PETSC=YES/**NO**
 - WITH_METIS=YES/**NO**
 - WITH_HDF5=YES/**NO**

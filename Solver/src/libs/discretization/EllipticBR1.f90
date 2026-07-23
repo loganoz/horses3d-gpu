@@ -233,7 +233,7 @@ module EllipticBR1
 !           -----------------
 !
          call HexMesh_ProlongGradientsToFaces(mesh, size(mesh % elements_mpi), mesh % elements_mpi, nGradEqn)
-
+!
 #endif
 
       end subroutine BR1_LiftGradients
@@ -542,7 +542,7 @@ flux )
          flux = flux_vec(:,IX) * nHat(IX) + flux_vec(:,IY) * nHat(IY) + flux_vec(:,IZ) * nHat(IZ) 
 
 #ifdef MULTIPHASE
-         sigma0 = 0.5_RP * self % sigma * (maxval(f % Nf))*(maxval(f % Nf)+1) / f % geom % h
+         sigma0 = 0.5_RP * self % sigma * (maxval(f % Nf) + 0.0_RP)*(maxval(f % Nf) + 1.0_RP) / f % geom % h
          flux = flux - sigma0 * sigma * (QLeft-QRight)
 #endif
 
@@ -576,7 +576,7 @@ flux )
          real(kind=RP)     :: sigma0
 
 #ifdef MULTIPHASE
-         sigma0 = 0.5_RP * BR1_sigma * (maxval(f % Nf))*(maxval(f % Nf)+1) / f % geom % h
+         sigma0 = 0.5_RP * BR1_sigma * (maxval(f % Nf) + 0.0_RP)*(maxval(f % Nf) + 1.0_RP) / f % geom % h
 #endif
           
          !$acc loop vector collapse(3)

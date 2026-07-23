@@ -23,8 +23,9 @@ PLATFORM?=LINUX
 COMPILER?=gfortran
 MODE?=RELEASE
 COMM?=SEQUENTIAL
-ENABLE_THREADS?=YES
+ENABLE_THREADS?=NO
 MAKE=make
+EXTRA_FFLAGS?=
 
 ########################################
 # 2.- User defined paths
@@ -167,6 +168,11 @@ endif
 ifeq ($(ENABLE_THREADS),YES)
     FFLAGS+=-fopenmp
 endif
+
+##################
+## Add extra flags
+##################
+FFLAGS  += $(EXTRA_FFLAGS)
 
 ##############################################################
 ##	Get objects 

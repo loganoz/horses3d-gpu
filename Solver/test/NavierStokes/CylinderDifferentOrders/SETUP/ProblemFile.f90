@@ -553,15 +553,15 @@ end module ProblemFileFunctions
             INTEGER      , parameter           :: iterations = 100
  
 
-            real(kind=RP), parameter :: residuals(5) = [ 9.5806856005342933E+00_RP, &
-                                                         2.0804408993372231E+01_RP, &
-                                                         3.7668665836122439E-01_RP, &
-                                                         2.8294964263463125E+01_RP, &
-                                                         2.6470704194989690E+02_RP]
+            real(kind=RP), parameter :: residuals(5) = [ 4.0017019922891643_RP, &
+                                                         10.243013454952363_RP, &
+                                                         0.1382241479604160_RP, &
+                                                         10.455907134526173_RP, &
+                                                         108.75533977669937_RP]
 
-            real(kind=RP), parameter           :: wake_u = 7.0745334553937767E-12_RP
-            real(kind=RP), parameter           :: cd = 1.1700328563228789E+01_RP
-            real(kind=RP), parameter           :: cl = 2.1473912634295544E-05_RP
+            real(kind=RP), parameter           :: wake_u = 1.3963781672402801E-010_RP
+            real(kind=RP), parameter           :: cd = 9.6165679543925329_RP
+            real(kind=RP), parameter           :: cl = -3.2025628393261840E-004_RP
             integer   :: i
 
 
@@ -569,28 +569,28 @@ end module ProblemFileFunctions
             CALL initializeSharedAssertionsManager
             sharedManager => sharedAssertionsManager()
 
-            CALL FTAssertEqual(expectedValue = residuals(1)+1.0_RP, &
-                               actualValue   = monitors % residuals % values(1,1)+1.0_RP, &
+            CALL FTAssertEqual(expectedValue = residuals(1) + 1.0_RP, &
+                               actualValue   = monitors % residuals % values(1,1) + 1.0_RP, &
                                tol           = 1.d-11, &
                                msg           = "Continuity residual")
 
-            CALL FTAssertEqual(expectedValue = residuals(2)+1.0_RP, &
-                               actualValue   = monitors % residuals % values(2,1)+1.0_RP, &
+            CALL FTAssertEqual(expectedValue = residuals(2) + 1.0_RP, &
+                               actualValue   = monitors % residuals % values(2,1) + 1.0_RP, &
                                tol           = 1.d-11, &
                                msg           = "X-Momentum residual")
 
-            CALL FTAssertEqual(expectedValue = residuals(3)+1.0_RP, &
-                               actualValue   = monitors % residuals % values(3,1)+1.0_RP, &
+            CALL FTAssertEqual(expectedValue = residuals(3) + 1.0_RP, &
+                               actualValue   = monitors % residuals % values(3,1) + 1.0_RP, &
                                tol           = 1.d-11, &
                                msg           = "Y-Momentum residual")
 
-            CALL FTAssertEqual(expectedValue = residuals(4)+1.0_RP, &
-                               actualValue   = monitors % residuals % values(4,1)+1.0_RP, &
+            CALL FTAssertEqual(expectedValue = residuals(4) + 1.0_RP, &
+                               actualValue   = monitors % residuals % values(4,1) + 1.0_RP, &
                                tol           = 1.d-11, &
                                msg           = "Z-Momentum residual")
 
-            CALL FTAssertEqual(expectedValue = residuals(5)+1.0_RP, &
-                               actualValue   = monitors % residuals % values(5,1)+1.0_RP, &
+            CALL FTAssertEqual(expectedValue = residuals(5) + 1.0_RP, &
+                               actualValue   = monitors % residuals % values(5,1) + 1.0_RP, &
                                tol           = 1.d-11, &
                                msg           = "Energy residual")
 
@@ -640,7 +640,7 @@ end module ProblemFileFunctions
       SUBROUTINE UserDefinedTermination
 !
 !        -----------------------------------------------
-!        Called at the the end of the main driver after 
+!        Called at the end of the main driver after 
 !        everything else is done.
 !        -----------------------------------------------
 !

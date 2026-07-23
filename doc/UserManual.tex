@@ -194,6 +194,8 @@ partitioning  & \textit{CHARACTER}: Specifies the method for partitioning the me
 
 partitioning with weights & \textit{LOGICAL}: Specifies if the method for partitioning the mesh in MPI simulations takes the local polynomial order as weights. Necessary for local polynomial refinement & .TRUE. \\ \hline
 
+read partitioning from files & \textit{LOGICAL}: Specifies if the solver should read the partitioning information from files instead of performing the mesh partitioning. When \texttt{.FALSE.}, the solver reads the mesh file in serial at preprocessing, partitions the mesh, and writes the partitioning information to files in \texttt{./MESH/partitioning\_NUMRANKS\_ranks} (where \texttt{NUMRANKS} is the number of ranks). When \texttt{.TRUE.}, the solver will directly try to read the files in that folder. If the files do not exist, the solver will throw an error. & .FALSE. \\ \hline
+
 manufactured solution & \textit{CHARACTER}: Must have the value '2D' or '3D'. When this keyword is used, the program will add source terms for the conservative variables taken into account an exact analytic solution for each primitive variable j ($\rho$, $u$, $v$, $w$, $p$) of the form:\
 
 $j = j_C(1) + j_C(2) \sin(\pi j_C(5) x) + j_C(3) \sin(\pi j_C(6) y) + j_C(4) \sin(\pi j_C(7) z) $\
@@ -1400,7 +1402,7 @@ name & \textit{CHARACTER}: name assigned to immersed boundary method job &  \\ \
 
 active & \textit{LOGICAL}: When .TRUE. the immersed boundary method is active. & .FALSE. \\ \hline
 
-penalization & \textit{REAL}: Specifies the value of the penalization term, \textit{i.e.} \eta. & \Delta t \\ \hline
+penalization & \textit{REAL}: Specifies the value of the penalization term, \textit{i.e.} $\eta$. & $\Delta t$ \\ \hline
 
 semi implicit & \textit{LOGICAL}: The source term is treated in a semi-implicit manner. & .FALSE. \\ \hline
 
@@ -1804,7 +1806,7 @@ Advanced users can have additional control over a simulation without having to m
 
 \item UserDefinedFinalize: Called after the solution computed to allow, for example error tests to be performed.
 
-\item UserDefinedTermination: Called at the the end of the main driver after everything else is done.
+\item UserDefinedTermination: Called at the end of the main driver after everything else is done.
 \end{itemize}
 
 \section{Compiling the Problem File}
@@ -2093,7 +2095,7 @@ Balancing the utilization of MPI and OMP in extensive simulations, particularly 
                 grid=both,
                 ymajorgrids=true,
                 xmajorgrids=true, % Display only vertical grid lines
-                major grid style={line width=0.2pt, grey!50},
+                major grid style={line width=0.2pt, gray!50},
                 width=0.48\textwidth,
                 legend pos=south east
             ]

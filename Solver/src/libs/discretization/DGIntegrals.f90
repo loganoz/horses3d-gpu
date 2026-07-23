@@ -72,17 +72,30 @@ module DGIntegrals
 !        ---------------
 !
          integer   :: i, j, k, l, eq
+         real(kind=RP) :: r_volInt
 
-         !$acc loop vector collapse(4)
+         !$acc loop vector collapse(4) private(r_volInt)
           do k = 0, Nxyz(3) ; do j = 0, Nxyz(2) ; do i = 0, Nxyz(1) ; do eq = 1, NEQ
-            ! not initialize to 0 to be general for all Physics
             ! volInt(eq,i,j,k) = 0.0_RP
+            r_volInt = volInt(eq,i,j,k)
+            
             !$acc loop seq 
             do l = 0, Nxyz(1)
-               volInt(eq,i,j,k) = volInt(eq,i,j,k) +  NodalStorage(Nxyz(1)) % hatD(i,l) * F(eq,l,j,k,IX) &
-                                                   +  NodalStorage(Nxyz(2)) % hatD(j,l) * F(eq,i,l,k,IY) &
-                                                   +  NodalStorage(Nxyz(3)) % hatD(k,l) * F(eq,i,j,l,IZ)
+               r_volInt = r_volInt + NodalStorage(Nxyz(1)) % hatD(i,l) * F(eq,l,j,k,IX)
+            end do  
+            
+            !$acc loop seq 
+            do l = 0, Nxyz(2)
+               r_volInt = r_volInt + NodalStorage(Nxyz(2)) % hatD(j,l) * F(eq,i,l,k,IY)
+            end do  
+            
+            !$acc loop seq 
+            do l = 0, Nxyz(3)
+               r_volInt = r_volInt + NodalStorage(Nxyz(3)) % hatD(k,l) * F(eq,i,j,l,IZ)
             end do             
+            
+            ! Write back to global memory
+            volInt(eq,i,j,k) = r_volInt        
          end do ; end do ; end do ; end do
 
       end subroutine ScalarWeakIntegrals_StdVolumeGreen
