@@ -76,7 +76,7 @@ OUTPUT_FILE = "ProblemFile.f90"
 
 # Quadrature node type — must match "Discretization nodes" in control file
 # "Gauss-Lobatto"  or  "Gauss"
-NODE_TYPE = "Gauss-Lobatto"
+NODE_TYPE = "Gauss"
 
 # Simplification strategy for SymPy source terms. Simplification is NOT required for
 # correctness — fcode emits mathematically equivalent Fortran either way — it only makes
@@ -867,7 +867,7 @@ end module ProblemFileFunctions
                error_mesh = error_mesh + error_elem
             END DO
 
-            error_mesh = sqrt(error_mesh)
+            error_mesh = sqrt(error_mesh)/8.0d0 !Divide by mesh volume
 
             ! --- Write L2 error to file for automated convergence study ---
             ! Format: nelems, P, NDOF, L2_error, t_final
