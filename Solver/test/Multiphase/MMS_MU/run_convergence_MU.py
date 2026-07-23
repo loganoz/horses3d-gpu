@@ -1,23 +1,23 @@
 """
-run_convergence_NS.py
+run_convergence_MU.py
 =====================
-Runs the HORSES3D Navier-Stokes (NS) MMS convergence study automatically.
+Runs the HORSES3D Multiphase MMS convergence study automatically.
 
 USAGE
 -----
 1. Edit SECTION 1 — Paths (binary, meshes, results directory).
 2. Edit SECTION 2 — Study parameters (mesh sizes, P values, dt, t_final).
-3. Run:  python3 run_convergence_NS.py
+3. Run:  python3 run_convergence_MU.py
 
 The script will:
   - Generate one control file per (mesh, P) combination
-  - Run ./horses3d.ns for each case sequentially
+  - Run ./horses3d.mu for each case sequentially
   - Read mms_l2_error.dat after each run
   - Append results to errors.csv
   - Skip cases already present in errors.csv (safe to restart after a crash)
 
 Add --dry-run to print what would be run without executing anything:
-  python3 run_convergence_NS.py --dry-run
+  python3 run_convergence_MU.py --dry-run
 
 OUTPUT
 ------
@@ -37,8 +37,8 @@ from pathlib import Path
 #  SECTION 1 — Paths
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Full path to the horses3d.ns binary
-HORSES_BINARY = "../../../bin/horses3d.ns"
+# Full path to the horses3d.MU binary
+HORSES_BINARY = "../../../bin/horses3d.mu"
 
 # Directory containing the mesh files (meshN.h5)
 # Mesh files are the shared cube meshes in test/TestMeshes, named: MMS_cube{N}.h5
@@ -61,19 +61,19 @@ ERRORS_CSV = "errors.csv"
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Mesh numbers, meshes are expected to be named meshN with changing N
-MESH_SIZES = [4, 5, 6, 7, 8]
+MESH_SIZES = [4, 5, 6]
 
 # Polynomial orders to test, cannot be higher than the max p in problemfile generator
 # By default the max is set to 7
-P_VALUES = [1, 2, 3, 4, 5]
+P_VALUES = [2, 3, 4, 5, 6]
 
 # Time step — kept fixed across all cases to avoid introducing
 # variability in the errors. Choose conservative enough for the
 # finest mesh and highest P in your study.
-DT = 1.0e-2
+DT = 1.0e-7
 
 # Final simulation time
-T_FINAL = 1.0
+T_FINAL = 1.0e-5
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  END OF USER CONFIGURATION 
@@ -190,7 +190,7 @@ def build_case_list(mesh_sizes, p_values, completed):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="NS MMS convergence runner")
+    parser = argparse.ArgumentParser(description="MU MMS convergence runner")
     parser.add_argument("--dry-run", action="store_true",
                         help="Print cases without running them")
     args = parser.parse_args()
@@ -216,7 +216,7 @@ def main():
     cases     = build_case_list(MESH_SIZES, P_VALUES, completed)
 
     total = len(MESH_SIZES) * len(P_VALUES)
-    print(f"MMS Convergence Study — Navier-Stokes (NS)")
+    print(f"MMS Convergence Study — Multiphase (MU)")
     print(f"  Binary   : {HORSES_BINARY}")
     print(f"  Meshes   : {MESH_SIZES}")
     print(f"  P values : {P_VALUES}")

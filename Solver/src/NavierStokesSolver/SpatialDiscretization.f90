@@ -576,14 +576,18 @@ module SpatialDiscretization
 !
 !           Add physical (user-defined) source term
 !           ***************************************
-!           UserDefinedSourceTermNS lives in the problemfile shared library, which is
-!           compiled WITHOUT -acc, so it can only run on the host, and the problemfile
+!           WARNING: the user-defined source term (UserDefinedSourceTermNS) does NOT work
+!           with nvfortran / OpenACC (GPU). It lives in the problemfile shared library,
+!           which is compiled WITHOUT -acc, so it is a host routine and the problemfile
 !           cannot issue OpenACC data directives. On the GPU the solution Q is resident on
-!           the device, so this host loop is compiled ONLY for non-OpenACC (CPU, e.g.
-!           gfortran) builds and is skipped entirely under nvfortran/OpenACC - it has zero
-!           effect on GPU. User source terms (e.g. Manufactured Solutions) are therefore a
-!           CPU/serial feature; on the GPU S_NS is populated only by the device-side
-!           sources below (ForcesFarm, channelSource, particles).
+!           the device, so running this host loop there would read stale host data and the
+!           forcing would silently not enter QDot. It is therefore compiled ONLY for
+!           non-OpenACC (CPU, e.g. gfortran) builds and skipped entirely under
+!           nvfortran/OpenACC - zero effect and zero cost on the GPU. Consequence: anything
+!           that relies on it - e.g. the Method of Manufactured Solutions convergence suite
+!           in test/NavierStokes/MMS_NS - is a CPU/serial-only feature. On the GPU, S_NS is
+!           populated only by the device-side sources below (ForcesFarm, channelSource,
+!           particles).
 #ifndef _OPENACC
 !$omp do schedule(runtime) private(i,j,k)
             do eID = 1, mesh % no_of_elements
