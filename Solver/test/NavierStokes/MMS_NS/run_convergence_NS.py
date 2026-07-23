@@ -70,10 +70,9 @@ P_VALUES = [1, 2, 3, 4, 5]
 # Time step — kept fixed across all cases to avoid introducing
 # variability in the errors. Choose conservative enough for the
 # finest mesh and highest P in your study.
-DT = 1.0e-2
-
+DT = 1.0e-4
 # Final simulation time
-T_FINAL = 1.0
+T_FINAL = 1.0e-2
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  END OF USER CONFIGURATION 
