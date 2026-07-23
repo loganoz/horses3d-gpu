@@ -1283,6 +1283,7 @@ end subroutine getNoOfMonitors
 !     ---------------
 !
       integer        :: i, v, j, nfp, nv, fp_offset, ierr
+      real(kind=RP)  :: fp_t0, fp_t1, fp_t2, fp_t3, fp_t4
       logical, save  :: first_call_fp = .true.
 #ifdef _OPENACC
       integer        :: Nm
@@ -1321,9 +1322,11 @@ end subroutine getNoOfMonitors
 !     CPU path: each rank evaluates only its owned probes (compact index avoids scanning all 100k).
 !     Non-owned probe values stay 0; MPI_Allreduce(SUM) then gives the correct global result.
 !
+      call cpu_time(fp_t0)
       do i = 1, self % fp_nOwned
          call self % probes(self % fp_ownedIdx(i)) % ComputeLocal(mesh, bufferPos)
       end do
+      call cpu_time(fp_t1)
 #endif
 
 #ifdef _HAS_MPI_
@@ -1338,8 +1341,10 @@ end subroutine getNoOfMonitors
                self % fp_buf(j + v) = self % probes(self % fp_ownedIdx(i)) % values(v, bufferPos)
             end do
          end do
+         call cpu_time(fp_t2)
 
          call MPI_Allreduce(MPI_IN_PLACE, self % fp_buf, nfp * nv, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
+         call cpu_time(fp_t3)
 
          j = 0
          do i = fp_offset + 1, self % no_of_probes
@@ -1348,6 +1353,10 @@ end subroutine getNoOfMonitors
                self % probes(i) % values(v, bufferPos) = self % fp_buf(j)
             end do
          end do
+         call cpu_time(fp_t4)
+         if ( MPI_Process % isRoot ) &
+            write(*,'(A,4F9.4)') "[fp timing] compute/pack/allreduce/unpack (s) =", &
+               fp_t1-fp_t0, fp_t2-fp_t1, fp_t3-fp_t2, fp_t4-fp_t3
       end if
 #endif
 
