@@ -212,11 +212,15 @@ module ProbeClass
 !
 !           Find the requested point in the mesh
 !           ------------------------------------
+#ifndef __NVCOMPILER
             if ( allocated(mesh % spatialIndex % head) ) then
                self % active = mesh % FindPointWithSpatialIndex(self % x, self % eID, self % xi)
             else
                self % active = mesh % FindPointWithCoords(self % x, self % eID, self % xi)
             end if
+#else
+            self % active = mesh % FindPointWithCoords(self % x, self % eID, self % xi)
+#endif
 !
 !           Check whether the probe is located in other partition
 !           -----------------------------------------------------

@@ -1563,8 +1563,10 @@ end subroutine getNoOfMonitors
 
       idx = offset
 
-!     Build spatial index once for all file-probe lookups
+!     Build spatial index once for all file-probe lookups (CPU/gfortran only)
+#ifndef __NVCOMPILER
       call mesh % BuildSpatialIndex()
+#endif
 
       open ( newunit = fID , file = fileName , status = "old" , action = "read" )
 
