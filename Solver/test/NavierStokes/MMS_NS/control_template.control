@@ -22,7 +22,7 @@
 !------------------------- Discretization:-
 ! MANUFACTURED SOLUTIONS TESTED CASE IMPORTANTE
                         Polynomial order = {P}
-                    Discretization nodes = Gauss-Lobatto !Has to match generate_problemfile_NS.py
+                    Discretization nodes = Gauss !Has to match generate_problemfile_NS.py
                           Riemann solver = Roe
                   Viscous discretization = BR1
                        Penalty parameter = 1.0
