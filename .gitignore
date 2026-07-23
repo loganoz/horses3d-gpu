@@ -67,6 +67,5 @@ horsesConverter
 
 #ford
 doc/doc_output
-# Windows Zone.Identifier metadata files
-*.Zone.Identifier
+# Windows Zone.Identifier files with colon conflict with Windows filesystems
 *:Zone.Identifier
