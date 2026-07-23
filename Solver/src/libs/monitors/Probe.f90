@@ -728,21 +728,19 @@ module ProbeClass
          end if
 
          if ( MPI_Process % isRoot ) then
-            open( newunit = fID , file = trim ( self % fileName ) , action = "write" , access = "append" , status = "old" )
-
             do i = 1 , no_of_lines
                if ( self % saveTimestep > 0.0_RP ) then
                   if ( t(i) < self % lastSavedTime + self % saveTimestep ) cycle
                end if
+               open( newunit = fID , file = trim ( self % fileName ) , action = "write" , access = "append" , status = "old" )
                write( fID , '(I10,2X,ES24.16)' , advance = "no" ) iter(i) , t(i)
                do v = 1 , self % nVars
                   write( fID , '(2X,ES24.16)' , advance = "no" ) self % values(v,i)
                end do
                write( fID , * )
+               close ( fID )
                self % lastSavedTime = t(i)
             end do
-
-            close ( fID )
          end if
 
 
