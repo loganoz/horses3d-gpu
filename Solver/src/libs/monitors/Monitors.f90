@@ -138,10 +138,12 @@ module MonitorsClass
             BUFFER_SIZE = controlVariables % integerValueForKey("monitors flush interval")
          end if
          
-         allocate ( Monitors % TotalSimuTime(BUFFER_SIZE), &
-                    Monitors % SolverSimuTime(BUFFER_SIZE), &
-                    Monitors % t(BUFFER_SIZE), &
-                    Monitors % iter(BUFFER_SIZE) )
+         if ( .not. allocated(Monitors % iter) ) then
+            allocate ( Monitors % TotalSimuTime(BUFFER_SIZE), &
+                       Monitors % SolverSimuTime(BUFFER_SIZE), &
+                       Monitors % t(BUFFER_SIZE), &
+                       Monitors % iter(BUFFER_SIZE) )
+         end if
 !
 !        Get the solution file name
 !        --------------------------
