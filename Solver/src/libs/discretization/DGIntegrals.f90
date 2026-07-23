@@ -14,7 +14,7 @@ module DGIntegrals
 
    public ScalarWeakIntegrals_StdVolumeGreen, ScalarWeakIntegrals_StdFace
    public VectorWeakIntegrals_StdFace
-#if defined(NAVIERSTOKES) || defined(INCNS)
+#if defined(NAVIERSTOKES)
    public   ScalarWeakIntegrals_SplitVolumeDivergence
 #endif
 
@@ -23,8 +23,10 @@ module DGIntegrals
       contains
          procedure, nopass    :: StdVolumeGreen  => ScalarWeakIntegrals_StdVolumeGreen
          procedure, nopass    :: StdFace => ScalarWeakIntegrals_StdFace
-#if defined(NAVIERSTOKES) || defined(INCNS)
+#if defined(NAVIERSTOKES)
          procedure, nopass    :: SplitVolumeDivergence => ScalarWeakIntegrals_SplitVolumeDivergence
+#endif
+#if defined(NAVIERSTOKES) || defined(INCNS)
          procedure, nopass    :: TelescopicVolumeDivergence => ScalarWeakIntegrals_TelescopicVolumeDivergence
 #endif
    end type ScalarWeakIntegrals_t
