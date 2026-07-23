@@ -51,6 +51,18 @@ MODULE HexMeshClass
       public      HexMesh_ComputeLocalGradientCH, HexMesh_ComputeLocalGradientMU
 #endif
 !
+!     -----------------------------------------------------------------------
+!     Uniform-grid spatial index for fast point-in-element queries.
+!     -----------------------------------------------------------------------
+!
+      type MeshSpatialIndex_t
+         real(kind=RP) :: xlo(3), xhi(3)     ! global bounding box
+         real(kind=RP) :: cell(3)             ! voxel size in each direction
+         integer       :: ng(3)               ! number of voxels per direction
+         integer, allocatable :: head(:,:,:)  ! head(ix,iy,iz) -> linked-list head (-1 = empty)
+         integer, allocatable :: next(:)      ! next(eID)      -> next element in list (-1 = end)
+      end type MeshSpatialIndex_t
+!
 !     ---------------
 !     Mesh definition
 !     ---------------
@@ -157,22 +169,6 @@ MODULE HexMeshClass
 
       integer, parameter :: NUM_OF_NEIGHBORS = 6 ! Hardcoded: Hexahedral conforming meshes
       integer            :: no_of_stats_variables
-!
-!     -----------------------------------------------------------------------
-!     Uniform-grid spatial index for fast point-in-element queries.
-!     Each voxel stores the IDs of elements whose axis-aligned bounding box
-!     overlaps that voxel.  Construction is O(N_elem); query is O(1) lookup
-!     + O(k) Newton iterations where k is the number of candidates (usually
-!     1-8 for a well-resolved mesh).
-!     -----------------------------------------------------------------------
-!
-      type MeshSpatialIndex_t
-         real(kind=RP) :: xlo(3), xhi(3)     ! global bounding box
-         real(kind=RP) :: cell(3)             ! voxel size in each direction
-         integer       :: ng(3)               ! number of voxels per direction
-         integer, allocatable :: head(:,:,:)  ! head(ix,iy,iz) -> linked-list head (-1 = empty)
-         integer, allocatable :: next(:)      ! next(eID)      -> next element in list (-1 = end)
-      end type MeshSpatialIndex_t
 
       TYPE Neighbor_t         ! added to introduce colored computation of numerical Jacobian (is this the best place to define this type??) - only usable for conforming meshes
          INTEGER :: elmnt(NUM_OF_NEIGHBORS+1) ! "7" hardcoded for 3D hexahedrals in conforming meshes (the last one is itself)... This definition must change if the code is expected to be more general
