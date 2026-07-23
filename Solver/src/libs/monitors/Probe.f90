@@ -856,6 +856,8 @@ module ProbeClass
             to % lzeta = from % lzeta
          end if
          
+         to % isFileProbe   = from % isFileProbe
+         to % fileUnit      = from % fileUnit
          to % saveTimestep  = from % saveTimestep
          to % lastSavedTime = from % lastSavedTime
          to % fileName = from % fileName
