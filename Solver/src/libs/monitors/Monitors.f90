@@ -1328,13 +1328,14 @@ end subroutine getNoOfMonitors
 
 #ifdef _HAS_MPI_
       if ( MPI_Process % doMPIAction ) then
-!        Pack into persistent buffer (avoids per-timestep mmap-scale alloc/dealloc).
+!        Pack only owned probes into the persistent buffer (non-owned positions stay 0).
+!        Packing all probes would be wrong: non-owned probes carry the previous timestep's
+!        allreduce result (the correct global value) which would be double-counted in the SUM.
          self % fp_buf = 0.0_RP
-         j = 0
-         do i = fp_offset + 1, self % no_of_probes
+         do i = 1, self % fp_nOwned
+            j = (self % fp_ownedIdx(i) - fp_offset - 1) * nv
             do v = 1, nv
-               j = j + 1
-               self % fp_buf(j) = self % probes(i) % values(v, bufferPos)
+               self % fp_buf(j + v) = self % probes(self % fp_ownedIdx(i)) % values(v, bufferPos)
             end do
          end do
 
