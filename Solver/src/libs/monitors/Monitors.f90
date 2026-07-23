@@ -55,6 +55,9 @@ module MonitorsClass
       real(kind=RP)                              :: probeFileSaveTimestep = 0.0_RP
       character(len=8)                           :: probeFileOutputFormat = "ASCII"
       real(kind=RP)                              :: fp_lastSavedTime = -huge(0.0_RP)
+      integer                                    :: fp_nOwned = 0
+      integer             , allocatable          :: fp_ownedIdx(:)
+      real(kind=RP)       , allocatable          :: fp_buf(:)
       integer                                    :: bufferLine
       integer                      , allocatable :: iter(:)
       integer                                    :: dt_restriction
@@ -252,6 +255,28 @@ module MonitorsClass
          Monitors % no_of_probes = Monitors % no_of_probes + no_of_fileProbes
 #ifdef _OPENACC
          if ( no_of_fileProbes .gt. 0 ) call Monitor_InitFileProbesGPU( Monitors, no_of_fileProbes )
+#else
+!        Build compact owned-probe index and pre-allocate persistent MPI buffer (CPU path only).
+!        Avoids per-timestep allocate/deallocate of a 4MB buffer (which triggers mmap) and
+!        avoids iterating all 100k probes in the compute loop when each rank owns ~1%.
+         if ( no_of_fileProbes .gt. 0 ) then
+            block
+               use MPI_Process_Info
+               integer :: fp_offset_loc, ii, nv_loc
+               fp_offset_loc = Monitors % no_of_probes - no_of_fileProbes
+               nv_loc = size(Monitors % probesVariables)
+               allocate( Monitors % fp_ownedIdx(no_of_fileProbes) )
+               Monitors % fp_nOwned = 0
+               do ii = 1, no_of_fileProbes
+                  if ( Monitors % probes(fp_offset_loc + ii) % rank .eq. MPI_Process % rank ) then
+                     Monitors % fp_nOwned = Monitors % fp_nOwned + 1
+                     Monitors % fp_ownedIdx(Monitors % fp_nOwned) = fp_offset_loc + ii
+                  end if
+               end do
+               allocate( Monitors % fp_buf(no_of_fileProbes * nv_loc) )
+               Monitors % fp_buf = 0.0_RP
+            end block
+         end if
 #endif
 #endif
 
@@ -805,6 +830,9 @@ module MonitorsClass
             deallocate(self % fp_lxi, self % fp_leta, self % fp_lzeta)
             deallocate(self % fp_varCodes, self % fp_values_gpu)
          end if
+#else
+         safedeallocate( self % fp_ownedIdx )
+         safedeallocate( self % fp_buf )
 #endif
          
 #if defined(NAVIERSTOKES) || defined(INCNS)
@@ -1255,7 +1283,6 @@ end subroutine getNoOfMonitors
 !     ---------------
 !
       integer        :: i, v, j, nfp, nv, fp_offset, ierr
-      real(kind=RP), allocatable :: buf(:)
       logical, save  :: first_call_fp = .true.
 #ifdef _OPENACC
       integer        :: Nm
@@ -1291,35 +1318,35 @@ end subroutine getNoOfMonitors
 
 #else
 !
-!     CPU path: serial evaluation, each rank computes only its owned probes.
-!     Non-owning ranks write 0; MPI_Allreduce(SUM) then gives the correct result.
+!     CPU path: each rank evaluates only its owned probes (compact index avoids scanning all 100k).
+!     Non-owned probe values stay 0; MPI_Allreduce(SUM) then gives the correct global result.
 !
-      do i = fp_offset + 1, self % no_of_probes
-         call self % probes(i) % ComputeLocal(mesh, bufferPos)
+      do i = 1, self % fp_nOwned
+         call self % probes(self % fp_ownedIdx(i)) % ComputeLocal(mesh, bufferPos)
       end do
 #endif
 
 #ifdef _HAS_MPI_
       if ( MPI_Process % doMPIAction ) then
-         allocate( buf(nfp * nv) )
+!        Pack into persistent buffer (avoids per-timestep mmap-scale alloc/dealloc).
+         self % fp_buf = 0.0_RP
          j = 0
          do i = fp_offset + 1, self % no_of_probes
             do v = 1, nv
                j = j + 1
-               buf(j) = self % probes(i) % values(v, bufferPos)
+               self % fp_buf(j) = self % probes(i) % values(v, bufferPos)
             end do
          end do
 
-         call MPI_Allreduce(MPI_IN_PLACE, buf, nfp * nv, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
+         call MPI_Allreduce(MPI_IN_PLACE, self % fp_buf, nfp * nv, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
 
          j = 0
          do i = fp_offset + 1, self % no_of_probes
             do v = 1, nv
                j = j + 1
-               self % probes(i) % values(v, bufferPos) = buf(j)
+               self % probes(i) % values(v, bufferPos) = self % fp_buf(j)
             end do
          end do
-         deallocate(buf)
       end if
 #endif
 
