@@ -1284,6 +1284,7 @@ end subroutine getNoOfMonitors
 !
       integer        :: i, v, j, nfp, nv, fp_offset, ierr
       real(kind=RP)  :: fp_t0, fp_t1, fp_t2, fp_t3, fp_t4
+      integer, save  :: fp_timing_calls = 0
       logical, save  :: first_call_fp = .true.
 #ifdef _OPENACC
       integer        :: Nm
@@ -1322,42 +1323,43 @@ end subroutine getNoOfMonitors
 !     CPU path: each rank evaluates only its owned probes (compact index avoids scanning all 100k).
 !     Non-owned probe values stay 0; MPI_Allreduce(SUM) then gives the correct global result.
 !
+      fp_t0 = 0.0_RP ; fp_t1 = 0.0_RP ; fp_t2 = 0.0_RP ; fp_t3 = 0.0_RP ; fp_t4 = 0.0_RP
       call cpu_time(fp_t0)
       do i = 1, self % fp_nOwned
          call self % probes(self % fp_ownedIdx(i)) % ComputeLocal(mesh, bufferPos)
       end do
       call cpu_time(fp_t1)
-#endif
+
+!     Pack only owned probes into the persistent buffer (non-owned positions stay 0).
+      self % fp_buf = 0.0_RP
+      do i = 1, self % fp_nOwned
+         j = (self % fp_ownedIdx(i) - fp_offset - 1) * nv
+         do v = 1, nv
+            self % fp_buf(j + v) = self % probes(self % fp_ownedIdx(i)) % values(v, bufferPos)
+         end do
+      end do
+      call cpu_time(fp_t2)
 
 #ifdef _HAS_MPI_
       if ( MPI_Process % doMPIAction ) then
-!        Pack only owned probes into the persistent buffer (non-owned positions stay 0).
-!        Packing all probes would be wrong: non-owned probes carry the previous timestep's
-!        allreduce result (the correct global value) which would be double-counted in the SUM.
-         self % fp_buf = 0.0_RP
-         do i = 1, self % fp_nOwned
-            j = (self % fp_ownedIdx(i) - fp_offset - 1) * nv
-            do v = 1, nv
-               self % fp_buf(j + v) = self % probes(self % fp_ownedIdx(i)) % values(v, bufferPos)
-            end do
-         end do
-         call cpu_time(fp_t2)
-
          call MPI_Allreduce(MPI_IN_PLACE, self % fp_buf, nfp * nv, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
-         call cpu_time(fp_t3)
-
-         j = 0
-         do i = fp_offset + 1, self % no_of_probes
-            do v = 1, nv
-               j = j + 1
-               self % probes(i) % values(v, bufferPos) = self % fp_buf(j)
-            end do
-         end do
-         call cpu_time(fp_t4)
-         if ( MPI_Process % isRoot ) &
-            write(*,'(A,4F9.4)') "[fp timing] compute/pack/allreduce/unpack (s) =", &
-               fp_t1-fp_t0, fp_t2-fp_t1, fp_t3-fp_t2, fp_t4-fp_t3
       end if
+#endif
+      call cpu_time(fp_t3)
+
+      j = 0
+      do i = fp_offset + 1, self % no_of_probes
+         do v = 1, nv
+            j = j + 1
+            self % probes(i) % values(v, bufferPos) = self % fp_buf(j)
+         end do
+      end do
+      call cpu_time(fp_t4)
+
+      fp_timing_calls = fp_timing_calls + 1
+      if ( MPI_Process % isRoot .and. fp_timing_calls <= 10 ) &
+         write(*,'(A,I4,A,4F9.4)') "[fp timing] step ", fp_timing_calls, &
+            " compute/pack/allreduce/unpack (s) =", fp_t1-fp_t0, fp_t2-fp_t1, fp_t3-fp_t2, fp_t4-fp_t3
 #endif
 
    end subroutine Monitor_UpdateFileProbes
