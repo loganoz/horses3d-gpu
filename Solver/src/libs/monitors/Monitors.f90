@@ -448,8 +448,8 @@ module MonitorsClass
 !
 !        Print iteration and time
 !        ------------------------
-         write(STD_OUT,'(A,I0,A,I0,A,L1)') "DEBUG MonitorWriteValues: bufferLine=", self % bufferLine, &
-            " iterAlloc=", merge(1,0,allocated(self % iter)), " active=", MPI_Process % isRoot
+         write(STD_OUT,'(A,I0,A,I0,A,A)') "DEBUG MonitorWriteValues: bufferLine=", self % bufferLine, &
+            " iterAlloc=", merge(1,0,allocated(self % iter)), " solfile=", trim(self % solution_file)
          flush(STD_OUT)
          write ( STD_OUT , ' ( I10            ) ' , advance = "no" ) self % iter    ( self % bufferLine )
          write ( STD_OUT , ' ( 1X,A,1X,ES10.3 ) ' , advance = "no" ) "|" , self % t ( self % bufferLine ) 
