@@ -837,20 +837,20 @@ end module ProblemFileFunctions
             INTEGER                            :: fid, nelems, P, NDOF
             real(kind=RP)                      :: x(NDIM)
             real(kind=RP)                      :: u_ex(NCONS), u_h(NCONS)
-            real(kind=RP)                      :: wi, wj, wk
-            real(kind=RP)                      :: error_elem, error_mesh
+            real(kind=RP)                      :: wi, wj, wk, wq
+            real(kind=RP)                      :: error_mesh, vol
             !
             ! {NODE_TYPE} quadrature weights, orders 1..{MAX_ORDER}
             !
 {weight_arrays_f90()}
             error_mesh = 0.0_RP
+            vol        = 0.0_RP
 
 #ifdef NAVIERSTOKES
             DO eID = 1, SIZE(mesh % elements)
                Nx = mesh % elements(eID) % Nxyz(1)
                Ny = mesh % elements(eID) % Nxyz(2)
                Nz = mesh % elements(eID) % Nxyz(3)
-               error_elem = 0.0_RP
 
                DO k = 0, Nz ; DO j = 0, Ny ; DO i = 0, Nx
                   x   = mesh % elements(eID) % geom % x(:,i,j,k)
@@ -860,14 +860,16 @@ end module ProblemFileFunctions
 {weight_select_f90('Nx', 'i', 'wi')}
 {weight_select_f90('Ny', 'j', 'wj')}
 {weight_select_f90('Nz', 'k', 'wk')}
-                  error_elem = error_elem + wi*wj*wk &
-                             * mesh % elements(eID) % geom % jacobian(i,j,k) &
-                             * norm2(u_ex - u_h)**2
+                  wq = wi*wj*wk * mesh % elements(eID) % geom % jacobian(i,j,k)
+                  vol        = vol        + wq
+                  error_mesh = error_mesh + wq * norm2(u_ex - u_h)**2
                END DO ; END DO ; END DO
-               error_mesh = error_mesh + error_elem
             END DO
 
-            error_mesh = sqrt(error_mesh)/8.0d0 !Divide by mesh volume
+            ! Volume-averaged L2 (RMS) error: sqrt( integral(||err||^2) / volume ).
+            ! The volume = integral(1) = sum of w*J is accumulated in the SAME loop,
+            ! so this is correct for any mesh / domain (not just [-1,1]^3).
+            error_mesh = sqrt(error_mesh / vol)
 
             ! --- Write L2 error to file for automated convergence study ---
             ! Format: nelems, P, NDOF, L2_error, t_final

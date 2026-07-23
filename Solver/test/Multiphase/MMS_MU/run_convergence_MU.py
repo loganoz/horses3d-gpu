@@ -208,6 +208,9 @@ def main():
 
     # ── Set up directories ──────────────────────────────────────────────────
     os.makedirs(RESULTS_DIR, exist_ok=True)
+    # The solver writes a boundary-mesh dump (.bmesh) to a hardcoded ./MESH, so it
+    # must exist even though the actual meshes live in ../../TestMeshes.
+    os.makedirs("MESH", exist_ok=True)
     os.makedirs(CONTROL_DIR, exist_ok=True)
 
     # ── Build run list ──────────────────────────────────────────────────────
