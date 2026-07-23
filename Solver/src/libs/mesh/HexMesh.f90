@@ -4117,6 +4117,9 @@ slavecoord:             DO l = 1, 4
          integer        :: ix, iy, iz, ixlo, ixhi, iylo, iyhi, izlo, izhi
          real(kind=RP)  :: eXlo(3), eXhi(3), pad
 
+         if ( .not. allocated(self % nodes) ) return
+         if ( self % no_of_elements .le. 0 ) return
+
          n = 20
          if ( present(ng_in) .and. ng_in .gt. 0 ) n = ng_in
 
