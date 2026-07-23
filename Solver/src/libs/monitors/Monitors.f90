@@ -89,7 +89,7 @@ module MonitorsClass
          procedure   :: WriteValues     => Monitor_WriteValues
          procedure   :: UpdateValues    => Monitor_UpdateValues
          procedure   :: WriteToFile     => Monitor_WriteToFile
-         procedure   :: WriteProbesFileSummary => Monitor_WriteProbesFileSummary
+         procedure   :: WritePostProcessingSummary => Monitor_WritePostProcessingSummary
          procedure   :: destruct        => Monitor_Destruct
          procedure   :: copy            => Monitor_Assign
          generic     :: assignment(=)   => copy
@@ -244,16 +244,6 @@ module MonitorsClass
                call Monitor_InitFileProbesHDF5( Monitors, no_of_fileProbes )
             end if
 #endif
-            if (MPI_Process % isRoot) then
-               write(STD_OUT,'(/,30X,A)')         "** File probe monitor activated"
-               write(STD_OUT,'(30X,A,I0)')        "   -> Probes:        ", no_of_fileProbes
-               write(STD_OUT,'(30X,A,A)')         "   -> Output format: ", trim(probeFileOutputFormat)
-               if (probeFileSaveTimestep .gt. 0.0_RP) then
-                  write(STD_OUT,'(30X,A,ES14.6)') "   -> Save timestep: ", probeFileSaveTimestep
-               else
-                  write(STD_OUT,'(30X,A)')        "   -> Save timestep: every step"
-               end if
-            end if
          end if
 
          Monitors % no_of_fileProbes = no_of_fileProbes
@@ -686,12 +676,12 @@ module MonitorsClass
 
       end subroutine Monitor_WriteToFile
 
-      subroutine Monitor_WriteProbesFileSummary ( self )
+      subroutine Monitor_WritePostProcessingSummary ( self )
 !
 !        ********************************************************************
-!              Prints a startup-log summary of the bulk probes-file monitor,
-!           shown instead of including the file-based probes in the
-!           per-iteration screen log.
+!              Prints a unified post-processing summary section at startup,
+!           covering probes, file probes, volume monitors, and surface
+!           monitors.
 !        ********************************************************************
 !
          use Headers
@@ -703,28 +693,79 @@ module MonitorsClass
 !        Local variables
 !        ---------------
 !
-         integer :: j
+         integer :: i, j
+         integer :: no_of_stdProbes
 
          if ( .not. MPI_Process % isRoot ) return
-         if ( self % no_of_fileProbes .le. 0 ) return
+
+         no_of_stdProbes = self % no_of_probes - self % no_of_fileProbes
 
          write(STD_OUT,'(/)')
-         call Section_Header("Probes file monitor")
+         call Section_Header("Post-processing")
          write(STD_OUT,'(/)')
 
-         write(STD_OUT,'(30X,A,A28,A)')   "->" , "File: " , trim(self % probesFileName)
-         write(STD_OUT,'(30X,A,A28,I10)') "->" , "Number of probes: " , self % no_of_fileProbes
-         write(STD_OUT,'(30X,A,A28)',advance="no") "->" , "Variables: "
-         do j = 1 , size(self % probesVariables)
-            write(STD_OUT,'(A)',advance="no") trim(self % probesVariables(j)) // " "
-         end do
-         write(STD_OUT,*)
-         if ( self % probeFileSaveTimestep .gt. 0.0_RP ) then
-            write(STD_OUT,'(30X,A,A28,ES14.6)') "->" , "Save timestep: " , self % probeFileSaveTimestep
+#ifdef FLOW
+!
+!        -- Standard probes (point probes defined in control file) -----------
+!
+         if ( no_of_stdProbes .gt. 0 ) then
+            call SubSection_Header("Probes")
+            write(STD_OUT,'(/)')
+            write(STD_OUT,'(30X,A,A28,I0)')   "->" , "Number of probes: " , no_of_stdProbes
+            write(STD_OUT,'(/)')
          end if
-         write(STD_OUT,'(30X,A,A28,A)') "->" , "Output format: " , trim(self % probeFileOutputFormat)
+!
+!        -- File probes (bulk probe file) ------------------------------------
+!
+         if ( self % no_of_fileProbes .gt. 0 ) then
+            call SubSection_Header("File probes")
+            write(STD_OUT,'(/)')
+            write(STD_OUT,'(30X,A,A28,A)')   "->" , "File: " , trim(self % probesFileName)
+            write(STD_OUT,'(30X,A,A28,I0)')  "->" , "Number of probes: " , self % no_of_fileProbes
+            write(STD_OUT,'(30X,A,A28)',advance="no") "->" , "Variables: "
+            do j = 1 , size(self % probesVariables)
+               write(STD_OUT,'(A)',advance="no") trim(self % probesVariables(j)) // " "
+            end do
+            write(STD_OUT,*)
+            if ( self % probeFileSaveTimestep .gt. 0.0_RP ) then
+               write(STD_OUT,'(30X,A,A28,ES14.6)') "->" , "Save timestep: " , self % probeFileSaveTimestep
+            else
+               write(STD_OUT,'(30X,A,A28,A)') "->" , "Save timestep: " , "every step"
+            end if
+            write(STD_OUT,'(30X,A,A28,A)') "->" , "Output format: " , trim(self % probeFileOutputFormat)
+            write(STD_OUT,'(/)')
+         end if
+#endif
 
-      end subroutine Monitor_WriteProbesFileSummary
+!
+!        -- Volume monitors -------------------------------------------------
+!
+         if ( self % no_of_volumeMonitors .gt. 0 ) then
+            call SubSection_Header("Volume monitors")
+            write(STD_OUT,'(/)')
+            do i = 1 , self % no_of_volumeMonitors
+               write(STD_OUT,'(30X,A,I0,A,A,A,A)') "Monitor ", i, ": ", &
+                  trim(self % volumeMonitors(i) % monitorName), " - ", trim(self % volumeMonitors(i) % variable)
+            end do
+            write(STD_OUT,'(/)')
+         end if
+
+#if defined(NAVIERSTOKES) || defined(INCNS)
+!
+!        -- Surface monitors ------------------------------------------------
+!
+         if ( self % no_of_surfaceMonitors .gt. 0 ) then
+            call SubSection_Header("Surface monitors")
+            write(STD_OUT,'(/)')
+            do i = 1 , self % no_of_surfaceMonitors
+               write(STD_OUT,'(30X,A,I0,A,A,A,A)') "Monitor ", i, ": ", &
+                  trim(self % surfaceMonitors(i) % monitorName), " - ", trim(self % surfaceMonitors(i) % variable)
+            end do
+            write(STD_OUT,'(/)')
+         end if
+#endif
+
+      end subroutine Monitor_WritePostProcessingSummary
 
       subroutine Monitor_Destruct (self)
          implicit none
