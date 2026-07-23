@@ -14,7 +14,7 @@
 !-------------------- Physical parameters:-
 !
                           Flow equations = "NS"
-                             Mach number = 3.3
+                             Mach number = 0.3
                          Reynolds number = 100000.0
                                AOA theta = 0.0
                                  AOA phi = 0.0

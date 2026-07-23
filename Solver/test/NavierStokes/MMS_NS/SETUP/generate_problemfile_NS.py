@@ -867,9 +867,6 @@ end module ProblemFileFunctions
                error_mesh = error_mesh + error_elem
             END DO
 
-            ! True L2 norm over the domain: error_mesh already accumulates
-            ! sum_ijk w_i w_j w_k * J * ||u_ex - u_h||^2 = integral of ||u_ex - u_h||^2,
-            ! so the L2 error is simply its square root (no division by nelems).
             error_mesh = sqrt(error_mesh)
 
             ! --- Write L2 error to file for automated convergence study ---
