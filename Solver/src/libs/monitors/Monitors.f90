@@ -513,6 +513,7 @@ module MonitorsClass
 !        
          use PhysicsStorage
          use StopwatchClass
+         use MPI_Process_Info
          implicit none
          class(Monitor_t)    :: self
          class(HexMesh)      :: mesh
@@ -525,7 +526,13 @@ module MonitorsClass
 !        Local variables
 !        ---------------
 !
-         integer                       :: i 
+         integer                       :: i
+
+         if ( MPI_Process % isRoot ) then
+            write(STD_OUT,'(A,I0,A,I0,A,A)') "DEBUG UpdateValues-entry: bufferLine=", self % bufferLine, &
+               " iterAlloc=", merge(1,0,allocated(self % iter)), " solfile=", trim(self % solution_file)
+            flush(STD_OUT)
+         end if
 !
 !        Move to next buffer line
 !        ------------------------
