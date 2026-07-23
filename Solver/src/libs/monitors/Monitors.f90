@@ -702,44 +702,38 @@ module MonitorsClass
 
          write(STD_OUT,'(/)')
          call Section_Header("Post-processing")
-         write(STD_OUT,'(/,/)')
+         write(STD_OUT,'(/)')
 
 #ifdef FLOW
 !
 !        -- Standard probes (point probes defined in control file) -----------
 !
          if ( no_of_stdProbes .gt. 0 ) then
-            write(STD_OUT,'(15X,A)') "Probes"
-            write(STD_OUT,'(15X,A)') "------"
+            call SubSection_Header("Probes")
             write(STD_OUT,'(/)')
-            write(STD_OUT,'(30X,A,A28,I0)')   "->" , "Number of probes: " , no_of_stdProbes
-            write(STD_OUT,'(/,/)')
+            write(STD_OUT,'(30X,A,A28,I0)') "->" , "Number of probes: " , no_of_stdProbes
+            write(STD_OUT,'(/)')
          end if
 !
 !        -- File probes (bulk probe file) ------------------------------------
 !
          if ( self % no_of_fileProbes .gt. 0 ) then
-            write(STD_OUT,'(15X,A)') "File probes"
-            write(STD_OUT,'(15X,A)') "-----------"
+            call SubSection_Header("File probes")
             write(STD_OUT,'(/)')
-            write(STD_OUT,'(30X,A,A28,A)')    "->" , "File: " , trim(self % probesFileName)
-            write(STD_OUT,'(/)')
-            write(STD_OUT,'(30X,A,A28,I0)')   "->" , "Number of probes: " , self % no_of_fileProbes
-            write(STD_OUT,'(/)')
+            write(STD_OUT,'(30X,A,A28,A)')   "->" , "File: " , trim(self % probesFileName)
+            write(STD_OUT,'(30X,A,A28,I0)')  "->" , "Number of probes: " , self % no_of_fileProbes
             write(STD_OUT,'(30X,A,A28)',advance="no") "->" , "Variables: "
             do j = 1 , size(self % probesVariables)
                write(STD_OUT,'(A)',advance="no") trim(self % probesVariables(j)) // " "
             end do
             write(STD_OUT,*)
-            write(STD_OUT,'(/)')
             if ( self % probeFileSaveTimestep .gt. 0.0_RP ) then
                write(STD_OUT,'(30X,A,A28,ES14.6)') "->" , "Save timestep: " , self % probeFileSaveTimestep
             else
                write(STD_OUT,'(30X,A,A28,A)') "->" , "Save timestep: " , "every step"
             end if
-            write(STD_OUT,'(/)')
             write(STD_OUT,'(30X,A,A28,A)') "->" , "Output format: " , trim(self % probeFileOutputFormat)
-            write(STD_OUT,'(/,/)')
+            write(STD_OUT,'(/)')
          end if
 #endif
 
@@ -747,13 +741,11 @@ module MonitorsClass
 !        -- Volume monitors -------------------------------------------------
 !
          if ( self % no_of_volumeMonitors .gt. 0 ) then
-            write(STD_OUT,'(15X,A)') "Volume monitors"
-            write(STD_OUT,'(15X,A)') "---------------"
+            call SubSection_Header("Volume monitors")
             write(STD_OUT,'(/)')
             do i = 1 , self % no_of_volumeMonitors
                write(STD_OUT,'(30X,A,I0,A,A,A,A)') "Monitor ", i, ": ", &
                   trim(self % volumeMonitors(i) % monitorName), " - ", trim(self % volumeMonitors(i) % variable)
-               write(STD_OUT,'(/)')
             end do
             write(STD_OUT,'(/)')
          end if
@@ -763,13 +755,11 @@ module MonitorsClass
 !        -- Surface monitors ------------------------------------------------
 !
          if ( self % no_of_surfaceMonitors .gt. 0 ) then
-            write(STD_OUT,'(15X,A)') "Surface monitors"
-            write(STD_OUT,'(15X,A)') "----------------"
+            call SubSection_Header("Surface monitors")
             write(STD_OUT,'(/)')
             do i = 1 , self % no_of_surfaceMonitors
                write(STD_OUT,'(30X,A,I0,A,A,A,A)') "Monitor ", i, ": ", &
                   trim(self % surfaceMonitors(i) % monitorName), " - ", trim(self % surfaceMonitors(i) % variable)
-               write(STD_OUT,'(/)')
             end do
             write(STD_OUT,'(/)')
          end if
