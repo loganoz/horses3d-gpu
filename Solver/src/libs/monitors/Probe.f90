@@ -34,6 +34,7 @@ module ProbeClass
       real(kind=RP), allocatable      :: lxi(:) , leta(:), lzeta(:)
       real(kind=RP), allocatable      :: var(:,:,:)
       logical                         :: isFileProbe = .false.
+      integer                         :: fileUnit = -1
       real(kind=RP)                   :: saveTimestep
       real(kind=RP)                   :: lastSavedTime
       character(len=STR_LEN_MONITORS) :: fileName
@@ -311,7 +312,12 @@ module ProbeClass
             end do
             write( fID , * )
 
-            close ( fID )
+            if ( self % isFileProbe ) then
+               ! Keep file open for low-overhead per-timestep appends
+               self % fileUnit = fID
+            else
+               close ( fID )
+            end if
          end if
          end associate
          end associate
@@ -732,13 +738,17 @@ module ProbeClass
                if ( self % saveTimestep > 0.0_RP ) then
                   if ( t(i) < self % lastSavedTime + self % saveTimestep ) cycle
                end if
-               open( newunit = fID , file = trim ( self % fileName ) , action = "write" , access = "append" , status = "old" )
+               if ( self % fileUnit >= 0 ) then
+                  fID = self % fileUnit
+               else
+                  open( newunit = fID , file = trim ( self % fileName ) , action = "write" , access = "append" , status = "old" )
+               end if
                write( fID , '(I10,2X,ES24.16)' , advance = "no" ) iter(i) , t(i)
                do v = 1 , self % nVars
                   write( fID , '(2X,ES24.16)' , advance = "no" ) self % values(v,i)
                end do
                write( fID , * )
-               close ( fID )
+               if ( self % fileUnit < 0 ) close ( fID )
                self % lastSavedTime = t(i)
             end do
          end if

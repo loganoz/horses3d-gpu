@@ -772,7 +772,8 @@ module MonitorsClass
       subroutine Monitor_Destruct (self)
          implicit none
          class(Monitor_t)        :: self
-         
+         integer                 :: i
+
          deallocate (self % iter)
          deallocate (self % t)
          deallocate (self % TotalSimuTime)
@@ -787,6 +788,11 @@ module MonitorsClass
          safedeallocate(self % loadBalancingMonitors)
          
 #ifdef FLOW
+         if ( allocated(self % probes) ) then
+            do i = 1, size(self % probes)
+               if ( self % probes(i) % fileUnit >= 0 ) close( self % probes(i) % fileUnit )
+            end do
+         end if
          call self % probes % destruct
          safedeallocate (self % probes)
 #endif
