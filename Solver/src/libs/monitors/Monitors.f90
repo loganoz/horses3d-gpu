@@ -269,6 +269,8 @@ module MonitorsClass
          
          Monitors % bufferLine = 0
 
+         call Monitors % WritePostProcessingSummary()
+
          FirstCall = .FALSE.
 !
 !        Include the latest changes in the GPU

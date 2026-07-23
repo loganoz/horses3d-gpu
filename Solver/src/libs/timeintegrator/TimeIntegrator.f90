@@ -297,8 +297,6 @@
 
          write(STD_OUT,'(30X,A,A28,L)') "->" , "Derivative after timestep: ", CTD_AFTER_STEPS
 
-         call sem % monitors % WritePostProcessingSummary()
-
       END SUBROUTINE constructTimeIntegrator
 !
 !     ////////////////////////////////////////////////////////////////////////////////////////
