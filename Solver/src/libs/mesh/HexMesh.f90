@@ -55,14 +55,6 @@ MODULE HexMeshClass
 !     Uniform-grid spatial index for fast point-in-element queries.
 !     -----------------------------------------------------------------------
 !
-      type MeshSpatialIndex_t
-         real(kind=RP) :: xlo(3), xhi(3)     ! global bounding box
-         real(kind=RP) :: cell(3)             ! voxel size in each direction
-         integer       :: ng(3)               ! number of voxels per direction
-         integer, allocatable :: head(:,:,:)  ! head(ix,iy,iz) -> linked-list head (-1 = empty)
-         integer, allocatable :: next(:)      ! next(eID)      -> next element in list (-1 = end)
-      end type MeshSpatialIndex_t
-!
 !     ---------------
 !     Mesh definition
 !     ---------------
@@ -102,7 +94,6 @@ MODULE HexMeshClass
          integer,                     allocatable  :: HO_FacesBoundary(:)      !List of boundary faces with polynomial order greater than 1
          integer,                     allocatable  :: HO_ElementsMPI(:)        !List of MPI elements with polynomial order greater than 1
          integer,                     allocatable  :: HO_ElementsSequential(:) !List of sequential elements with polynomial order greater than 1
-         type(MeshSpatialIndex_t)                  :: spatialIndex
          contains
             procedure :: destruct                      => HexMesh_Destruct
             procedure :: Describe                      => HexMesh_Describe
@@ -153,8 +144,6 @@ MODULE HexMeshClass
             procedure :: GatherMPIFacesAviscFlux       => HexMesh_GatherMPIFacesAviscFlux
             procedure :: FindPointWithCoords           => HexMesh_FindPointWithCoords
             procedure :: FindPointWithCoordsInNeighbors=> HexMesh_FindPointWithCoordsInNeighbors
-            procedure :: BuildSpatialIndex             => HexMesh_BuildSpatialIndex
-            procedure :: FindPointWithSpatialIndex     => HexMesh_FindPointWithSpatialIndex
             procedure :: ComputeWallDistances          => HexMesh_ComputeWallDistances
             procedure :: ConformingOnZone              => HexMesh_ConformingOnZone
             procedure :: SetStorageToEqn               => HexMesh_SetStorageToEqn
@@ -4030,23 +4019,37 @@ slavecoord:             DO l = 1, 4
 !
 !////////////////////////////////////////////////////////////////////////
 !
-      logical function HexMesh_FindPointWithCoords(self, x, eID, xi, optionalElements)
+      logical function HexMesh_FindPointWithCoords(self, x, eID, xi, optionalElements, eID_hint)
          implicit none
          class(HexMesh), intent(in)         :: self
          real(kind=RP),    intent(in)       :: x(NDIM)
          integer,          intent(out)      :: eID
          real(kind=RP),    intent(out)      :: xi(NDIM)
          integer, optional,intent(in)       :: optionalElements(:)
+         integer, optional,intent(in)       :: eID_hint
 !
 !        ---------------
 !        Local variables
 !        ---------------
 !
-         integer     :: op_eID
+         integer     :: op_eID, hint
          integer     :: zoneID, fID
          logical     :: success
 
          HexMesh_FindPointWithCoords = .false.
+!
+!        Try local search from hint element first (for spatially ordered probe sets)
+!        ---------------------------------------------------------------------------
+         if ( present(eID_hint) ) then
+            hint = eID_hint
+            if ( hint >= 1 .and. hint <= self % no_of_elements ) then
+               if ( self % FindPointWithCoordsInNeighbors(x, xi, hint, 6) ) then
+                  eID = hint
+                  HexMesh_FindPointWithCoords = .true.
+                  return
+               end if
+            end if
+         end if
 !
 !        Search in optionalElements (if present)
 !        ---------------------------------------
@@ -4096,157 +4099,6 @@ slavecoord:             DO l = 1, 4
          end do
 
       end function HexMesh_FindPointWithCoords
-!
-!////////////////////////////////////////////////////////////////////////
-!
-!     ---------------------------------------------------------------------------------------------------------
-!     HexMesh_BuildSpatialIndex:
-!     Builds a uniform voxel grid over the local mesh partition.  Each voxel
-!     stores the IDs of elements whose axis-aligned bounding box overlaps it
-!     via a singly-linked list (head/next arrays).
-!     ng_in: number of voxels per direction (default 20 if <=0).
-!     ---------------------------------------------------------------------------------------------------------
-      subroutine HexMesh_BuildSpatialIndex(self, ng_in)
-         implicit none
-         class(HexMesh), intent(inout) :: self
-         integer, optional, intent(in) :: ng_in
-!
-!        Local variables
-!
-         integer        :: eID, i, n
-         integer        :: ix, iy, iz, ixlo, ixhi, iylo, iyhi, izlo, izhi
-         real(kind=RP)  :: eXlo(3), eXhi(3), pad
-
-         if ( .not. allocated(self % nodes) )    return
-         if ( .not. allocated(self % elements) ) return
-         if ( self % no_of_elements .le. 0 )     return
-
-         n = 20
-         if ( present(ng_in) .and. ng_in .gt. 0 ) n = ng_in
-
-         associate(idx => self % spatialIndex)
-
-         idx % ng = n
-
-!        Compute global bounding box from element corners
-         idx % xlo =  huge(1.0_RP)
-         idx % xhi = -huge(1.0_RP)
-         do eID = 1, self % no_of_elements
-            associate(e => self % elements(eID))
-            do i = 1, 8
-               idx % xlo = min(idx % xlo, self % nodes(e % nodeIDs(i)) % x)
-               idx % xhi = max(idx % xhi, self % nodes(e % nodeIDs(i)) % x)
-            end do
-            end associate
-         end do
-
-!        Add a small padding to avoid boundary round-off
-         pad = 1.0e-6_RP * maxval(idx % xhi - idx % xlo)
-         idx % xlo = idx % xlo - pad
-         idx % xhi = idx % xhi + pad
-
-         idx % cell = (idx % xhi - idx % xlo) / real(n, RP)
-
-!        Allocate and initialise linked-list arrays
-         if ( allocated(idx % head) ) deallocate(idx % head)
-         if ( allocated(idx % next) ) deallocate(idx % next)
-         allocate( idx % head(n, n, n) )
-         allocate( idx % next(self % no_of_elements) )
-         idx % head = -1
-         idx % next = -1
-
-!        Insert each element into all voxels it overlaps
-         do eID = 1, self % no_of_elements
-            associate(e => self % elements(eID))
-!           Element axis-aligned bounding box from corner nodes
-            eXlo =  huge(1.0_RP)
-            eXhi = -huge(1.0_RP)
-            do i = 1, 8
-               eXlo = min(eXlo, self % nodes(e % nodeIDs(i)) % x)
-               eXhi = max(eXhi, self % nodes(e % nodeIDs(i)) % x)
-            end do
-            end associate
-
-!           Voxel range this element overlaps (clamped to grid)
-            ixlo = max(1, int((eXlo(1) - idx % xlo(1)) / idx % cell(1)) + 1)
-            iylo = max(1, int((eXlo(2) - idx % xlo(2)) / idx % cell(2)) + 1)
-            izlo = max(1, int((eXlo(3) - idx % xlo(3)) / idx % cell(3)) + 1)
-            ixhi = min(n, int((eXhi(1) - idx % xlo(1)) / idx % cell(1)) + 1)
-            iyhi = min(n, int((eXhi(2) - idx % xlo(2)) / idx % cell(2)) + 1)
-            izhi = min(n, int((eXhi(3) - idx % xlo(3)) / idx % cell(3)) + 1)
-
-!           For each overlapping voxel prepend eID to the linked list.
-            do iz = izlo, izhi
-               do iy = iylo, iyhi
-                  do ix = ixlo, ixhi
-                     idx % next(eID)        = idx % head(ix, iy, iz)
-                     idx % head(ix, iy, iz) = eID
-                  end do
-               end do
-            end do
-         end do
-
-         end associate
-
-      end subroutine HexMesh_BuildSpatialIndex
-!
-!////////////////////////////////////////////////////////////////////////
-!
-!     ---------------------------------------------------------------------------------------------------------
-!     HexMesh_FindPointWithSpatialIndex:
-!     Fast point-in-element search using the prebuilt voxel grid.
-!     Falls back to the full linear scan if the point is outside the
-!     local bounding box (e.g. owned by another MPI partition).
-!     ---------------------------------------------------------------------------------------------------------
-      logical function HexMesh_FindPointWithSpatialIndex(self, x, eID, xi)
-         implicit none
-         class(HexMesh),  intent(in)  :: self
-         real(kind=RP),   intent(in)  :: x(3)
-         integer,         intent(out) :: eID
-         real(kind=RP),   intent(out) :: xi(3)
-!
-!        Local variables
-!
-         integer       :: ix, iy, iz, candidate
-         logical       :: success
-
-         HexMesh_FindPointWithSpatialIndex = .false.
-         eID = -1
-
-         associate(idx => self % spatialIndex)
-!        Map point to voxel
-         ix = int((x(1) - idx % xlo(1)) / idx % cell(1)) + 1
-         iy = int((x(2) - idx % xlo(2)) / idx % cell(2)) + 1
-         iz = int((x(3) - idx % xlo(3)) / idx % cell(3)) + 1
-
-!        Out-of-range: fall back to full linear scan
-         if ( ix < 1 .or. ix > idx % ng(1) .or. &
-              iy < 1 .or. iy > idx % ng(2) .or. &
-              iz < 1 .or. iz > idx % ng(3) ) then
-            HexMesh_FindPointWithSpatialIndex = HexMesh_FindPointWithCoords(self, x, eID, xi)
-            return
-         end if
-
-!        Walk the linked list of candidate elements for this voxel
-         candidate = idx % head(ix, iy, iz)
-         do while ( candidate .ne. -1 )
-            success = self % elements(candidate) % FindPointInLinElement(x, self % nodes)
-            if ( success ) then
-               success = self % FindPointWithCoordsInNeighbors(x, xi, candidate, 2)
-               if ( success ) then
-                  eID = candidate
-                  HexMesh_FindPointWithSpatialIndex = .true.
-                  return
-               end if
-            end if
-            candidate = idx % next(candidate)
-         end do
-
-!        Not found in voxel candidates: fall back to full search
-         HexMesh_FindPointWithSpatialIndex = HexMesh_FindPointWithCoords(self, x, eID, xi)
-         end associate
-
-      end function HexMesh_FindPointWithSpatialIndex
 !
 !////////////////////////////////////////////////////////////////////////
 !

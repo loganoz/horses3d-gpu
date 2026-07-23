@@ -54,7 +54,7 @@ module ProbeClass
 
    contains
 
-      subroutine Probe_Initialization(self, mesh, ID, solution_file, FirstCall, x_in, variables_in, name_in, isFileProbe_in, outputFormat_in)
+      subroutine Probe_Initialization(self, mesh, ID, solution_file, FirstCall, x_in, variables_in, name_in, isFileProbe_in, outputFormat_in, eID_hint)
          use ParamfileRegions
          use MPI_Process_Info
          use Utilities, only: toLower
@@ -69,6 +69,7 @@ module ProbeClass
          character(len=*),  intent(in), optional :: name_in
          logical,           intent(in), optional :: isFileProbe_in
          character(len=*),  intent(in), optional :: outputFormat_in
+         integer,           intent(in), optional :: eID_hint
 !
 !        ---------------
 !        Local variables
@@ -210,17 +211,9 @@ module ProbeClass
             end do
 
 !
-!           Find the requested point in the mesh
-!           ------------------------------------
-#ifndef _OPENACC
-            if ( allocated(mesh % spatialIndex % head) ) then
-               self % active = mesh % FindPointWithSpatialIndex(self % x, self % eID, self % xi)
-            else
-               self % active = mesh % FindPointWithCoords(self % x, self % eID, self % xi)
-            end if
-#else
-            self % active = mesh % FindPointWithCoords(self % x, self % eID, self % xi)
-#endif
+!           Find the requested point in the mesh (use hint for local search if available)
+!           ---------------------------------------------------------------------------
+            self % active = mesh % FindPointWithCoords(self % x, self % eID, self % xi, eID_hint=eID_hint)
 !
 !           Check whether the probe is located in other partition
 !           -----------------------------------------------------

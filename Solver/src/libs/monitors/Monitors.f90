@@ -1555,18 +1555,14 @@ end subroutine getNoOfMonitors
 !     Local variables
 !     ---------------
 !
-      integer                                      :: fID, io, idx, nTok
+      integer                                      :: fID, io, idx, nTok, prev_eID
       character(len=LINE_LENGTH)                   :: line
       real(kind=RP)                                :: x(NDIM)
       character(len=STR_LEN_MONITORS), allocatable  :: tokens(:)
       character(len=STR_LEN_MONITORS)               :: pname
 
       idx = offset
-
-!     Build spatial index once for all file-probe lookups (CPU/no-OpenACC only)
-#ifndef _OPENACC
-      call mesh % BuildSpatialIndex()
-#endif
+      prev_eID = -1
 
       open ( newunit = fID , file = fileName , status = "old" , action = "read" )
 
@@ -1594,8 +1590,10 @@ end subroutine getNoOfMonitors
 
          call probes(idx) % Initialization( mesh, idx, solution_file, FirstCall, &
                                              x_in = x, variables_in = variables, name_in = trim(pname), &
-                                             isFileProbe_in = .true., outputFormat_in = trim(outputFormat) )
+                                             isFileProbe_in = .true., outputFormat_in = trim(outputFormat), &
+                                             eID_hint = prev_eID )
          probes(idx) % saveTimestep = saveTimestep
+         if ( probes(idx) % active ) prev_eID = probes(idx) % eID
 
          deallocate(tokens)
       end do
