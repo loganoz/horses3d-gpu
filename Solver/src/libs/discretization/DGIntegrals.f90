@@ -106,10 +106,11 @@ module DGIntegrals
 !>       computed on the fly, plus the standard weak-form (hatD) viscous
 !>       term from a precomputed contravariant flux Fv. Register-accumulated
 !>       per (i,j,k) point.
+!>       WARNING: Not supported yet for INCNS
 !
 !/////////////////////////////////////////////////////////////////////////////////
 !
-#if defined(NAVIERSTOKES) || defined(INCNS)
+#if defined(NAVIERSTOKES)
       subroutine ScalarWeakIntegrals_SplitVolumeDivergence( e, Fv, QDot )
          !$acc routine vector
          use ElementClass
@@ -181,7 +182,8 @@ module DGIntegrals
          end do ; end do ; end do
 
       end subroutine ScalarWeakIntegrals_SplitVolumeDivergence
-
+#endif
+#if defined(NAVIERSTOKES) || defined(INCNS)
 !
 !/////////////////////////////////////////////////////////////////////////////////
 !
