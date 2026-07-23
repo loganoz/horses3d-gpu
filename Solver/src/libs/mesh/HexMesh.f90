@@ -4133,6 +4133,7 @@ slavecoord:             DO l = 1, 4
                if (new_eID == 0) cycle
                success = self % FindPointWithCoordsInNeighbors(x, xi, new_eID, depth-1)
                if ( success ) then
+                  eID = new_eID
                   HexMesh_FindPointWithCoordsInNeighbors = .TRUE.
                   return
                end if
