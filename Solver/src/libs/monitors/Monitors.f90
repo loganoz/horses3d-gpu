@@ -107,7 +107,7 @@ module MonitorsClass
          use MPI_Process_Info
          implicit none
          class(Monitor_t)                     :: Monitors
-         class(HexMesh), intent(in)           :: mesh
+         class(HexMesh)                       :: mesh
          class(FTValueDictionary), intent(in) :: controlVariables
          
 !
@@ -1542,7 +1542,7 @@ end subroutine getNoOfMonitors
       character(len=*),   intent(in)    :: fileName
       class(Probe_t),     intent(inout) :: probes(:)
       integer,            intent(in)    :: offset
-      class(HexMesh),     intent(in)    :: mesh
+      class(HexMesh),     intent(inout) :: mesh
       character(len=*),   intent(in)    :: solution_file
       logical,            intent(in)    :: FirstCall
       character(len=*),   intent(in)    :: variables(:)
@@ -1560,6 +1560,10 @@ end subroutine getNoOfMonitors
       character(len=STR_LEN_MONITORS)               :: pname
 
       idx = offset
+
+!     Build spatial index once for all file-probe lookups
+      call mesh % BuildSpatialIndex()
+
       open ( newunit = fID , file = fileName , status = "old" , action = "read" )
 
       do
