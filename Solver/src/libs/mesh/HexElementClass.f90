@@ -38,7 +38,9 @@
       public   HexElement_ComputeLocalGradient, HexElement_ProlongSolToFaces, &
                HexElement_ProlongGradientsToFaces, HexElement_ProlongGradientsToFaces_GL, &
                HexElement_ProlongSolToFaces_GL
-
+#ifdef NAVIERSTOKES
+      public   HexElement_NSGradientVariables
+#endif
       public   PrintElement, SetElementBoundaryNames, SurfInfo_t
 
 !
@@ -809,29 +811,41 @@
             !Every self % storage % Q is changed to U_gradsol for multiphase compatibility
             !***
 
-            ! U_xi =  self % storage % Q(:,0,j,k) * NodalStorage(self % Nxyz(1)) % D(i,0)
-            U_xi(1:nGradEqn) =  U_gradsol(:,0,j,k) * NodalStorage(self % Nxyz(1)) % D(i,0)
-            !$acc loop seq
-            do l = 1, self % Nxyz(1)
-               ! U_xi = U_xi + self % storage % Q(:,l,j,k) * NodalStorage(self % Nxyz(1)) % D(i,l)
-               U_xi(1:nGradEqn) = U_xi(1:nGradEqn) + U_gradsol(:,l,j,k) * NodalStorage(self % Nxyz(1)) % D(i,l)
-            enddo
+            if ( self % Nxyz(1) > 0 ) then
+               ! U_xi =  self % storage % Q(:,0,j,k) * NodalStorage(self % Nxyz(1)) % D(i,0)
+               U_xi(1:nGradEqn) =  U_gradsol(:,0,j,k) * NodalStorage(self % Nxyz(1)) % D(i,0)
+               !$acc loop seq
+               do l = 1, self % Nxyz(1)
+                  ! U_xi = U_xi + self % storage % Q(:,l,j,k) * NodalStorage(self % Nxyz(1)) % D(i,l)
+                  U_xi(1:nGradEqn) = U_xi(1:nGradEqn) + U_gradsol(:,l,j,k) * NodalStorage(self % Nxyz(1)) % D(i,l)
+               enddo
+            else
+               U_xi(1:nGradEqn) = 0.0_RP
+            end if
             
-            ! U_eta = self % storage % Q(:,i,0,k) * NodalStorage(self % Nxyz(2)) % D(j,0)
-            U_eta(1:nGradEqn) = U_gradsol(:,i,0,k) * NodalStorage(self % Nxyz(2)) % D(j,0)
-            !$acc loop seq
-            do l = 1, self % Nxyz(2)
-               ! U_eta = U_eta + self % storage % Q(:,i,l,k) * NodalStorage(self % Nxyz(2)) % D(j,l)
-               U_eta(1:nGradEqn) = U_eta(1:nGradEqn) + U_gradsol(:,i,l,k) * NodalStorage(self % Nxyz(2)) % D(j,l)
-            end do  
+            if ( self % Nxyz(2) > 0 ) then
+               ! U_eta = self % storage % Q(:,i,0,k) * NodalStorage(self % Nxyz(2)) % D(j,0)
+               U_eta(1:nGradEqn) = U_gradsol(:,i,0,k) * NodalStorage(self % Nxyz(2)) % D(j,0)
+               !$acc loop seq
+               do l = 1, self % Nxyz(2)
+                  ! U_eta = U_eta + self % storage % Q(:,i,l,k) * NodalStorage(self % Nxyz(2)) % D(j,l)
+                  U_eta(1:nGradEqn) = U_eta(1:nGradEqn) + U_gradsol(:,i,l,k) * NodalStorage(self % Nxyz(2)) % D(j,l)
+               end do
+            else
+               U_eta(1:nGradEqn) = 0.0_RP
+            end if
 
-            ! U_zeta = self % storage % Q(:,i,j,0) * NodalStorage(self % Nxyz(3)) % D(k,0)
-            U_zeta(1:nGradEqn) = U_gradsol(:,i,j,0) * NodalStorage(self % Nxyz(3)) % D(k,0)
-            !$acc loop seq
-            do l = 1, self % Nxyz(3)
-               ! U_zeta = U_zeta + self % storage % Q(:,i,j,l) * NodalStorage(self % Nxyz(3)) % D(k,l)
-               U_zeta(1:nGradEqn) = U_zeta(1:nGradEqn) + U_gradsol(:,i,j,l) * NodalStorage(self % Nxyz(3)) % D(k,l)
-            end do
+            if ( self % Nxyz(3) > 0 ) then
+               ! U_zeta = self % storage % Q(:,i,j,0) * NodalStorage(self % Nxyz(3)) % D(k,0)
+               U_zeta(1:nGradEqn) = U_gradsol(:,i,j,0) * NodalStorage(self % Nxyz(3)) % D(k,0)
+               !$acc loop seq
+               do l = 1, self % Nxyz(3)
+                  ! U_zeta = U_zeta + self % storage % Q(:,i,j,l) * NodalStorage(self % Nxyz(3)) % D(k,l)
+                  U_zeta(1:nGradEqn) = U_zeta(1:nGradEqn) + U_gradsol(:,i,j,l) * NodalStorage(self % Nxyz(3)) % D(k,l)
+               end do
+            else
+               U_zeta(1:nGradEqn) = 0.0_RP
+            end if
 
             inv_jac = self % geom % InvJacobian(i,j,k)
 
@@ -855,6 +869,30 @@
          end do           ; end do         ; end do
 !
       end subroutine HexElement_ComputeLocalGradient
+!
+!////////////////////////////////////////////////////////////////////////
+!
+#ifdef NAVIERSTOKES
+      subroutine HexElement_NSGradientVariables(Q, U)
+         !$acc routine seq
+         implicit none
+         real(kind=RP), intent(in)  :: Q(1:NCONS)
+         real(kind=RP), intent(out) :: U(1:NGRAD)
+
+         select case(grad_vars)
+         case(GRADVARS_STATE)
+            call NSGradientVariables_STATE(NCONS, NGRAD, Q, U)
+         case(GRADVARS_ENTROPY)
+            call NSGradientVariables_ENTROPY(NCONS, NGRAD, Q, U)
+         case(GRADVARS_ENERGY)
+            call NSGradientVariables_ENERGY(NCONS, NGRAD, Q, U)
+         end select
+
+      end subroutine HexElement_NSGradientVariables
+!
+!////////////////////////////////////////////////////////////////////////
+!
+#endif
 !
 !////////////////////////////////////////////////////////////////////////
 !

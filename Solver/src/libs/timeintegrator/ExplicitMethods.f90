@@ -1149,6 +1149,9 @@ MODULE ExplicitMethods
       gm1     = thermodynamics % gammaMinus1
       lim_min = LIMITER_MIN
 
+      !!$omp parallel do default(private) shared(mesh, NodalStorage) firstprivate(gm1, LIMITER_MIN)
+      !!$omp parallel do default(private) shared(mesh, NodalStorage) firstprivate(gm1, lim_min)
+
       !$acc parallel loop gang present(mesh)                            &
       !$acc& firstprivate(gm1, lim_min)                                 &
       !$acc& private( Nx, Ny, Nz, vol,                                  &

@@ -251,7 +251,6 @@ module DGIntegrals
 !        ---------------
 !
          integer            :: iXi, iEta, iZeta,eq
-  
          !$acc loop vector collapse(4)
          do iZeta = 0, Nxyz(3) 
             do iEta = 0, Nxyz(2) 
@@ -263,7 +262,7 @@ module DGIntegrals
                                                 + F_FR(eq, iXi, iZeta) * NodalStorage(Nxyz(2)) % b(iEta, LEFT)   &
                                                 + F_BK(eq, iXi, iZeta) * NodalStorage(Nxyz(2)) % b(iEta, RIGHT)  &
                                                 + F_BOT(eq, iXi, iEta) * NodalStorage(Nxyz(3)) % b(iZeta, LEFT)  &
-                                                + F_T(eq, iXi, iEta)   * NodalStorage(Nxyz(3)) % b(iZeta, RIGHT) ) 
+                                                + F_T(eq, iXi, iEta)   * NodalStorage(Nxyz(3)) % b(iZeta, RIGHT) )
                   enddo
                end do                 
             end do                
@@ -398,6 +397,7 @@ module DGIntegrals
             b_iEta_Right = NodalStorage(e % Nxyz(2)) % b(iEta, RIGHT)
             b_iZeta_left = NodalStorage(e % Nxyz(3)) % b(iZeta, LEFT)
             b_iZeta_Right = NodalStorage(e % Nxyz(3)) % b(iZeta, RIGHT)
+
             inv_jac = e % geom % InvJacobian(iXi,iEta,iZeta)
 
             faceInt_x(eq,iXi,iEta,iZeta) =  faceInt_x(eq,iXi,iEta,iZeta) &

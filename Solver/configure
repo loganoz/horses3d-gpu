@@ -64,6 +64,7 @@ TEST_CASES="./Euler/BoxAroundCircle \
             ./NavierStokes/CylinderUdissStandard \
             ./NavierStokes/CylinderRusanovStandard \
             ./NavierStokes/CylinderDucrosMatrixDissipation \
+            ./NavierStokes/CylinderPirozzoliRoe \
             ./NavierStokes/Cylinderssprk33 \
             ./NavierStokes/Cylinderssprk43 \
             ./NavierStokes/IBM_Cylinder \
