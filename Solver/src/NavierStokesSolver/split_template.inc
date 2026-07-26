@@ -1,5 +1,6 @@
          !$acc parallel present(mesh) vector_length(128) num_gangs(9750) async(1)
          !$acc loop gang
+         !$omp do schedule(runtime) private(i,j,k,l,eq,Flux)
          do eID = 1 , size(mesh % elements)
          
             !$acc loop vector collapse(3) private(Flux)
@@ -86,3 +87,4 @@
 
          enddo
          !$acc end parallel loop
+         !$omp end do

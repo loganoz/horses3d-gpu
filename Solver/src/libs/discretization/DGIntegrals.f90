@@ -73,16 +73,35 @@ module DGIntegrals
 !
          integer   :: i, j, k, l, eq
 
+         ! i noticed this was failing for ForwardFacingStepSVV, ForwardFacingStep_SSPRK33 
+         ! and ForwardFacingStep_SSPRK43 because Nxyz(3) = 0. it lookes like using Nxyz(1) 
+         ! for every sum went out of bounds, so each direction uses its own order here. 
+         ! some anisotropic tests also use different orders in x and y. so i am keeping the
+         ! checks for now tbh. technically technically there should be almost no perf 
+         ! penalty because  it is a warp convergent branch. a convergent branch adds 
+         ! approx 10 cycle latency
          !$acc loop vector collapse(4)
           do k = 0, Nxyz(3) ; do j = 0, Nxyz(2) ; do i = 0, Nxyz(1) ; do eq = 1, NEQ
             ! not initialize to 0 to be general for all Physics
             ! volInt(eq,i,j,k) = 0.0_RP
-            !$acc loop seq 
-            do l = 0, Nxyz(1)
-               volInt(eq,i,j,k) = volInt(eq,i,j,k) +  NodalStorage(Nxyz(1)) % hatD(i,l) * F(eq,l,j,k,IX) &
-                                                   +  NodalStorage(Nxyz(2)) % hatD(j,l) * F(eq,i,l,k,IY) &
-                                                   +  NodalStorage(Nxyz(3)) % hatD(k,l) * F(eq,i,j,l,IZ)
-            end do             
+            if (Nxyz(1) > 0) then
+               !$acc loop seq
+               do l = 0, Nxyz(1)
+                  volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(1)) % hatD(i,l) * F(eq,l,j,k,IX)
+               end do
+            end if
+            if (Nxyz(2) > 0) then
+               !$acc loop seq
+               do l = 0, Nxyz(2)
+                  volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(2)) % hatD(j,l) * F(eq,i,l,k,IY)
+               end do
+            end if
+            if (Nxyz(3) > 0) then
+               !$acc loop seq
+               do l = 0, Nxyz(3)
+                  volInt(eq,i,j,k) = volInt(eq,i,j,k) + NodalStorage(Nxyz(3)) % hatD(k,l) * F(eq,i,j,l,IZ)
+               end do
+            end if
          end do ; end do ; end do ; end do
 
       end subroutine ScalarWeakIntegrals_StdVolumeGreen

@@ -311,7 +311,9 @@ module SpectralVanishingViscosity
 !        Local variables
 !        ---------------
 !
-         integer             :: i, j, k, l, fIDs(6), i_f
+         integer             :: i, j, k, l, eq, idx
+         integer             :: dissType, gradVars, filterType, nEntropy
+         integer             :: entropyIndexes(NCONS)
          real(kind=RP)       :: Hx(1:NGRAD, 0:e % Nxyz(1), 0:e % Nxyz(2), 0:e % Nxyz(3))
          real(kind=RP)       :: Hy(1:NGRAD, 0:e % Nxyz(1), 0:e % Nxyz(2), 0:e % Nxyz(3))
          real(kind=RP)       :: Hz(1:NGRAD, 0:e % Nxyz(1), 0:e % Nxyz(2), 0:e % Nxyz(3))
@@ -322,20 +324,97 @@ module SpectralVanishingViscosity
          real(kind=RP)       :: Hyf_aux(1:NGRAD, 0:e % Nxyz(1), 0:e % Nxyz(2), 0:e % Nxyz(3))
          real(kind=RP)       :: Hzf_aux(1:NGRAD, 0:e % Nxyz(1), 0:e % Nxyz(2), 0:e % Nxyz(3))
          real(kind=RP)       :: cartesianFlux(1:NCONS, 1:NDIM)
-         real(kind=RP)       :: SVV_diss, delta
-         real(kind=RP)       :: grad_rho2, rho_sensor, Psvv
+         real(kind=RP)       :: SVV_diss, pointDiss, jacScale
          real(kind=RP)       :: Qx(0:e % Nxyz(1),0:e % Nxyz(1))
          real(kind=RP)       :: Qy(0:e % Nxyz(2),0:e % Nxyz(2))
          real(kind=RP)       :: Qz(0:e % Nxyz(3),0:e % Nxyz(3))
 
 
-         associate(spA_xi   => NodalStorage(e % Nxyz(1)), &
-                   spA_eta  => NodalStorage(e % Nxyz(2)), &
-                   spA_zeta => NodalStorage(e % Nxyz(3)))
+         dissType   = self % diss_type
+         gradVars   = grad_vars
+         filterType = self % filterType
+         nEntropy   = size(self % entropy_indexes)
+         entropyIndexes = 0
+         entropyIndexes(1:nEntropy) = self % entropy_indexes
+
+         e % Psvv = self % Psvv
+         Qx = self % filters(e % Nxyz(1)) % Q
+         Qy = self % filters(e % Nxyz(2)) % Q
+         Qz = self % filters(e % Nxyz(3)) % Q
+         
+         ! openacc is bad when it comes to switch statements inside a parallel region perf wise so
+         ! i am manually specializing each switch statement's parallel region.
+
+         !$acc data present(e, sqrt_mu, sqrt_alpha, contravariantFlux) &
+         !$acc& copyin(Qx, Qy, Qz, entropyIndexes, nEntropy) &
+         !$acc& create(Hx, Hy, Hz, Hxf, Hyf, Hzf, Hxf_aux, Hyf_aux, Hzf_aux)
 !
 !        -----------------
 !        Compute the Hflux
 !        -----------------
+#ifdef _OPENACC
+         select case (dissType)
+         case (PHYSICAL_DISS)
+            select case (gradVars)
+            case (GRADVARS_ENERGY)
+               !$acc parallel loop gang vector collapse(3) present(e, sqrt_mu, sqrt_alpha, Hx, Hy, Hz) private(jacScale) async(1)
+               do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
+                  call Hflux_physical_dissipation_ENERGY(                              &
+                     NCONS, NGRAD, e % storage % Q(:,i,j,k),                           &
+                     e % storage % U_x(:,i,j,k), e % storage % U_y(:,i,j,k),           &
+                     e % storage % U_z(:,i,j,k), sqrt_mu(i,j,k), sqrt_alpha(i,j,k),    &
+                     Hx(:,i,j,k), Hy(:,i,j,k), Hz(:,i,j,k))
+
+                  jacScale = sqrt(e % geom % jacobian(i,j,k))
+                  !$acc loop seq
+                  do eq = 1, NGRAD
+                     Hx(eq,i,j,k) = jacScale * Hx(eq,i,j,k)
+                     Hy(eq,i,j,k) = jacScale * Hy(eq,i,j,k)
+                     Hz(eq,i,j,k) = jacScale * Hz(eq,i,j,k)
+                  end do
+               end do                ; end do                ; end do
+               !$acc end parallel loop
+
+            case (GRADVARS_ENTROPY)
+               !$acc parallel loop gang vector collapse(3) present(e, sqrt_mu, sqrt_alpha, Hx, Hy, Hz) private(jacScale) async(1)
+               do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
+                  call Hflux_physical_dissipation_ENTROPY(                             &
+                     NCONS, NGRAD, e % storage % Q(:,i,j,k),                           &
+                     e % storage % U_x(:,i,j,k), e % storage % U_y(:,i,j,k),           &
+                     e % storage % U_z(:,i,j,k), sqrt_mu(i,j,k), sqrt_alpha(i,j,k),    &
+                     Hx(:,i,j,k), Hy(:,i,j,k), Hz(:,i,j,k))
+
+                  jacScale = sqrt(e % geom % jacobian(i,j,k))
+                  !$acc loop seq
+                  do eq = 1, NGRAD
+                     Hx(eq,i,j,k) = jacScale * Hx(eq,i,j,k)
+                     Hy(eq,i,j,k) = jacScale * Hy(eq,i,j,k)
+                     Hz(eq,i,j,k) = jacScale * Hz(eq,i,j,k)
+                  end do
+               end do                ; end do                ; end do
+               !$acc end parallel loop
+            end select
+
+         case (GUERMOND_DISS)
+           !$acc parallel loop gang vector collapse(3) present(e, sqrt_mu, sqrt_alpha, Hx, Hy, Hz) private(jacScale) async(1)
+            do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
+               call Hflux_GuermondPopov_ENTROPY(                                    &
+                  NCONS, NGRAD, e % storage % Q(:,i,j,k),                           &
+                  e % storage % U_x(:,i,j,k), e % storage % U_y(:,i,j,k),           &
+                  e % storage % U_z(:,i,j,k), sqrt_mu(i,j,k), sqrt_alpha(i,j,k),    &
+                  Hx(:,i,j,k), Hy(:,i,j,k), Hz(:,i,j,k))
+
+               jacScale = sqrt(e % geom % jacobian(i,j,k))
+               !$acc loop seq
+               do eq = 1, NGRAD
+                  Hx(eq,i,j,k) = jacScale * Hx(eq,i,j,k)
+                  Hy(eq,i,j,k) = jacScale * Hy(eq,i,j,k)
+                  Hz(eq,i,j,k) = jacScale * Hz(eq,i,j,k)
+               end do
+            end do                ; end do                ; end do
+            !$acc end parallel loop
+         end select
+#else
          do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
            call self % Compute_Hflux(NCONS, NGRAD, e % storage % Q(:,i,j,k), e % storage % U_x(:,i,j,k), &
                                                    e % storage % U_y(:,i,j,k), e % storage % U_z(:,i,j,k), &
@@ -345,53 +424,210 @@ module SpectralVanishingViscosity
            Hy(:,i,j,k) = sqrt(e % geom % jacobian(i,j,k)) * Hy(:,i,j,k)
            Hz(:,i,j,k) = sqrt(e % geom % jacobian(i,j,k)) * Hz(:,i,j,k)
          end do                ; end do                ; end do
+#endif
 !
 !        ----------------
 !        Filter the Hflux
 !        ----------------
-         e % Psvv = self % Psvv
-         Qx = self % filters(e % Nxyz(1)) % Q
-         Qy = self % filters(e % Nxyz(2)) % Q
-         Qz = self % filters(e % Nxyz(3)) % Q
 !
-!        Perform filtering in xi Hf_aux -> Hf
-!        -----------------------
-         Hxf_aux = Hx     ; Hyf_aux = Hy     ; Hzf_aux = Hz
-         Hxf     = 0.0_RP ; Hyf     = 0.0_RP ; Hzf     = 0.0_RP
-         do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do l = 0, e % Nxyz(1) ; do i = 0, e % Nxyz(1)
-               Hxf(:,i,j,k) = Hxf(:,i,j,k) + Qx(i,l) * Hxf_aux(:,l,j,k)
-               Hyf(:,i,j,k) = Hyf(:,i,j,k) + Qx(i,l) * Hyf_aux(:,l,j,k)
-               Hzf(:,i,j,k) = Hzf(:,i,j,k) + Qx(i,l) * Hzf_aux(:,l,j,k)
+!        Perform filtering in xi H -> Hf
+!        --------------------------------
+         !$acc parallel loop gang vector collapse(4) present(Qx, Hx, Hy, Hz, Hxf, Hyf, Hzf) async(1)
+         do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1) ; do eq = 1, NGRAD
+            Hxf(eq,i,j,k) = 0.0_RP
+            Hyf(eq,i,j,k) = 0.0_RP
+            Hzf(eq,i,j,k) = 0.0_RP
+            !$acc loop seq
+            do l = 0, e % Nxyz(1)
+               Hxf(eq,i,j,k) = Hxf(eq,i,j,k) + Qx(i,l) * Hx(eq,l,j,k)
+               Hyf(eq,i,j,k) = Hyf(eq,i,j,k) + Qx(i,l) * Hy(eq,l,j,k)
+               Hzf(eq,i,j,k) = Hzf(eq,i,j,k) + Qx(i,l) * Hz(eq,l,j,k)
+            end do
          end do                ; end do                ; end do                ; end do
+         !$acc end parallel loop
 !
 !        Perform filtering in eta Hf -> Hf_aux
-!        ------------------------
-         Hxf_aux = 0.0_RP  ; Hyf_aux = 0.0_RP  ; Hzf_aux = 0.0_RP
-         do k = 0, e % Nxyz(3) ; do l = 0, e % Nxyz(2) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
-            Hxf_aux(:,i,j,k) = Hxf_aux(:,i,j,k) + Qy(j,l) * Hxf(:,i,l,k)
-            Hyf_aux(:,i,j,k) = Hyf_aux(:,i,j,k) + Qy(j,l) * Hyf(:,i,l,k)
-            Hzf_aux(:,i,j,k) = Hzf_aux(:,i,j,k) + Qy(j,l) * Hzf(:,i,l,k)
+!        ------------------------------------
+         !$acc parallel loop gang vector collapse(4) present(Qy, Hxf, Hyf, Hzf, Hxf_aux, Hyf_aux, Hzf_aux) async(1)
+         do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1) ; do eq = 1, NGRAD
+            Hxf_aux(eq,i,j,k) = 0.0_RP
+            Hyf_aux(eq,i,j,k) = 0.0_RP
+            Hzf_aux(eq,i,j,k) = 0.0_RP
+            !$acc loop seq
+            do l = 0, e % Nxyz(2)
+               Hxf_aux(eq,i,j,k) = Hxf_aux(eq,i,j,k) + Qy(j,l) * Hxf(eq,i,l,k)
+               Hyf_aux(eq,i,j,k) = Hyf_aux(eq,i,j,k) + Qy(j,l) * Hyf(eq,i,l,k)
+               Hzf_aux(eq,i,j,k) = Hzf_aux(eq,i,j,k) + Qy(j,l) * Hzf(eq,i,l,k)
+            end do
          end do                ; end do                ; end do                ; end do
+         !$acc end parallel loop
 !
 !        Perform filtering in zeta Hf_aux -> Hf
-!        -------------------------
-         Hxf = 0.0_RP  ; Hyf = 0.0_RP  ; Hzf = 0.0_RP
-         do l = 0, e % Nxyz(3) ; do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
-            Hxf(:,i,j,k) = Hxf(:,i,j,k) + Qz(k,l) * Hxf_aux(:,i,j,l)
-            Hyf(:,i,j,k) = Hyf(:,i,j,k) + Qz(k,l) * Hyf_aux(:,i,j,l)
-            Hzf(:,i,j,k) = Hzf(:,i,j,k) + Qz(k,l) * Hzf_aux(:,i,j,l)
+!        -------------------------------------
+         !$acc parallel loop gang vector collapse(4) present(Qz, Hxf_aux, Hyf_aux, Hzf_aux, Hxf, Hyf, Hzf) async(1)
+         do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1) ; do eq = 1, NGRAD
+            Hxf(eq,i,j,k) = 0.0_RP
+            Hyf(eq,i,j,k) = 0.0_RP
+            Hzf(eq,i,j,k) = 0.0_RP
+            !$acc loop seq
+            do l = 0, e % Nxyz(3)
+               Hxf(eq,i,j,k) = Hxf(eq,i,j,k) + Qz(k,l) * Hxf_aux(eq,i,j,l)
+               Hyf(eq,i,j,k) = Hyf(eq,i,j,k) + Qz(k,l) * Hyf_aux(eq,i,j,l)
+               Hzf(eq,i,j,k) = Hzf(eq,i,j,k) + Qz(k,l) * Hzf_aux(eq,i,j,l)
+            end do
          end do                ; end do                ; end do                ; end do
+         !$acc end parallel loop
 
-         if (self % filterType == LPASS_FILTER) then
-            Hxf = Hx - Hxf
-            Hyf = Hy - Hyf
-            Hzf = Hz - Hzf
+         if (filterType == LPASS_FILTER) then
+            !$acc parallel loop gang vector collapse(4) present(Hx, Hy, Hz, Hxf, Hyf, Hzf) async(1)
+            do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1) ; do eq = 1, NGRAD
+               Hxf(eq,i,j,k) = Hx(eq,i,j,k) - Hxf(eq,i,j,k)
+               Hyf(eq,i,j,k) = Hy(eq,i,j,k) - Hyf(eq,i,j,k)
+               Hzf(eq,i,j,k) = Hz(eq,i,j,k) - Hzf(eq,i,j,k)
+            end do                ; end do                ; end do                ; end do
+         !$acc end parallel loop
          end if
 !
 !        ----------------
 !        Compute the flux
 !        ----------------
 !
+#ifdef _OPENACC
+         SVV_diss = 0.0_RP
+         select case (dissType)
+         case (PHYSICAL_DISS)
+            select case (gradVars)
+            case (GRADVARS_ENERGY)
+               !$acc parallel loop gang vector collapse(3) &
+               !$acc& present(e, Hxf, Hyf, Hzf, sqrt_mu, sqrt_alpha, contravariantFlux) &
+               !$acc& private(cartesianFlux, pointDiss, idx, jacScale) reduction(+:SVV_diss) async(1)
+               do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
+                  call SVV_physical_dissipation_ENERGY(                         &
+                     NCONS, NGRAD, e % storage % Q(:,i,j,k),                    &
+                     Hxf(:,i,j,k), Hyf(:,i,j,k), Hzf(:,i,j,k),                  &
+                     sqrt_mu(i,j,k), sqrt_alpha(i,j,k), cartesianFlux)
+
+                  jacScale = sqrt(e % geom % invJacobian(i,j,k))
+                  pointDiss = 0.0_RP
+                  !$acc loop seq
+                  do l = 1, nEntropy
+                     idx = entropyIndexes(l)
+                     pointDiss = pointDiss                                                   &
+                        + e % storage % U_x(idx,i,j,k) * cartesianFlux(idx,IX)               &
+                        + e % storage % U_y(idx,i,j,k) * cartesianFlux(idx,IY)               &
+                        + e % storage % U_z(idx,i,j,k) * cartesianFlux(idx,IZ)
+                  end do
+                  pointDiss = pointDiss * jacScale
+                  SVV_diss = SVV_diss                                                        &
+                     + NodalStorage(e % Nxyz(1)) % w(i) * NodalStorage(e % Nxyz(2)) % w(j)   &
+                     * NodalStorage(e % Nxyz(3)) % w(k) * pointDiss * e % geom % jacobian(i,j,k)
+
+                  !$acc loop seq
+                  do eq = 1, NCONS
+                     cartesianFlux(eq,IX) = jacScale * cartesianFlux(eq,IX)
+                     cartesianFlux(eq,IY) = jacScale * cartesianFlux(eq,IY)
+                     cartesianFlux(eq,IZ) = jacScale * cartesianFlux(eq,IZ)
+                     contravariantFlux(eq,i,j,k,IX) = cartesianFlux(eq,IX) * e % geom % jGradXi(IX,i,j,k)   &
+                                                     + cartesianFlux(eq,IY) * e % geom % jGradXi(IY,i,j,k)   &
+                                                     + cartesianFlux(eq,IZ) * e % geom % jGradXi(IZ,i,j,k)
+                     contravariantFlux(eq,i,j,k,IY) = cartesianFlux(eq,IX) * e % geom % jGradEta(IX,i,j,k)  &
+                                                     + cartesianFlux(eq,IY) * e % geom % jGradEta(IY,i,j,k)  &
+                                                     + cartesianFlux(eq,IZ) * e % geom % jGradEta(IZ,i,j,k)
+                     contravariantFlux(eq,i,j,k,IZ) = cartesianFlux(eq,IX) * e % geom % jGradZeta(IX,i,j,k) &
+                                                     + cartesianFlux(eq,IY) * e % geom % jGradZeta(IY,i,j,k) &
+                                                     + cartesianFlux(eq,IZ) * e % geom % jGradZeta(IZ,i,j,k)
+                  end do
+               end do                ; end do                ; end do
+               !$acc end parallel loop
+
+            case (GRADVARS_ENTROPY)
+               !$acc parallel loop gang vector collapse(3) &
+               !$acc& present(e, Hxf, Hyf, Hzf, sqrt_mu, sqrt_alpha, contravariantFlux) &
+               !$acc& private(cartesianFlux, pointDiss, idx, jacScale) reduction(+:SVV_diss) async(1)
+               do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
+                  call SVV_physical_dissipation_ENTROPY(                        &
+                     NCONS, NGRAD, e % storage % Q(:,i,j,k),                    &
+                     Hxf(:,i,j,k), Hyf(:,i,j,k), Hzf(:,i,j,k),                  &
+                     sqrt_mu(i,j,k), sqrt_alpha(i,j,k), cartesianFlux)
+
+                  jacScale = sqrt(e % geom % invJacobian(i,j,k))
+                  pointDiss = 0.0_RP
+                  !$acc loop seq
+                  do l = 1, nEntropy
+                     idx = entropyIndexes(l)
+                     pointDiss = pointDiss                                                   &
+                        + e % storage % U_x(idx,i,j,k) * cartesianFlux(idx,IX)               &
+                        + e % storage % U_y(idx,i,j,k) * cartesianFlux(idx,IY)               &
+                        + e % storage % U_z(idx,i,j,k) * cartesianFlux(idx,IZ)
+                  end do
+                  pointDiss = pointDiss * jacScale
+                  SVV_diss = SVV_diss                                                        &
+                     + NodalStorage(e % Nxyz(1)) % w(i) * NodalStorage(e % Nxyz(2)) % w(j)   &
+                     * NodalStorage(e % Nxyz(3)) % w(k) * pointDiss * e % geom % jacobian(i,j,k)
+
+                  !$acc loop seq
+                  do eq = 1, NCONS
+                     cartesianFlux(eq,IX) = jacScale * cartesianFlux(eq,IX)
+                     cartesianFlux(eq,IY) = jacScale * cartesianFlux(eq,IY)
+                     cartesianFlux(eq,IZ) = jacScale * cartesianFlux(eq,IZ)
+                     contravariantFlux(eq,i,j,k,IX) = cartesianFlux(eq,IX) * e % geom % jGradXi(IX,i,j,k)   &
+                                                     + cartesianFlux(eq,IY) * e % geom % jGradXi(IY,i,j,k)   &
+                                                     + cartesianFlux(eq,IZ) * e % geom % jGradXi(IZ,i,j,k)
+                     contravariantFlux(eq,i,j,k,IY) = cartesianFlux(eq,IX) * e % geom % jGradEta(IX,i,j,k)  &
+                                                     + cartesianFlux(eq,IY) * e % geom % jGradEta(IY,i,j,k)  &
+                                                     + cartesianFlux(eq,IZ) * e % geom % jGradEta(IZ,i,j,k)
+                     contravariantFlux(eq,i,j,k,IZ) = cartesianFlux(eq,IX) * e % geom % jGradZeta(IX,i,j,k) &
+                                                     + cartesianFlux(eq,IY) * e % geom % jGradZeta(IY,i,j,k) &
+                                                     + cartesianFlux(eq,IZ) * e % geom % jGradZeta(IZ,i,j,k)
+                  end do
+               end do                ; end do                ; end do
+               !$acc end parallel loop
+            end select
+
+         case (GUERMOND_DISS)
+            !$acc parallel loop gang vector collapse(3) &
+            !$acc& present(e, Hxf, Hyf, Hzf, sqrt_mu, sqrt_alpha, contravariantFlux) &
+            !$acc& private(cartesianFlux, pointDiss, idx, jacScale) reduction(+:SVV_diss) async(1)
+            do k = 0, e % Nxyz(3) ; do j = 0, e % Nxyz(2) ; do i = 0, e % Nxyz(1)
+               call SVV_GuermondPopov_ENTROPY(                                &
+                  NCONS, NGRAD, e % storage % Q(:,i,j,k),                     &
+                  Hxf(:,i,j,k), Hyf(:,i,j,k), Hzf(:,i,j,k),                   &
+                  sqrt_mu(i,j,k), sqrt_alpha(i,j,k), cartesianFlux)
+
+               jacScale = sqrt(e % geom % invJacobian(i,j,k))
+               pointDiss = 0.0_RP
+               !$acc loop seq
+               do l = 1, nEntropy
+                  idx = entropyIndexes(l)
+                  pointDiss = pointDiss                                                   &
+                     + e % storage % U_x(idx,i,j,k) * cartesianFlux(idx,IX)               &
+                     + e % storage % U_y(idx,i,j,k) * cartesianFlux(idx,IY)               &
+                     + e % storage % U_z(idx,i,j,k) * cartesianFlux(idx,IZ)
+               end do
+               pointDiss = pointDiss * jacScale
+               SVV_diss = SVV_diss                                                        &
+                  + NodalStorage(e % Nxyz(1)) % w(i) * NodalStorage(e % Nxyz(2)) % w(j)   &
+                  * NodalStorage(e % Nxyz(3)) % w(k) * pointDiss * e % geom % jacobian(i,j,k)
+
+               !$acc loop seq
+               do eq = 1, NCONS
+                  cartesianFlux(eq,IX) = jacScale * cartesianFlux(eq,IX)
+                  cartesianFlux(eq,IY) = jacScale * cartesianFlux(eq,IY)
+                  cartesianFlux(eq,IZ) = jacScale * cartesianFlux(eq,IZ)
+                  contravariantFlux(eq,i,j,k,IX) = cartesianFlux(eq,IX) * e % geom % jGradXi(IX,i,j,k)   &
+                                                  + cartesianFlux(eq,IY) * e % geom % jGradXi(IY,i,j,k)   &
+                                                  + cartesianFlux(eq,IZ) * e % geom % jGradXi(IZ,i,j,k)
+                  contravariantFlux(eq,i,j,k,IY) = cartesianFlux(eq,IX) * e % geom % jGradEta(IX,i,j,k)  &
+                                                  + cartesianFlux(eq,IY) * e % geom % jGradEta(IY,i,j,k)  &
+                                                  + cartesianFlux(eq,IZ) * e % geom % jGradEta(IZ,i,j,k)
+                  contravariantFlux(eq,i,j,k,IZ) = cartesianFlux(eq,IX) * e % geom % jGradZeta(IX,i,j,k) &
+                                                  + cartesianFlux(eq,IY) * e % geom % jGradZeta(IY,i,j,k) &
+                                                  + cartesianFlux(eq,IZ) * e % geom % jGradZeta(IZ,i,j,k)
+               end do
+            end do                ; end do                ; end do
+            !$acc end parallel loop
+         end select
+#else
          SVV_diss = 0.0_RP
          do k = 0, e%Nxyz(3)   ; do j = 0, e%Nxyz(2) ; do i = 0, e%Nxyz(1)
             call self % Compute_SVV( NCONS, NGRAD, e % storage % Q(:,i,j,k), Hxf(:,i,j,k), Hyf(:,i,j,k), &
@@ -401,7 +637,8 @@ module SpectralVanishingViscosity
 !
 !           Scale it with the mesh size
 !           ---------------------------
-            SVV_diss = SVV_diss + spA_xi % w(i) * spA_eta % w(j) * spA_zeta % w(k) * &
+            SVV_diss = SVV_diss + NodalStorage(e % Nxyz(1)) % w(i) * NodalStorage(e % Nxyz(2)) % w(j) &
+                                    * NodalStorage(e % Nxyz(3)) % w(k) * &
                         (sum(e % storage % U_x(self % entropy_indexes,i,j,k)*cartesianFlux(self % entropy_indexes,IX) + &
                              e % storage % U_y(self % entropy_indexes,i,j,k)*cartesianFlux(self % entropy_indexes,IY) + &
                              e % storage % U_z(self % entropy_indexes,i,j,k)*cartesianFlux(self % entropy_indexes,IZ))) * e % geom % jacobian(i,j,k)
@@ -423,10 +660,12 @@ module SpectralVanishingViscosity
                                           + cartesianFlux(:,IZ) * e % geom % jGradZeta(IZ,i,j,k)
 
          end do               ; end do            ; end do
+#endif
 
+         !$acc wait(1)
+         !$acc end data
          e % storage % artificialDiss = SVV_diss
-
-         end associate
+         !$acc update device(e % storage % artificialDiss)
 
       end subroutine SVV_ComputeInnerFluxes
 !
@@ -437,6 +676,7 @@ module SpectralVanishingViscosity
 !//////////////////////////////////////////////////////////////////////////////////////////////////////////////
 !
       subroutine Hflux_physical_dissipation_ENERGY(NCONS, NGRAD, Q, Ux, Uy, Uz, sqrt_mu, sqrt_alpha, Hx, Hy, Hz)
+         !$acc routine seq
 !
 !        ***************************************************************************************
 !           For the energy variables, the SVV flux is very simple as the NS viscous matrix
@@ -463,6 +703,7 @@ module SpectralVanishingViscosity
       end subroutine Hflux_physical_dissipation_ENERGY
 
       subroutine Hflux_physical_dissipation_ENTROPY(NCONS, NGRAD, Q, Ux, Uy, Uz, sqrt_mu, sqrt_alpha, Hx, Hy, Hz)
+         !$acc routine seq
 !
 !        ***************************************************************************************
 !
@@ -547,6 +788,7 @@ module SpectralVanishingViscosity
       end subroutine Hflux_physical_dissipation_ENTROPY
 
       subroutine Hflux_GuermondPopov_ENTROPY(NCONS, NGRAD, Q, Ux, Uy, Uz, sqrt_mu, sqrt_alpha, Hx, Hy, Hz)
+         !$acc routine seq
 !
 !        ***************************************************************************************
 !
@@ -643,6 +885,7 @@ module SpectralVanishingViscosity
 !//////////////////////////////////////////////////////////////////////////////////////////////////////////////
 !
       subroutine SVV_physical_dissipation_ENERGY(NCONS, NGRAD, Q, Hx, Hy, Hz, sqrt_mu, sqrt_alpha, F)
+         !$acc routine seq
          implicit none
          integer, intent(in)        :: NCONS, NGRAD
          real(kind=RP), intent(in)  :: Q(NCONS)
@@ -688,6 +931,7 @@ module SpectralVanishingViscosity
       end subroutine SVV_physical_dissipation_ENERGY
 
       subroutine SVV_physical_dissipation_ENTROPY(NCONS, NGRAD, Q, Hx, Hy, Hz, sqrt_mu, sqrt_alpha, F)
+         !$acc routine seq
 !
 !        ***************************************************************************************
 !
@@ -776,6 +1020,7 @@ module SpectralVanishingViscosity
       end subroutine SVV_physical_dissipation_ENTROPY
 
       subroutine SVV_GuermondPopov_ENTROPY(NCONS, NGRAD, Q, Hx, Hy, Hz, sqrt_mu, sqrt_alpha, F)
+         !$acc routine seq
 !
 !        ***************************************************************************************
 !

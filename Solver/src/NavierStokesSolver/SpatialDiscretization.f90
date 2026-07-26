@@ -475,10 +475,31 @@ module SpatialDiscretization
 !
          select type ( HyperbolicDiscretization )
          type is (StandardDG_t)
-            call TimeDerivative_VolumetricContribution(mesh)         
+            call TimeDerivative_VolumetricContribution(mesh)
          type is (SplitDG_t)
                call TimeDerivative_VolumetricContribution_Split(mesh)
          end select
+
+         if (ShockCapturingDriver % isActive) then
+#ifdef _OPENACC
+            call mesh % UpdateHostData()
+            do eID = 1, size(mesh % elements)
+               !$acc update self(mesh % elements(eID) % storage % QDot)
+            end do
+            !$acc wait
+#endif
+            call TimeDerivative_AddArtificialViscosity(mesh)
+#ifdef _OPENACC
+            do eID = 1, size(mesh % elements)
+               !$acc update device(mesh % elements(eID) % storage % QDot)
+            end do
+            do fID = 1, size(mesh % faces)
+               !$acc update device(mesh % faces(fID) % storage(1) % AviscFlux)
+               !$acc update device(mesh % faces(fID) % storage(2) % AviscFlux)
+            end do
+            !$acc wait
+#endif
+         end if
 
 #if defined(_HAS_MPI_)
 !$omp single
@@ -522,7 +543,15 @@ module SpatialDiscretization
 !$omp end do nowait
 #endif
 
+#ifndef _OPENACC
+         ! we had hanging issues and correctness when we ran without this
+         ! because i wanted to get the cpu values
+         !$omp single
+#endif
          call computeBoundaryFlux(mesh, t)
+#ifndef _OPENACC
+         !$omp end single
+#endif
 !
 !        ***************************************************************
 !        Surface integrals and scaling of elements with non-shared faces
@@ -566,6 +595,14 @@ module SpatialDiscretization
                if ( ShockCapturingDriver % isActive ) then
                   call mpi_barrier(MPI_COMM_WORLD, ierr)     ! TODO: This can't be the best way :(
                   call mesh % GatherMPIFacesAviscflux(NCONS)
+#ifdef _OPENACC
+                  do iFace = 1, size(mesh % faces_mpi)
+                     fID = mesh % faces_mpi(iFace)
+                     !$acc update device(mesh % faces(fID) % storage(1) % AviscFlux)
+                     !$acc update device(mesh % faces(fID) % storage(2) % AviscFlux)
+                  end do
+                  !$acc wait
+#endif
                end if
             end if
 !$omp end single
@@ -1367,6 +1404,35 @@ module SpatialDiscretization
 !
 !///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 !
+      subroutine TimeDerivative_AddArtificialViscosity(mesh)
+         use HexMeshClass
+         implicit none
+         type(HexMesh), intent(inout) :: mesh
+         integer :: eID
+         real(kind=RP), allocatable :: SCflux(:,:,:,:,:)
+
+         #ifndef _OPENACC
+         !$omp do schedule(runtime) private(SCflux)
+         #endif
+         do eID = 1, size(mesh % elements)
+            allocate(SCflux(1:NCONS, 0:mesh % elements(eID) % Nxyz(1), &
+                                     0:mesh % elements(eID) % Nxyz(2), &
+                                     0:mesh % elements(eID) % Nxyz(3), 1:NDIM))
+
+            call ShockCapturingDriver % ComputeViscosity(mesh, mesh % elements(eID), SCflux)
+            SCflux = -SCflux
+            call ScalarWeakIntegrals_StdVolumeGreen(mesh % elements(eID) % Nxyz, NCONS, SCflux, &
+                                                     mesh % elements(eID) % storage % QDot)
+            deallocate(SCflux)
+         end do
+         #ifndef _OPENACC
+         !$omp end do
+         #endif
+
+      end subroutine TimeDerivative_AddArtificialViscosity
+!
+!///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+!
       subroutine TimeDerivative_VolumetricContribution(mesh)
          use HexMeshClass
          use ElementClass
@@ -1393,7 +1459,7 @@ module SpatialDiscretization
 #ifdef _OPENACC
          !$acc parallel loop gang vector_length(128) num_gangs(9700) present(mesh) async(1)
 #else
-         !$omp do schedule(runtime)
+         !$omp do schedule(runtime) private(i,j,k,eq,mu,kappa,beta,inviscidFlux,viscousFlux)
 #endif
          do eID = 1 , size(mesh % elements)
 
@@ -1649,9 +1715,25 @@ module SpatialDiscretization
 !        ------------------------
 !        Multiply by the Jacobian
 !        ------------------------
+         ! I think we are missing the term for the artificial-viscosity flux here.
+         ! ComputeViscosity builds SCflux and prolongs its positive face traces to
+         ! AviscFlux while -SCflux is added separately to the weak volume integral.
+         ! The integration-by-parts form should therefore also subtract a numerical
+         ! artificial-viscosity flux at the face; otherwise we include its volume
+         ! divergence without the matching interface term and the operator is not
+         ! conservative between elements.The two AviscFlux traces are already rotated 
+         ! to the same face-normal orientation so their arithmetic mean is the 
+         ! consistent central flux.
+         !
+         ! On the perf end of things unfortunately we unconditionally subtract the 
+         ! AviscFlux term even when shock capturing is inactive but should not affect 
+         ! correctness when shock capturing is inactive because AviscFlux is initialized 
+         ! to zero but we bear the cost of memory access to the array even though we donot
+         ! necessarily need it 
          !$acc loop vector collapse(3)
          do j = 0, fc % Nf(2) ; do i = 0, fc % Nf(1) ; do eq = 1, NCONS
-               fc % storage(1) % FStar(eq,i,j) = (fc % storage(1) % FStar(eq,i,j) - fc % storage(2) % FStar(eq,i,j)) * fc % geom % jacobian(i,j)
+               fc % storage(1) % FStar(eq,i,j) = (fc % storage(1) % FStar(eq,i,j) - fc % storage(2) % FStar(eq,i,j)) * fc % geom % jacobian(i,j) &
+                                                   - 0.5_RP * (fc % storage(1) % AviscFlux(eq,i,j) + fc % storage(2) % AviscFlux(eq,i,j))
          end do ; end do ;  end do
 !
 !        ---------------------------
@@ -1719,11 +1801,15 @@ module SpatialDiscretization
 !        ------------------------
 !        Multiply by the Jacobian
 !        ------------------------
+!
+!        Use the same central artificial-viscosity flux as for interior faces.
+!        The exchanged traces share a normal orientation and are already metric-scaled.
          !$acc loop vector collapse(2)
          do j = 0, fc % Nf(2) ; do i = 0, fc % Nf(1)
             !$acc loop seq
             do eq = 1, NCONS
-               fc % storage(1) % FStar(eq,i,j) = (fc % storage(1) % FStar(eq,i,j) - fc % storage(2) % FStar(eq,i,j)) * fc % geom % jacobian(i,j)
+               fc % storage(1) % FStar(eq,i,j) = (fc % storage(1) % FStar(eq,i,j) - fc % storage(2) % FStar(eq,i,j)) * fc % geom % jacobian(i,j) &
+                                                   - 0.5_RP * (fc % storage(1) % AviscFlux(eq,i,j) + fc % storage(2) % AviscFlux(eq,i,j))
             enddo
          end do ;  end do
 !
@@ -1863,7 +1949,8 @@ module SpatialDiscretization
                do eq = 1, NCONS
                   mesh % faces(fID) % storage(1) % FStar(eq,i,j) = (mesh % faces(fID) % storage(1) % FStar(eq,i,j)  - &
                                                                     mesh % faces(fID) % storage(2) % FStar(eq,i,j)) * &
-                                                                    mesh % faces(fID) % geom % jacobian(i,j)
+                                                                    mesh % faces(fID) % geom % jacobian(i,j) - &
+                                                                    mesh % faces(fID) % storage(1) % AviscFlux(eq,i,j)
                enddo
             end do ;  end do
 !
