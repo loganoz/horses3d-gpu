@@ -360,6 +360,13 @@ module SCsensorClass
          call SVV % UpdateFilters(sensor % TEestim % coarseSem % mesh)
       end if
 
+#ifdef _OPENACC
+      ! the truncation sensor remains on the CPU, 
+      ! but its coarse time derivative uses the openacc solver path.
+      !$acc enter data copyin(sensor % TEestim % coarseSem % mesh)
+      call sensor % TEestim % coarseSem % mesh % CreateDeviceData()
+#endif
+
    end subroutine Construct_TEsensor
 !
 !///////////////////////////////////////////////////////////////////////////////
@@ -435,6 +442,14 @@ module SCsensorClass
       type(SCsensor_t), intent(inout) :: sensor
 
 
+#ifdef _OPENACC
+      if (allocated(sensor % TEestim)) then
+         if (allocated(sensor % TEestim % coarseSem)) then
+            call sensor % TEestim % coarseSem % mesh % ExitDeviceData()
+         end if
+      end if
+#endif
+
       if (allocated(sensor % TEestim))      deallocate(sensor % TEestim)
       if (allocated(sensor % x))            deallocate(sensor % x)
       if (associated(sensor % Compute_Raw)) nullify(sensor % Compute_Raw)
@@ -463,6 +478,18 @@ module SCsensorClass
 !
 !     Compute the sensor
 !     ------------------
+#ifdef _OPENACC
+!     sensor routines execute on the cpu so we need to update the gpu inputs
+      call sem % mesh % UpdateHostData()
+
+!     the truncation-error sensor consumes fine-grid QDot so we need to update it 
+      if (sensor % sens_type == SC_TE_ID) then
+         do eID = 1, sem % mesh % no_of_elements
+            !$acc update self(sem % mesh % elements(eID) % storage % QDot)
+         end do
+      end if
+#endif
+
       call sensor % Compute_Raw(sem, t)
 !
 !     Add 'inertia' to the scaled value
@@ -835,7 +862,23 @@ module SCsensorClass
       end do
 !$omp end parallel do
 
+#ifdef _OPENACC
+!     upload the cpu interpolated coarse sln for the openacc derivative
+      do eID = 1, csem % mesh % no_of_elements
+         !$acc update device(csem % mesh % elements(eID) % storage % Q)
+      end do
+      !$acc wait
+#endif
+
       call sensor % TEestim % TimeDerivative(csem % mesh, csem % particles, t, CTD_IGNORE_MODE)
+
+#ifdef _OPENACC
+!     download the derivative for the cpu truncation-error calc
+      !$acc wait
+      do eID = 1, csem % mesh % no_of_elements
+         !$acc update self(csem % mesh % elements(eID) % storage % QDot)
+      end do
+#endif
 !
 !     Maximum TE computation
 !     ----------------------

@@ -4609,6 +4609,8 @@ slavecoord:             DO l = 1, 4
          !$acc enter data copyin(self % faces(iFace) % storage(1) % unStar)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % fStar)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % unStar)
+         !$acc enter data copyin(self % faces(iFace) % storage(1) % AviscFlux)
+         !$acc enter data copyin(self % faces(iFace) % storage(2) % AviscFlux)
          !$acc enter data copyin(self % faces(iFace) % storage(1) % rho)
          !$acc enter data copyin(self % faces(iFace) % storage(2) % rho)
          !$acc enter data copyin(self % faces(iFace) % geom)
@@ -4662,8 +4664,9 @@ slavecoord:             DO l = 1, 4
          !$acc enter data copyin(self % zones(zoneID) % toBeDeleted)     
       enddo
 
+      !$acc enter data copyin(NodalStorage(0:self % Nx(1))) !wtf how?
       DO i = 0, self % Nx(1) !it should be the maximum nX
-         !$acc enter data copyin(NodalStorage(i))
+         !!$acc enter data copyin(NodalStorage(i))
          !$acc enter data copyin(NodalStorage(i) % hatD)
          !$acc enter data copyin(NodalStorage(i) % sharpD)
          !$acc enter data copyin(NodalStorage(i) % D)
@@ -4769,6 +4772,8 @@ slavecoord:             DO l = 1, 4
          !$acc exit data delete(self % faces(iFace) % storage(1) % unStar)
          !$acc exit data delete(self % faces(iFace) % storage(2) % fStar)
          !$acc exit data delete(self % faces(iFace) % storage(2) % unStar)
+         !$acc exit data delete(self % faces(iFace) % storage(1) % AviscFlux)
+         !$acc exit data delete(self % faces(iFace) % storage(2) % AviscFlux)
          !$acc exit data delete(self % faces(iFace) % storage)
          !$acc exit data delete(self % faces(iFace) % geom % normal)
          !$acc exit data delete(self % faces(iFace) % geom % t1)
@@ -4822,8 +4827,10 @@ slavecoord:             DO l = 1, 4
          !$acc exit data delete (NodalStorage(i) % D)
          !$acc exit data delete (NodalStorage(i) % b)
          !$acc exit data delete (NodalStorage(i) % v)
-         !$acc exit data delete (NodalStorage(i))
+         !$acc exit data delete (NodalStorage(i) % w)
+         !$acc exit data delete (NodalStorage(i) % x)
       END DO
+      !$acc exit data delete(NodalStorage(0:self % Nx(1)))
 
 #ifdef _HAS_MPI_
       !$acc exit data delete (self % faces_mpi)
