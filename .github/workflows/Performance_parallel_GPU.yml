@@ -14,10 +14,13 @@ name: PERFORMANCE PARALLEL (MPI) GPU
 ###  the job log.                                                    ###
 ###                                                                  ###
 ########################################################################
-on:
-  # Manual trigger only
-  workflow_dispatch:
 
+on:
+  workflow_dispatch:
+  #manual trigger only remove the next three lines when merging
+  push:
+    branches:
+      - PerformanceTestAction
 jobs:
   wait-guard:
     name: Runner availability guard
