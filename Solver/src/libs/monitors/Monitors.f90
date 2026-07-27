@@ -1347,9 +1347,6 @@ end subroutine getNoOfMonitors
 !     ---------------
 !
       integer        :: i, v, j, nfp, nv, fp_offset, ierr
-      real(kind=RP)  :: fp_t0, fp_t1, fp_t2
-      integer, save  :: fp_timing_calls = 0
-      logical, save  :: first_call_fp = .true.
 #ifdef _OPENACC
       integer        :: Nm
 #endif
@@ -1357,8 +1354,6 @@ end subroutine getNoOfMonitors
       nfp       = self % no_of_fileProbes
       nv        = size(self % probesVariables)
       fp_offset = self % no_of_probes - nfp
-
-      if (first_call_fp) first_call_fp = .false.
 
 #ifdef _OPENACC
 !
@@ -1387,23 +1382,14 @@ end subroutine getNoOfMonitors
 !     at init time, writes directly into fp_buf.  Avoids stride-nRanks scattered access
 !     into the probes(:) array (owned probes are spaced ~nRanks apart in a 100k array).
 !
-      fp_t0 = 0.0_RP ; fp_t1 = 0.0_RP ; fp_t2 = 0.0_RP
-      call cpu_time(fp_t0)
       self % fp_buf = 0.0_RP
       call Monitor_ComputeFileProbesCPU(self, mesh, fp_offset, nv)
-      call cpu_time(fp_t1)
 
 #ifdef _HAS_MPI_
       if ( MPI_Process % doMPIAction ) then
          call MPI_Allreduce(MPI_IN_PLACE, self % fp_buf, nfp * nv, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
       end if
 #endif
-      call cpu_time(fp_t2)
-
-      fp_timing_calls = fp_timing_calls + 1
-      if ( MPI_Process % isRoot .and. fp_timing_calls <= 10 ) &
-         write(*,'(A,I4,A,2F9.4)') "[fp timing] step ", fp_timing_calls, &
-            " compute+pack/allreduce (s) =", fp_t1-fp_t0, fp_t2-fp_t1
 #endif
 
    end subroutine Monitor_UpdateFileProbes
