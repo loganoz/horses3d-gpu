@@ -1388,7 +1388,7 @@ end subroutine getNoOfMonitors
 !     at init time, writes directly into fp_buf.  Avoids stride-nRanks scattered access
 !     into the probes(:) array (owned probes are spaced ~nRanks apart in a 100k array).
 !
-      fp_t0 = 0.0_RP ; fp_t1 = 0.0_RP ; fp_t2 = 0.0_RP ; fp_t3 = 0.0_RP
+      fp_t0 = 0.0_RP ; fp_t1 = 0.0_RP ; fp_t2 = 0.0_RP
       call cpu_time(fp_t0)
       self % fp_buf = 0.0_RP
       call Monitor_ComputeFileProbesCPU(self, mesh, fp_offset, nv)
