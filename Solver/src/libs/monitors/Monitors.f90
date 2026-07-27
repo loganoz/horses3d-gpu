@@ -2065,13 +2065,17 @@ end subroutine getNoOfMonitors
 
          ! Pack into column-major 2D layout vbuf(n_write, nfp):
          ! time index j varies fastest (Fortran column-major with cnt2=[n_write,nfp])
-         ! Read directly from fp_buf (layout: probe k, var v -> fp_buf((k-1)*nv+v))
          j = 0
          do i = 1, no_of_lines
             if ( .not. wmask(i) ) cycle
             j = j + 1
             do k = 1, nfp
+#ifdef _OPENACC
+               vbuf( j + (k-1)*n_write ) = self % probes(fp_offset + k) % values(v, i)
+#else
+               ! fp_buf layout: probe k, var v -> (k-1)*nv + v
                vbuf( j + (k-1)*n_write ) = self % fp_buf( (k-1)*nv + v )
+#endif
             end do
          end do
 
