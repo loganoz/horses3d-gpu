@@ -17,10 +17,7 @@ name: PERFORMANCE PARALLEL (MPI) GPU
 
 on:
   workflow_dispatch:
-  #manual trigger only remove the next three lines when merging
-  push:
-    branches:
-      - PerformanceTestAction
+  #manual trigger only 
 jobs:
   wait-guard:
     name: Runner availability guard
