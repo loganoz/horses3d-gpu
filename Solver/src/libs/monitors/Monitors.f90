@@ -1347,7 +1347,7 @@ end subroutine getNoOfMonitors
 !     ---------------
 !
       integer        :: i, v, j, nfp, nv, fp_offset, ierr
-      real(kind=RP)  :: fp_t0, fp_t1, fp_t2, fp_t3
+      real(kind=RP)  :: fp_t0, fp_t1, fp_t2
       integer, save  :: fp_timing_calls = 0
       logical, save  :: first_call_fp = .true.
 #ifdef _OPENACC
@@ -1401,19 +1401,10 @@ end subroutine getNoOfMonitors
 #endif
       call cpu_time(fp_t2)
 
-      j = 0
-      do i = fp_offset + 1, self % no_of_probes
-         do v = 1, nv
-            j = j + 1
-            self % probes(i) % values(v, bufferPos) = self % fp_buf(j)
-         end do
-      end do
-      call cpu_time(fp_t3)
-
       fp_timing_calls = fp_timing_calls + 1
       if ( MPI_Process % isRoot .and. fp_timing_calls <= 10 ) &
-         write(*,'(A,I4,A,3F9.4)') "[fp timing] step ", fp_timing_calls, &
-            " compute+pack/allreduce/unpack (s) =", fp_t1-fp_t0, fp_t2-fp_t1, fp_t3-fp_t2
+         write(*,'(A,I4,A,2F9.4)') "[fp timing] step ", fp_timing_calls, &
+            " compute+pack/allreduce (s) =", fp_t1-fp_t0, fp_t2-fp_t1
 #endif
 
    end subroutine Monitor_UpdateFileProbes
@@ -2074,12 +2065,13 @@ end subroutine getNoOfMonitors
 
          ! Pack into column-major 2D layout vbuf(n_write, nfp):
          ! time index j varies fastest (Fortran column-major with cnt2=[n_write,nfp])
+         ! Read directly from fp_buf (layout: probe k, var v -> fp_buf((k-1)*nv+v))
          j = 0
          do i = 1, no_of_lines
             if ( .not. wmask(i) ) cycle
             j = j + 1
             do k = 1, nfp
-               vbuf( j + (k-1)*n_write ) = self % probes(fp_offset + k) % values(v, i)
+               vbuf( j + (k-1)*n_write ) = self % fp_buf( (k-1)*nv + v )
             end do
          end do
 
