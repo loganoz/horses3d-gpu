@@ -1374,13 +1374,12 @@ end subroutine getNoOfMonitors
                                       self % fp_varCodes, self % fp_values_gpu, &
                                       mesh, nfp, nv, Nm)
          !$acc update host(self % fp_values_gpu)
-
-         do i = 1, nfp
-            do v = 1, nv
-               self % probes(fp_offset + i) % values(v, bufferPos) = &
-                  self % fp_values_gpu(v, i)
-            end do
-         end do
+#ifdef _HAS_MPI_
+         if ( MPI_Process % doMPIAction ) then
+            call MPI_Allreduce(MPI_IN_PLACE, self % fp_values_gpu, nfp * nv, &
+                               MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr)
+         end if
+#endif
 
 #else
 !
@@ -2071,9 +2070,10 @@ end subroutine getNoOfMonitors
             j = j + 1
             do k = 1, nfp
 #ifdef _OPENACC
-               vbuf( j + (k-1)*n_write ) = self % probes(fp_offset + k) % values(v, i)
+               ! fp_values_gpu layout: (nv, nfp) -> variable first, probe second
+               vbuf( j + (k-1)*n_write ) = self % fp_values_gpu(v, k)
 #else
-               ! fp_buf layout: probe k, var v -> (k-1)*nv + v
+               ! fp_buf layout: (nfp*nv) -> probe first: (k-1)*nv + v
                vbuf( j + (k-1)*n_write ) = self % fp_buf( (k-1)*nv + v )
 #endif
             end do
