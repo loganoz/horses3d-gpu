@@ -604,6 +604,14 @@ end module ProblemFileFunctions
                                                         -1.2709186043159373E-07_RP,&
                                                          0.0000000000000000E+00_RP]
 !
+            ! controls without a volume monitor have no source values to check
+            ! this fix the error:
+            !   Warning: ieee_underflow is signaling
+            !   Warning: ieee_inexact is signaling
+            !   ERROR STOP 99
+            if (.not. allocated(monitors % volumeMonitors)) return
+            if (size(monitors % volumeMonitors) == 0) return
+
             CALL initializeSharedAssertionsManager
             sharedManager => sharedAssertionsManager()
 
