@@ -74,8 +74,6 @@
 !
 !           ------------------------------------------------
 !           called to set the initial condition for the flow
-!              - by default it sets an uniform initial
-!                 condition.
 !           ------------------------------------------------
 !
             use smconstants
