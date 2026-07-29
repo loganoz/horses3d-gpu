@@ -1,5 +1,5 @@
 #include "Includes.h"
-module Probes2tecplotModule
+module Horses2probesModule
 !
 !  ///////////////////////////////////////////////////////////////////////////
 !
@@ -810,4 +810,4 @@ module Probes2tecplotModule
 
    end function Solve3x3 
 
-end module Probes2tecplotModule
+end module Horses2probesModule

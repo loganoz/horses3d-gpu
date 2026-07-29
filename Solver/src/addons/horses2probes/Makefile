@@ -32,7 +32,7 @@ H2T_OBJS= Storage \
 	sharedSpectralBasis \
 
 # Files compiled from the horses2probes directory (new code)
-LOCAL_OBJS= Probes2tecplot \
+LOCAL_OBJS= Horses2probes \
 	main \
 
 H2T_OBJS_BUILD=$(foreach obj,$(H2T_OBJS),./build/$(obj).o)
@@ -53,7 +53,7 @@ ALL_OBJS_BUILD=$(H2T_OBJS_BUILD) $(LOCAL_OBJS_BUILD)
 .DEFAULT_GOAL := $(PROG)
 
 # Explicit rules for local files (explicit rules always beat pattern rules)
-./build/Probes2tecplot.o: ./Probes2tecplot.f90
+./build/Horses2probes.o: ./Horses2probes.f90
 	@echo
 	@echo $<
 	$(FC) $(FFLAGS) $(MACROS) $(EXTLIB_INC) -I./include $(INCLUDE) $(INCLUDE)_ns $(MACROS) -c $< -o $@ $(MOD_FLAG) ./include

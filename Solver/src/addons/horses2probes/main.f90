@@ -36,7 +36,7 @@ program horses2probes
    use Headers
    use MPI_Process_Info
    use OutputVariables, only: outScale, hasVariablesFlag, askedVariables, Lreference, getNoOfCommas
-   use Probes2tecplotModule
+   use Horses2probesModule
    implicit none
 
    integer                                 :: no_of_solutions
@@ -54,7 +54,7 @@ program horses2probes
 !
 !  Parse the control file or command line arguments
 !  -------------------------------------------------
-   call getProbes2tecplotArgs(meshName, probesFileName, no_of_solutions, solutionNames)
+   call getHorses2probesArgs(meshName, probesFileName, no_of_solutions, solutionNames)
 !
 !  Construct spectral basis
 !  ------------------------
@@ -95,7 +95,7 @@ program horses2probes
 
    contains
 
-   subroutine getProbes2tecplotArgs(meshName, probesFileName, no_of_solutions, solutionNames)
+   subroutine getHorses2probesArgs(meshName, probesFileName, no_of_solutions, solutionNames)
       use FTValueDictionaryClass, only: FTValueDictionary
       use FileReaders           , only: ReadControlFile
       use FileReadingUtilities  , only: getCharArrayFromString
@@ -262,6 +262,6 @@ program horses2probes
          end if
       end if
 
-   end subroutine getProbes2tecplotArgs
+   end subroutine getHorses2probesArgs
 
 end program horses2probes
