@@ -118,6 +118,9 @@ module MonitorsClass
          use FTValueDictionaryClass
          use mainKeywordsModule
          use MPI_Process_Info
+#ifdef _HAS_MPI_
+         use mpi
+#endif
          implicit none
          class(Monitor_t)                     :: Monitors
          class(HexMesh)                       :: mesh
