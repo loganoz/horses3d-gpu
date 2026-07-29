@@ -1724,8 +1724,8 @@ end subroutine getNoOfMonitors
                            + mesh % elements(eID_loc) % storage % Q(IMC,ii,jj,kk) &
                              * mesh % elements(eID_loc) % storage % mu(1,ii,jj,kk) &
                            - 12.0_RP*multiphase%sigma*multiphase%invEps &
-                             * POW2(mesh % elements(eID_loc) % storage % Q(IMC,ii,jj,kk) &
-                                    * (1.0_RP - mesh % elements(eID_loc) % storage % Q(IMC,ii,jj,kk))) &
+                             * (mesh % elements(eID_loc) % storage % Q(IMC,ii,jj,kk) &
+                                * (1.0_RP - mesh % elements(eID_loc) % storage % Q(IMC,ii,jj,kk)))**2 &
                            - 0.75_RP*multiphase%sigma*multiphase%eps &
                              * (POW2(mesh % elements(eID_loc) % storage % c_x(1,ii,jj,kk)) &
                               + POW2(mesh % elements(eID_loc) % storage % c_y(1,ii,jj,kk)) &
