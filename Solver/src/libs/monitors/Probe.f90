@@ -101,6 +101,10 @@ module ProbeClass
 !           provided) or from a "#define probe" block in the case file
 !           ------------------------------------------------------------------------
             if ( present(x_in) ) then
+               if ( .not. present(name_in) .or. .not. present(variables_in) ) then
+                  write(*,'(A)') "ERROR: Probe_Initialization: x_in requires name_in and variables_in."
+                  stop
+               end if
                self % monitorName = name_in
                self % x           = x_in
                self % nVars       = size(variables_in)

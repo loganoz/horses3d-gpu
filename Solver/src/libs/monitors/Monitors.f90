@@ -143,7 +143,7 @@ module MonitorsClass
          character(len=8)                :: probeFileOutputFormat
          character(len=LINE_LENGTH)      :: probes_solution_file
          character(len=LINE_LENGTH)      :: probes_dir
-         integer                         :: last_slash
+         integer                         :: last_slash, ierr
 !
 !        Setup the buffer
 !        ----------------
@@ -180,6 +180,9 @@ module MonitorsClass
          if (MPI_Process % isRoot) then
             call execute_command_line('mkdir -p "' // trim(probes_dir) // '"', wait=.true.)
          end if
+#ifdef _HAS_MPI_
+         if ( MPI_Process % doMPIAction ) call MPI_Barrier(MPI_COMM_WORLD, ierr)
+#endif
          Monitors % probes_solution_file = trim(probes_solution_file)
 !
 !        Search in case file for probes, surface monitors, and volume monitors
@@ -1268,6 +1271,10 @@ end subroutine getNoOfMonitors
       n = 0
 
       do while ( len_trim(auxline) .gt. 0 )
+         if ( n .ge. size(buffer) ) then
+            write(*,'(A)') "ERROR: splitIntoTokens: too many tokens (max 64). Truncating."
+            exit
+         end if
          pos = index(trim(auxline), " ")
          n = n + 1
 

@@ -1720,8 +1720,8 @@ slavecoord:             DO l = 1, 4
 !     ------------------
 
       local_dof = sum( (self % Nx + 1) * (self % Ny + 1) * (self % Nz + 1) )
-      Nmin      = minval(self % Nx)
-      Nmax      = maxval(self % Nx)
+      Nmin      = min(minval(self % Nx), minval(self % Ny), minval(self % Nz))
+      Nmax      = max(maxval(self % Nx), maxval(self % Ny), maxval(self % Nz))
 
       if (  MPI_Process % doMPIAction ) then
 #ifdef _HAS_MPI_
