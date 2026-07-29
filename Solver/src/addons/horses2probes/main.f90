@@ -1,13 +1,13 @@
 !
 !///////////////////////////////////////////////////////////////////////////////////////
 !
-!  probes2tecplot - Extract solution variables at probe points from HORSES3D solution files
+!  horses2probes - Extract solution variables at probe points from HORSES3D solution files
 !
 !  Usage (control file):
-!     probes2tecplot control_file.convert
+!     horses2probes control_file.convert
 !
 !  Usage (command line):
-!     probes2tecplot mesh.hmesh solution.hsol probes.dat [--output-variables=p,u,v,w]
+!     horses2probes mesh.hmesh solution.hsol probes.dat [--output-variables=p,u,v,w]
 !
 !  Control file format:
 !     hmesh file= Mesh.hmesh
@@ -28,7 +28,7 @@
 !
 !///////////////////////////////////////////////////////////////////////////////////////
 !
-program probes2tecplot
+program horses2probes
    use SMConstants
    use Storage
    use SolutionFile
@@ -123,8 +123,8 @@ program probes2tecplot
       useControlFile = (no_of_arguments .eq. 1)
 
       if (no_of_arguments .eq. 0) then
-         write(STD_OUT,'(A)') "Usage: probes2tecplot control_file.convert"
-         write(STD_OUT,'(A)') "       probes2tecplot mesh.hmesh solution.hsol probes.dat [--output-variables=p,u,v,w]"
+         write(STD_OUT,'(A)') "Usage: horses2probes control_file.convert"
+         write(STD_OUT,'(A)') "       horses2probes mesh.hmesh solution.hsol probes.dat [--output-variables=p,u,v,w]"
          call exit(1)
       end if 
 !
@@ -257,11 +257,11 @@ program probes2tecplot
 
          if (len_trim(probesFileName) .eq. 0) then
             write(STD_OUT,'(A)') "ERROR: No probes file found in arguments."
-            write(STD_OUT,'(A)') "Usage: probes2tecplot mesh.hmesh solution.hsol probes.dat"
+            write(STD_OUT,'(A)') "Usage: horses2probes mesh.hmesh solution.hsol probes.dat"
             call exit(1)
          end if
       end if
 
    end subroutine getProbes2tecplotArgs
 
-end program probes2tecplot
+end program horses2probes

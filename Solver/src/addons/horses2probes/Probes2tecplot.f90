@@ -3,7 +3,7 @@ module Probes2tecplotModule
 !
 !  ///////////////////////////////////////////////////////////////////////////
 !
-!     This module implements the probes2tecplot functionality:
+!     This module implements the horses2probes functionality:
 !     - Reads a probes file with (name, x, y, z) entries
 !     - Finds each probe point in the mesh using Newton iteration
 !       accelerated with element bounding boxes

@@ -1,7 +1,7 @@
 #####################################################################
 ## HORSES - a High-Order Spectral Element Solver
 ##
-##	probes2tecplot Makefile
+##	horses2probes Makefile
 ##
 #####################################################################
 
@@ -21,7 +21,7 @@ COMM?=PARALLEL
 MAKE=make
 AR=ar
 RANLIB=ranlib
-PROG=./bin/probes2tecplot
+PROG=./bin/horses2probes
 
 # Directory of shared source files from horses2tecplot
 H2T_DIR=../horses2tecplot
@@ -31,7 +31,7 @@ H2T_OBJS= Storage \
 	OutputVariables \
 	sharedSpectralBasis \
 
-# Files compiled from the probes2tecplot directory (new code)
+# Files compiled from the horses2probes directory (new code)
 LOCAL_OBJS= Probes2tecplot \
 	main \
 
@@ -100,7 +100,7 @@ mkdirs: FORCE
 header: FORCE
 	@echo
 	@echo "================================"
-	@echo ">>   Building probes2tecplot"
+	@echo ">>   Building horses2probes"
 	@echo "================================"
 	@echo 
 	@echo
