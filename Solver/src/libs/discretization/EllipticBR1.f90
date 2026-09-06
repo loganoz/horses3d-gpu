@@ -170,14 +170,20 @@ module EllipticBR1
 !        Compute Riemann solvers of non-shared faces
 !        *******************************************
 !
-!$omp do schedule(runtime) private(fID)
+#ifdef _OPENACC
          !$acc parallel loop gang present(mesh, self) async(1)
+#else
+!$omp do schedule(runtime) private(fID)
+#endif
          do iFace = 1, size(mesh % faces_interior)
             fID = mesh % faces_interior(iFace)
             call BR1_ComputeElementInterfaceAverage(self, mesh % faces(fID), nEqn, nGradEqn)
          end do
+#ifdef _OPENACC
          !$acc end parallel loop
+#else
 !$omp end do nowait
+#endif
 
          nZones = size(mesh % zones)
 !$omp do schedule(runtime) private(zoneID)
@@ -186,8 +192,11 @@ module EllipticBR1
          enddo
 !$omp end do 
 
+#ifdef _OPENACC
+         !$acc parallel loop gang present(mesh) async(1)
+#else
 !$omp do schedule(runtime) private(eID)
-         !$acc parallel loop gang present(mesh) async(1) 
+#endif
          do iEl = 1, size(mesh % elements_sequential)
             eID = mesh % elements_sequential(iEl)
 !
@@ -195,8 +204,11 @@ module EllipticBR1
 !           -------------------------
             call BR1_GradientFaceLoop(nGradEqn, mesh % elements(eID), mesh)
          end do
+#ifdef _OPENACC
          !$acc end parallel loop
+#else
 !$omp end do
+#endif
 
          call HexMesh_ProlongGradientsToFaces(mesh, size(mesh % elements_sequential), mesh % elements_sequential, nGradEqn)
 
@@ -207,18 +219,27 @@ module EllipticBR1
          end if
 !$omp end single
 
+#ifdef _OPENACC
+         !$acc parallel loop gang present(mesh, self) async(1)
+#else
 !$omp do schedule(runtime) private(fID)
-         !$acc parallel loop gang present(mesh, self) async(1) 
+#endif
          do iFace = 1, size(mesh % faces_mpi)
             fID = mesh % faces_mpi(iFace)
             call BR1_ComputeMPIFaceAverage(self, mesh % faces(fID), nEqn, nGradEqn)
          end do
+#ifdef _OPENACC
          !$acc end parallel loop
-!$omp end do 
+#else
+!$omp end do
+#endif
 !
 
-!$omp do schedule(runtime) private(eID)
+#ifdef _OPENACC
 !$acc parallel loop gang vector_length(128) present(mesh, self) async(1)
+#else
+!$omp do schedule(runtime) private(eID)
+#endif
          do iEl = 1, size(mesh % elements_mpi)
             eID = mesh % elements_mpi(iEl)
 !
@@ -226,14 +247,17 @@ module EllipticBR1
 !           -------------------------
             call BR1_GradientFaceLoop(nGradEqn, mesh % elements(eID), mesh)
          end do
-!$omp end do
+#ifdef _OPENACC
 !$acc end parallel loop
+#else
+!$omp end do
+#endif
 !
 !           Prolong gradients
 !           -----------------
 !
          call HexMesh_ProlongGradientsToFaces(mesh, size(mesh % elements_mpi), mesh % elements_mpi, nGradEqn)
-
+!
 #endif
 
       end subroutine BR1_LiftGradients
@@ -542,7 +566,7 @@ flux )
          flux = flux_vec(:,IX) * nHat(IX) + flux_vec(:,IY) * nHat(IY) + flux_vec(:,IZ) * nHat(IZ) 
 
 #ifdef MULTIPHASE
-         sigma0 = 0.5_RP * self % sigma * (maxval(f % Nf))*(maxval(f % Nf)+1) / f % geom % h
+         sigma0 = 0.5_RP * self % sigma * (maxval(f % Nf) + 0.0_RP)*(maxval(f % Nf) + 1.0_RP) / f % geom % h
          flux = flux - sigma0 * sigma * (QLeft-QRight)
 #endif
 
@@ -576,7 +600,7 @@ flux )
          real(kind=RP)     :: sigma0
 
 #ifdef MULTIPHASE
-         sigma0 = 0.5_RP * BR1_sigma * (maxval(f % Nf))*(maxval(f % Nf)+1) / f % geom % h
+         sigma0 = 0.5_RP * BR1_sigma * (maxval(f % Nf) + 0.0_RP)*(maxval(f % Nf) + 1.0_RP) / f % geom % h
 #endif
           
          !$acc loop vector collapse(3)

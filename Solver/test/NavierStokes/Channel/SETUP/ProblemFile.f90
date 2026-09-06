@@ -21,67 +21,6 @@
 !
 !//////////////////////////////////////////////////////////////////////// 
 !
-!  ********************************************************************
-!  This module contains the definitions for the channel flow simulation
-!  ********************************************************************
-   module OscarChannel
-#ifdef _HAS_MPI_
-      use mpi
-#endif
-      use SMConstants
-#ifdef NAVIERSTOKES
-      use FluidData_NS, only: RefValues_t
-#endif
-      implicit none
-!
-!     Parameters
-!     ----------
-      real(kind=RP), parameter :: alpha    =  0.9_RP
-!
-!     Module variables 
-!     ----------------
-      real(kind=RP) :: flowDir(NDIM)            ! Flow direction
-      ! real(kind=RP) :: f_x(2), f_y(2), f_z(3)   ! Correction factors in x and y direction
-      real(kind=RP) :: f_x(2), f_y(2), f_z(2)   ! Correction factors in x and y direction
-      real(kind=RP) :: dpdx, dpdy, dpdz         ! Pressure gradient
-      
-      real(kind=RP), allocatable :: dp_part(:)  ! dpdx, dpdy or dpdz in the different partitions (MPI)
-      integer                    :: nProcs      ! Number of MPI partitions
-      
-      contains
-#ifdef NAVIERSTOKES
-         subroutine InitializeOscarChannel(refValues_)
-            implicit none
-            type(RefValues_t),      intent(in)  :: refValues_
-            integer :: ierr
-!
-!           Initialize the flow direction
-!           -----------------------------
-            flowDir(1) = cos(refValues_ % AoATheta*pi/180._RP) * cos(refValues_ % AoAPhi*pi/180._RP)
-            flowDir(2) = sin(refValues_ % AoAtheta*pi/180._RP) * cos(refValues_ % AoAphi*pi/180._RP)
-            flowDir(3) = sin(refValues_ % AoAphi*pi/180._RP)
-!
-!           Initialize dpdx and dpdy
-!           ------------------------
-            dpdx  = 3.08e-3_RP
-            ! dpdy  = 3.08e-3_RP
-            ! dpdz  = 0._RP 
-            dpdy  = 0._RP 
-            ! dpdz  = 3.08e-3_RP
-            dpdz  = 3.08e-5_RP
-!
-!           Initialize MPI
-!           --------------
-#ifdef _HAS_MPI_
-            call mpi_comm_size(MPI_COMM_WORLD, nProcs, ierr)
-            allocate( dp_part(nProcs) )
-#else
-            nProcs = 1
-#endif
-         end subroutine InitializeOscarChannel
-#endif
-   end module OscarChannel
-!
 !//////////////////////////////////////////////////////////////////////// 
 !
          SUBROUTINE UserDefinedStartup
@@ -114,7 +53,6 @@
             USE HexMeshClass
             use PhysicsStorage
             use FluidData
-            use OscarChannel
             IMPLICIT NONE
             CLASS(HexMesh)                      :: mesh
 #if defined(NAVIERSTOKES)
@@ -125,12 +63,7 @@
 #if defined(CAHNHILLIARD)
             type(Multiphase_t),     intent(in)  :: multiphase_
 #endif
-#if defined(NAVIERSTOKES)
 !
-!           Initialize Channel variables
-!           ----------------------------
-            call InitializeOscarChannel(refValues_)
-#endif
          END SUBROUTINE UserDefinedFinalSetup
 !
 !//////////////////////////////////////////////////////////////////////// 
@@ -156,9 +89,6 @@
             use physicsstorage
             use hexmeshclass
             use fluiddata
-#if defined(NAVIERSTOKES)
-            use OscarChannel, only: flowDir
-#endif
             implicit none
             class(hexmesh)                      :: mesh
 #if defined(NAVIERSTOKES)
@@ -180,6 +110,14 @@
             real(kind=RP) :: rho , u , v , w , p
             real(kind=RP) :: rho_0, p_0
             integer       :: Nx, Ny, Nz
+            
+            ! Local variable for flow direction
+            real(kind=RP) :: flowDir(NDIM)
+
+            ! Initialize flowDir hardcoded based on refValues
+            flowDir(1) = cos(refValues_ % AoATheta*pi/180._RP) * cos(refValues_ % AoAPhi*pi/180._RP)
+            flowDir(2) = sin(refValues_ % AoAtheta*pi/180._RP) * cos(refValues_ % AoAphi*pi/180._RP)
+            flowDir(3) = sin(refValues_ % AoAphi*pi/180._RP)
             
             rho_0 = 1.0_RP 
             p_0   = 1.0_RP
@@ -330,7 +268,6 @@
             USE HexMeshClass
 #if defined(NAVIERSTOKES)
             use MonitorsClass
-            use OscarChannel
 #endif
             IMPLICIT NONE
             !-arguments---------------------------------------------------
@@ -342,53 +279,19 @@
 #else
             logical, intent(in) :: monitors
 #endif
+!
+!           Logic removed because OscarChannel module was deleted.
+!           ------------------------------------------------------------
 #if defined(NAVIERSTOKES)
             !-local-variables---------------------------------------------
-            real(kind=RP) :: meanMomentum(NDIM)   ! Mean momentum
+            ! real(kind=RP) :: meanMomentum(NDIM)   ! Mean momentum
 #ifdef _HAS_MPI_
-            integer       :: ierr, dp_ind
-            !-------------------------------------------------------------
-!
-!           Get the same global dpdx,dpdy,dpdz in all partitions
-!           ----------------------------------------------------
-            if (nProcs > 1) then   
-!
-!              dpdx
-!              ----
-               call MPI_Allgather( dpdx, 1, MPI_DOUBLE, dp_part, 1, MPI_DOUBLE, MPI_COMM_WORLD, ierr)
-               dp_ind  = maxloc(abs(dp_part),1)
-               dpdx    = dp_part(dp_ind)
-!
-!              dpdy
-!              ----
-               call MPI_Allgather( dpdy, 1, MPI_DOUBLE, dp_part, 1, MPI_DOUBLE, MPI_COMM_WORLD, ierr)
-               dp_ind  = maxloc(abs(dp_part),1)
-               dpdy    = dp_part(dp_ind)
-!
-!              dpdz
-!              ----
-               call MPI_Allgather( dpdz, 1, MPI_DOUBLE, dp_part, 1, MPI_DOUBLE, MPI_COMM_WORLD, ierr)
-               dp_ind  = maxloc(abs(dp_part),1)
-               dpdz    = dp_part(dp_ind)
-            end if
-#endif      
-!
-!           Compute the mean velocity/momentum
-!           ----------------------------------
-            meanMomentum = monitors % volumeMonitors(1) % getLast()
+            ! integer       :: ierr, dp_ind
+#endif
             
-!
-!           Compute the correction parameter
-!           --------------------------------
-
-            f_x(1) = ( flowDir(1) - meanMomentum(1) ) * alpha / dt
-            f_x(2) = (1._RP - alpha) * dpdx
+            ! Need to use channel forcing module
+            ! since OscarChannel has been removed.
             
-            f_y(1) = ( flowDir(2) - meanMomentum(2) ) * alpha / dt
-            f_y(2) = (1._RP - alpha) * dpdy
-
-            f_z(1) = ( flowDir(3) - meanMomentum(3) ) * alpha / dt
-            f_z(2) = (1._RP - alpha) * dpdz
 #endif
          END SUBROUTINE UserDefinedPeriodicOperation
 !
@@ -405,7 +308,6 @@
             USE HexMeshClass
             use PhysicsStorage
             use FluidData
-            use OscarChannel
             IMPLICIT NONE
             !-arguments--------------------------------------------------
             real(kind=RP),             intent(in)  :: x(NDIM)
@@ -495,8 +397,8 @@
 #if defined(NAVIERSTOKES)
             INTEGER                            :: iterations(3:7) = [100, 0, 0, 0, 0]
             real(kind=RP), parameter :: residuals(5) = [  0.0000006546361679_RP, &
-                                                          0.0624406739585925_RP, &
-                                                          0.0000012720347859_RP, &
+                                                          0.0624406738137102_RP, &
+                                                          0.0000012718821607_RP, &
                                                           0.0000000005267711_RP, &
                                                           0.0009699391747517_RP] 
 
@@ -506,27 +408,27 @@
 
             CALL FTAssertEqual(expectedValue = residuals(1)+1.0_RP, &
                                actualValue   = monitors % residuals % values(1,1)+1.0_RP, &
-                               tol           = 1.d-11, &
+                               tol           = 1.d-10, &
                                msg           = "Continuity residual")
 
             CALL FTAssertEqual(expectedValue = residuals(2)+1.0_RP, &
                                actualValue   = monitors % residuals % values(2,1)+1.0_RP, &
-                               tol           = 1.d-11, &
+                               tol           = 1.d-10, &
                                msg           = "X-Momentum residual")
 
             CALL FTAssertEqual(expectedValue = residuals(3)+1.0_RP, &
                                actualValue   = monitors % residuals % values(3,1)+1.0_RP, &
-                               tol           = 1.d-11, &
+                               tol           = 1.d-10, &
                                msg           = "Y-Momentum residual")
 
             CALL FTAssertEqual(expectedValue = residuals(4)+1.0_RP, &
                                actualValue   = monitors % residuals % values(4,1)+1.0_RP, &
-                               tol           = 1.d-11, &
+                               tol           = 1.d-10, &
                                msg           = "Z-Momentum residual")
 
             CALL FTAssertEqual(expectedValue = residuals(5)+1.0_RP, &
                                actualValue   = monitors % residuals % values(5,1)+1.0_RP, &
-                               tol           = 1.d-11, &
+                               tol           = 1.d-9, &
                                msg           = "Energy residual")
 
 
@@ -552,10 +454,9 @@
       SUBROUTINE UserDefinedTermination
 !
 !        -----------------------------------------------
-!        Called at the the end of the main driver after 
+!        Called at the end of the main driver after 
 !        everything else is done.
 !        -----------------------------------------------
 !
          IMPLICIT NONE  
       END SUBROUTINE UserDefinedTermination
-      

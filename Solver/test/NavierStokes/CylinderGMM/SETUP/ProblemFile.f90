@@ -581,7 +581,7 @@ end module ProblemFileFunctions
       SUBROUTINE UserDefinedTermination
 !
 !        -----------------------------------------------
-!        Called at the the end of the main driver after
+!        Called at the end of the main driver after
 !        everything else is done.
 !        -----------------------------------------------
 !

@@ -21,7 +21,7 @@ Advanced users can have additional control over a simulation without having to m
 
 - UserDefinedFinalize: Called after the solution computed to allow, for example error tests to be performed.
 
-- UserDefinedTermination: Called at the the end of the main driver after everything else is done.
+- UserDefinedTermination: Called at the end of the main driver after everything else is done.
 
 
 ## Compiling the Problem File

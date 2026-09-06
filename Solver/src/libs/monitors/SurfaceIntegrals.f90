@@ -70,8 +70,11 @@ module SurfaceIntegrals
 !
 !        Loop the zone to get faces and elements
 !        ---------------------------------------
+#ifdef _OPENACC
 !$acc parallel loop gang reduction(+:val) present(mesh)
+#else
 !$omp parallel do private(fID) reduction(+:val) schedule(runtime)
+#endif
          do zonefID = 1, mesh % zones(zoneID) % no_of_faces
 !
 !           Face global ID
@@ -83,8 +86,11 @@ module SurfaceIntegrals
             val = val + ScalarSurfaceIntegral_Face(mesh % faces(fID), integralType)
 
          end do
-!$omp end parallel do
+#ifdef _OPENACC
 !$acc end parallel loop
+#else
+!$omp end parallel do
+#endif
 
 #ifdef _HAS_MPI_
          localval = val
@@ -274,14 +280,17 @@ module SurfaceIntegrals
          select case ( integralType )
          case ( SURFACE )
 
+#ifdef _OPENACC
 !$acc parallel loop gang present(mesh) num_gangs(mesh % zones(zoneID) % no_of_faces) reduction(+:valx, valy, valz)
+#else
 !$omp parallel do private(fID,localVal,localx,localy,localz) reduction(+:valx, valy, valz) schedule(runtime)
+#endif
          do zonefID = 1, mesh % zones(zoneID) % no_of_faces
             !
             !           Face global ID
             !           --------------
                         fID = mesh % zones(zoneID) % faces(zonefID)
-            
+
                         localx = 0.0_RP
                         localy = 0.0_RP
                         localz = 0.0_RP
@@ -295,31 +304,37 @@ module SurfaceIntegrals
                         do j = 0, mesh % faces(fid) % Nf(2) ;    do i = 0, mesh % faces(fid) % Nf(1)
                            val = NodalStorage(mesh % faces(fid) % Nf(1)) % w(i) * NodalStorage(mesh % faces(fid) % Nf(2)) % w(j) &
                                      * mesh % faces(fid) % geom % jacobian(i,j) * mesh % faces(fid) % geom % normal(:,i,j)
-            
+
                            localx = localx + val(1)
                            localy = localy + val(2)
                            localz = localz + val(3)
-               
+
                         end do          ;    end do
-            
+
                         valx = valx + localx
                         valy = valy + localy
                         valz = valz + localz
-            
+
                      end do
-!$omp end parallel do
+#ifdef _OPENACC
 !$acc end parallel loop
+#else
+!$omp end parallel do
+#endif
                      
          case ( TOTAL_FORCE )
 
+#ifdef _OPENACC
 !$acc parallel loop gang present(mesh) num_gangs(mesh % zones(zoneID) % no_of_faces) reduction(+:valx, valy, valz)
+#else
 !$omp parallel do private(fID,localVal,localx,localy,localz) reduction(+:valx, valy, valz) schedule(runtime)
+#endif
          do zonefID = 1, mesh % zones(zoneID) % no_of_faces
             !
             !           Face global ID
             !           --------------
                         fID = mesh % zones(zoneID) % faces(zonefID)
-            
+
                         localx = 0.0_RP
                         localy = 0.0_RP
                         localz = 0.0_RP
@@ -337,34 +352,40 @@ module SurfaceIntegrals
                            p = Pressure(mesh % faces(fid) % storage(1) % Q(:,i,j))
                            call getStressTensor(mesh % faces(fid) % storage(1) % Q(:,i,j),  mesh % faces(fid) % storage(1) % U_x(:,i,j),&
                                                 mesh % faces(fid) % storage(1) % U_y(:,i,j),mesh % faces(fid) % storage(1) % U_z(:,i,j), tau)
-            
+
                            localval  = ( p * mesh % faces(fid) % geom % normal(:,i,j) - matmul(tau,mesh % faces(fid) % geom % normal(:,i,j)) ) &
                                      * mesh % faces(fid) % geom % jacobian(i,j) &
                                      * NodalStorage(mesh % faces(fid) % Nf(1)) % w(i) * NodalStorage(mesh % faces(fid) % Nf(2)) % w(j)
-                           
+
                            localx = localx + localval(1)
                            localy = localy + localval(2)
                            localz = localz + localval(3)
                         end do          ;    end do
-                        
+
                         valx = valx + localx
                         valy = valy + localy
                         valz = valz + localz
-            
+
          end do
-!$omp end parallel do
+#ifdef _OPENACC
 !$acc end parallel loop
+#else
+!$omp end parallel do
+#endif
          
          case ( PRESSURE_FORCE )
 
-!$acc parallel loop gang present(mesh) num_gangs(mesh % zones(zoneID) % no_of_faces) reduction(+:valx, valy, valz) 
+#ifdef _OPENACC
+!$acc parallel loop gang present(mesh) num_gangs(mesh % zones(zoneID) % no_of_faces) reduction(+:valx, valy, valz)
+#else
 !$omp parallel do private(fID,localVal,localx,localy,localz) reduction(+:valx, valy, valz) schedule(runtime)
+#endif
          do zonefID = 1, mesh % zones(zoneID) % no_of_faces
             !
             !           Face global ID
             !           --------------
                         fID = mesh % zones(zoneID) % faces(zonefID)
-            
+
                         localx = 0.0_RP
                         localy = 0.0_RP
                         localz = 0.0_RP
@@ -373,41 +394,47 @@ module SurfaceIntegrals
             !           Computes the pressure forces experienced by the zone
             !              F = \int p \vec{n}ds
             !           ****************************************************
-            !           
+            !
                         !$acc loop vector collapse(2) reduction(+:localx, localy, localz) private(val)
                         do j = 0, mesh % faces(fid) % Nf(2) ;    do i = 0, mesh % faces(fid) % Nf(1)
             !
             !              Compute the integral
             !              --------------------
                            p = Pressure(mesh % faces(fid) % storage(1) % Q(:,i,j))
-            
+
                            val = ( p * mesh % faces(fid) % geom % normal(:,i,j) ) * mesh % faces(fid) % geom % jacobian(i,j) &
                                      * NodalStorage(mesh % faces(fid) % Nf(1)) % w(i) &
                                      * NodalStorage(mesh % faces(fid) % Nf(2)) % w(j)
-            
+
                            localx = localx + val(1)
                            localy = localy + val(2)
                            localz = localz + val(3)
                         end do          ;    end do
-                        
+
                         valx = valx + localx
                         valy = valy + localy
                         valz = valz + localz
-            
+
          end do
-!$omp end parallel do
+#ifdef _OPENACC
 !$acc end parallel loop
+#else
+!$omp end parallel do
+#endif
 
          case ( VISCOUS_FORCE )
 
+#ifdef _OPENACC
 !$acc parallel loop gang present(mesh) num_gangs(mesh % zones(zoneID) % no_of_faces) reduction(+:valx, valy, valz)
+#else
 !$omp parallel do private(fID,localVal,localx,localy,localz) reduction(+:valx, valy, valz) schedule(runtime)
+#endif
          do zonefID = 1, mesh % zones(zoneID) % no_of_faces
             !
             !           Face global ID
             !           --------------
                         fID = mesh % zones(zoneID) % faces(zonefID)
-            
+
                         localx = 0.0_RP
                         localy = 0.0_RP
                         localz = 0.0_RP
@@ -424,23 +451,26 @@ module SurfaceIntegrals
             !              --------------------
                            call getStressTensor(mesh % faces(fid) % storage(1) % Q(:,i,j),  mesh % faces(fid) % storage(1) % U_x(:,i,j),&
                                                 mesh % faces(fid) % storage(1) % U_y(:,i,j),mesh % faces(fid) % storage(1) % U_z(:,i,j), tau)
-                           
+
                            val = - matmul(tau,mesh % faces(fid) % geom % normal(:,i,j)) * mesh % faces(fid) % geom % jacobian(i,j) &
                                        * NodalStorage(mesh % faces(fid) % Nf(1)) % w(i) &
                                        * NodalStorage(mesh % faces(fid) % Nf(2)) % w(j)
-            
+
                            localx = localx + val(1)
                            localy = localy + val(2)
                            localz = localz + val(3)
                         end do          ;    end do
-            
+
                         valx = valx + localx
                         valy = valy + localy
                         valz = valz + localz
-            
+
          end do
-!$omp end parallel do
+#ifdef _OPENACC
 !$acc end parallel loop
+#else
+!$omp end parallel do
+#endif
            
          end select
             
@@ -1143,8 +1173,11 @@ module SurfaceIntegrals
             select case ( mesh %nodeType )
             case(1) !Gauss
 
+#ifdef _OPENACC
+            !$acc parallel loop gang present(mesh)
+#else
             !$omp do schedule(runtime) private(eID)
-            !$acc parallel loop gang present(mesh) 
+#endif
             do zonefID = 1, mesh % zones(zoneID) % no_of_faces
                fID =  mesh % zones(zoneID) % faces(zonefID)
                eID = mesh % faces(fID) % elementIDs(1)
@@ -1160,46 +1193,67 @@ module SurfaceIntegrals
                                                        mesh % faces(fID), &
                                                        mesh % elements(eID) % storage % U_z, mesh % faces(fID) % elementSide(1), 3)
             end do
+#ifdef _OPENACC
             !$acc end parallel loop
+#else
             !$omp end do
+#endif
 
             case(2) !Gauss-Lobatto
 
-            !$omp do schedule(runtime)
+#ifdef _OPENACC
             !$acc parallel loop gang present(mesh) private(fID)
+#else
+            !$omp do schedule(runtime)
+#endif
             do zonefID = 1, mesh % zones(zoneID) % no_of_faces
                fID =  mesh % zones(zoneID) % faces(zonefID)
                eID = mesh % faces(fID) % elementIDs(1)
                call HexElement_ProlongGradientsToFaces_GL(mesh % elements(eID), NGRAD, &
                                                           mesh % faces(fID), &
-                                                          mesh % elements(eID) % storage % U_x, mesh % faces(fID) % elementSide(1),1)                        
+                                                          mesh % elements(eID) % storage % U_x, mesh % faces(fID) % elementSide(1),1)
             end do
+#ifdef _OPENACC
             !$acc end parallel loop
+#else
             !$omp end do
+#endif
 
-            !$omp do schedule(runtime)
+#ifdef _OPENACC
             !$acc parallel loop gang present(mesh) private(fID)
+#else
+            !$omp do schedule(runtime)
+#endif
             do zonefID = 1, mesh % zones(zoneID) % no_of_faces
                fID =  mesh % zones(zoneID) % faces(zonefID)
                eID = mesh % faces(fID) % elementIDs(1)
                call HexElement_ProlongGradientsToFaces_GL(mesh % elements(eID), NGRAD, &
                                                           mesh % faces(fID), &
-                                                          mesh % elements(eID) % storage % U_y, mesh % faces(fID) % elementSide(1),2)                        
+                                                          mesh % elements(eID) % storage % U_y, mesh % faces(fID) % elementSide(1),2)
             end do
+#ifdef _OPENACC
             !$acc end parallel loop
+#else
             !$omp end do
-         
-            !$omp do schedule(runtime)
+#endif
+
+#ifdef _OPENACC
             !$acc parallel loop gang present(mesh) private(fID)
+#else
+            !$omp do schedule(runtime)
+#endif
             do zonefID = 1, mesh % zones(zoneID) % no_of_faces
                fID =  mesh % zones(zoneID) % faces(zonefID)
                eID = mesh % faces(fID) % elementIDs(1)
                call HexElement_ProlongGradientsToFaces_GL(mesh % elements(eID), NGRAD, &
                                                           mesh % faces(fID), &
-                                                          mesh % elements(eID) % storage % U_z, mesh % faces(fID) % elementSide(1),3)                        
+                                                          mesh % elements(eID) % storage % U_z, mesh % faces(fID) % elementSide(1),3)
             end do
+#ifdef _OPENACC
             !$acc end parallel loop
+#else
             !$omp end do
+#endif
             end select
          end if
 !
@@ -1211,4 +1265,5 @@ module SurfaceIntegrals
 
 end module SurfaceIntegrals
 #endif
+
 

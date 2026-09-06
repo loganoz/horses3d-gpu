@@ -232,7 +232,7 @@ module MPI_Face_Class
 #ifdef _HAS_MPI_
          if ( self % no_of_faces .gt. 0 ) then
             !$acc host_data use_device(self % Qsend)
-            call mpi_isend(self % Qsend, nEqn * self % nDOFs, MPI_DOUBLE, domain-1, DEFAULT_TAG, &
+            call mpi_isend(self % Qsend, nEqn * self % nDOFs, MPI_DOUBLE_PRECISION, domain-1, DEFAULT_TAG, &
                            MPI_COMM_WORLD, dummyreq, ierr)
             call mpi_request_free(dummyreq, ierr)
             !$acc end host_data 
@@ -256,7 +256,7 @@ module MPI_Face_Class
 #ifdef _HAS_MPI_
          if ( self % no_of_faces .gt. 0 ) then
             !$acc host_data use_device(self % Qrecv)
-            call mpi_irecv(self % Qrecv, nEqn * self % nDOFs, MPI_DOUBLE, domain-1, MPI_ANY_TAG, &
+            call mpi_irecv(self % Qrecv, nEqn * self % nDOFs, MPI_DOUBLE_PRECISION, domain-1, MPI_ANY_TAG, &
                            MPI_COMM_WORLD, self % Qrecv_req, ierr)
             !$acc end host_data 
          end if

@@ -64,6 +64,12 @@ Solver/include/
 
 # AddOns
 horsesConverter
+horses2plt
+horses2plt.probes
 
 #ford
 doc/doc_output
+
+#patch and diff
+*.patch
+*.diff

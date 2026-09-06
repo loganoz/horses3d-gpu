@@ -56,6 +56,16 @@ TEST_CASES="./Euler/BoxAroundCircle \
             ./NavierStokes/CylinderWALE \
             ./NavierStokes/CylinderVreman \
             ./NavierStokes/CylinderChandrasekarRoe \
+            ./NavierStokes/CylinderEntropyConservingCentral \
+            ./NavierStokes/CylinderKennedyGruberLaxFriedrichs \
+            ./NavierStokes/CylinderMorinishiLowDissipationRoe \
+            ./NavierStokes/CylinderRoePikePirozzoli \
+            ./NavierStokes/CylinderViscousStandard \
+            ./NavierStokes/CylinderUdissStandard \
+            ./NavierStokes/CylinderRusanovStandard \
+            ./NavierStokes/CylinderDucrosMatrixDissipation \
+            ./NavierStokes/Cylinderssprk33 \
+            ./NavierStokes/Cylinderssprk43 \
             ./NavierStokes/IBM_Cylinder \
             ./NavierStokes/DualTimeStepping \
             ./NavierStokes/EntropyConservingTest \
@@ -67,6 +77,7 @@ TEST_CASES="./Euler/BoxAroundCircle \
             ./NavierStokes/ForwardFacingStepSVV \
             ./NavierStokes/ForwardFacingStep_SSPRK33 \
             ./NavierStokes/ForwardFacingStep_SSPRK43 \
+            ./NavierStokes/LimiterTest \
             ./NavierStokes/TaylorGreenSVVLES \
             ./NavierStokes/ManufacturedSolutionsSA \
             ./NavierStokes/FlatPlateSA \
@@ -84,6 +95,7 @@ TEST_CASES="./Euler/BoxAroundCircle \
             ./NavierStokes/ABLBoundaryMapping \
             ./NavierStokes/ActuatorLineController \
             ./NavierStokes/Channel \
+            ./NavierStokes/Channel64 \
             ./IncompressibleNS/Convergence \
             ./IncompressibleNS/Kovasznay \
             ./IncompressibleNS/TaylorGreen \

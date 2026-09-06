@@ -357,6 +357,9 @@ module RiemannSolvers_NS
          case (RIEMANN_UDISS)
             write(STD_OUT,'(30X,A,A30,A)') "->","Riemann solver: ","u-diss"
 
+         case (RIEMANN_VISCOUSNS)
+            write(STD_OUT,'(30X,A,A30,A)') "->","Riemann solver: ","Viscous NS"
+
          end select
 
          write(STD_OUT,'(30X,A,A30,F10.3)') "->","Lambda stabilization: ", lambdaStab
@@ -436,6 +439,9 @@ module RiemannSolvers_NS
 
          case (RIEMANN_UDISS)
             call u_dissRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
+
+         case (RIEMANN_VISCOUSNS)
+            call ViscousNSRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
 
          end select
          
@@ -758,8 +764,8 @@ module RiemannSolvers_NS
 !
          !$acc loop vector collapse(2) private(QLRot, QRRot, EVL, EVR, dQ, R1, T, Lambda, stab)
          do j = 0, Ny
-         do i = 0, Nx  
-         
+         do i = 0, Nx
+
          QLRot(1) = QLeft(1,i,j)  ; QRRot(1) = QRight(1,i,j)
 
          QLRot(2) = QLeft (2,i,j) * nHat(1,i,j) + QLeft (3,i,j) * nHat(2,i,j) + QLeft (4,i,j) * nHat(3,i,j)
@@ -869,7 +875,7 @@ module RiemannSolvers_NS
 
          enddo
          enddo
-         
+
       end subroutine MatrixDissipationRiemannSolver
 
       subroutine RoePikeRiemannSolver(Nx, Ny, QLeft, QRight, nHat, t1, t2, flux)
@@ -886,7 +892,7 @@ module RiemannSolvers_NS
 !        Local variables
 !        ---------------
 !
-         real(kind=RP)  :: QLRot(5), QRRot(5), VL(NPRIM), VR(NPRIM), aL, aR
+         real(kind=RP)  :: QLRot(5), QRRot(5), VL(NPRIM), VR(NPRIM), aL, aR, flux_rot(5)
          real(kind=RP)  :: dQ(5), lambda(5), K(5,5), V2abs, alpha(5), dLambda
          real(kind=RP)  :: rho, u, v, w, V2, H, a
          real(kind=RP)  :: stab(5)
@@ -896,7 +902,7 @@ module RiemannSolvers_NS
 !        Perform the rotation
 !        ********************
 !
-         !$acc loop vector collapse(2) private(QLRot, QRRot, VL, VR, dQ, lambda, K, alpha, stab)
+         !$acc loop vector collapse(2) private(QLRot, QRRot, VL, VR, dQ, lambda, K, alpha, stab, flux_rot)
          do j = 0, Ny
          do i = 0, Nx  
          
@@ -984,7 +990,7 @@ module RiemannSolvers_NS
 !
 !        Perform the average using the averaging function
 !        ------------------------------------------------
-         call AveragedState_Selector(QLRot, QRRot, VL(IPP), VR(IPP), VL(IPIRHO), VR(IPIRHO), flux(:,i,j))
+         call AveragedState_Selector(QLRot, QRRot, VL(IPP), VR(IPP), VL(IPIRHO), VR(IPIRHO), flux_rot)
 
 !
 !        Compute the Roe stabilization
@@ -1008,14 +1014,18 @@ module RiemannSolvers_NS
 !
 !        Compute the flux: apply the lambda stabilization here.
 !        ----------------
-         flux(:,i,j) = flux(:,i,j) - lambdaStab * stab
+         flux_rot = flux_rot - lambdaStab * stab
 !
 !        ************************************************
 !        Return momentum equations to the cartesian frame
 !        ************************************************
 !
-         flux(2:4,i,j) = nHat(:,i,j)*flux(2,i,j) + t1(:,i,j)*flux(3,i,j) + t2(:,i,j)*flux(4,i,j)
-         
+         flux(1,i,j) = flux_rot(1)
+         flux(5,i,j) = flux_rot(5)
+         flux(2,i,j) = nHat(1,i,j)*flux_rot(2) + t1(1,i,j)*flux_rot(3) + t2(1,i,j)*flux_rot(4)
+         flux(3,i,j) = nHat(2,i,j)*flux_rot(2) + t1(2,i,j)*flux_rot(3) + t2(2,i,j)*flux_rot(4)
+         flux(4,i,j) = nHat(3,i,j)*flux_rot(2) + t1(3,i,j)*flux_rot(3) + t2(3,i,j)*flux_rot(4)
+               
          enddo
          enddo
       end subroutine RoePikeRiemannSolver
@@ -1059,13 +1069,13 @@ module RiemannSolvers_NS
          real(kind=RP)  :: sqrtRhoL, sqrtRhoR, invSumSqrtRhoLR
          real(kind=RP)  :: invSqrtRhoL, invSqrtRhoR, invRhoL, invRhoR
          real(kind=RP)  :: rho, u, v, w, H, a, dQ(5), lambda(5), K(5,5), V2abs, alpha(5)
-         real(kind=RP)  :: stab(5)
+         real(kind=RP)  :: stab(5), flux_rot(5)
          integer :: i,j,l
 !
 !        Rotate the variables to the face local frame using normal and tangent vectors
 !        -----------------------------------------------------------------------------
 
-         !$acc loop vector collapse(2) private(QLRot, QRRot, dQ, lambda, K, alpha, stab)
+         !$acc loop vector collapse(2) private(QLRot, QRRot, dQ, lambda, K, alpha, stab, flux_rot)
          do j = 0, Ny
          do i = 0, Nx    
          
@@ -1187,7 +1197,7 @@ module RiemannSolvers_NS
 !        ------------------------------------------------
          QLRot = (/ rhoL, rhouL, rhovL, rhowL, rhoeL /)
          QRRot = (/ rhoR, rhouR, rhovR, rhowR, rhoeR /)
-         call AveragedState_Selector(QLRot, QRRot, pL, pR, invRhoL, invRhoR, flux(:,i,j))
+         call AveragedState_Selector(QLRot, QRRot, pL, pR, invRhoL, invRhoR, flux_rot)
 !
 !        Compute the Roe stabilization
 !        -----------------------------
@@ -1210,14 +1220,17 @@ module RiemannSolvers_NS
 !
 !        Compute the flux: apply the lambda stabilization here.
 !        ----------------
-         flux(:,i,j) = flux(:,i,j) - lambdaStab * stab
+         flux_rot = flux_rot - lambdaStab * stab
 !
 !        ************************************************
 !        Return momentum equations to the cartesian frame
 !        ************************************************
 !
-         flux(2:4,i,j) = nHat(:,i,j)*flux(2,i,j) + t1(:,i,j)*flux(3,i,j) + t2(:,i,j)*flux(4,i,j)
-
+         flux(1,i,j) = flux_rot(1)
+         flux(5,i,j) = flux_rot(5)
+         flux(2,i,j) = nHat(1,i,j)*flux_rot(2) + t1(1,i,j)*flux_rot(3) + t2(1,i,j)*flux_rot(4)
+         flux(3,i,j) = nHat(2,i,j)*flux_rot(2) + t1(2,i,j)*flux_rot(3) + t2(2,i,j)*flux_rot(4)
+         flux(4,i,j) = nHat(3,i,j)*flux_rot(2) + t1(3,i,j)*flux_rot(3) + t2(3,i,j)*flux_rot(4)
          enddo
          enddo
 
@@ -1250,22 +1263,26 @@ module RiemannSolvers_NS
          real(kind=RP)  :: QLRot(5), QRRot(5)
          real(kind=RP)  :: sqrtRhoL, sqrtRhoR, invSumSqrtRhoLR
          real(kind=RP)  :: invSqrtRhoL, invSqrtRhoR, invRhoL, invRhoR
-         real(kind=RP)  :: rho, u, v, w, H, a, lambda(5), V2abs, tau(5,5)
-         real(kind=RP)  :: stab(5), kappa
+         real(kind=RP)  :: rho, u, v, w, H, a, lambda(5), V2abs, tau(3,3)
+         real(kind=RP)  :: stab(5), kappa, flux_rot(5)
          real(kind=RP)  :: divV
          integer :: i,j
 !
 !        Rotate the variables to the face local frame using normal and tangent vectors
 !        -----------------------------------------------------------------------------
 
-         !$acc loop vector collapse(2) private(QLRot, QRRot, lambda, tau, stab)
+         !$acc loop vector collapse(2) private(QLRot, QRRot, lambda, tau, stab, flux_rot)
          do j = 0, Ny
          do i = 0, Nx    
 
-         rhoL = QLeft(1,i,j)                  ; rhoR = QRight(1,i,j)
-         invRhoL = 1.0_RP/ rhoL           ; invRhoR = 1.0_RP / rhoR
-         sqrtRhoL = sqrt(rhoL)            ; sqrtRhoR = sqrt(rhoR)
-         invSqrtRhoL = 1.0_RP / sqrtRhoL  ; invSqrtRhoR = 1.0_RP / sqrtRhoR
+         rhoL = QLeft(1,i,j)                  
+         rhoR = QRight(1,i,j)
+         invRhoL = 1.0_RP / rhoL           
+         invRhoR = 1.0_RP / rhoR
+         sqrtRhoL = sqrt(rhoL)            
+         sqrtRhoR = sqrt(rhoR)
+         invSqrtRhoL = 1.0_RP / sqrtRhoL  
+         invSqrtRhoR = 1.0_RP / sqrtRhoR
          invSumSqrtRhoLR = 1.0_RP / (sqrtRhoL + sqrtRhoR)
 
          rhouL = QLeft (2,i,j) * nHat(1,i,j) + QLeft (3,i,j) * nHat(2,i,j) + QLeft (4,i,j) * nHat(3,i,j)
@@ -1279,9 +1296,12 @@ module RiemannSolvers_NS
 
          rhoeL = QLeft(5,i,j) ; rhoeR = QRight(5,i,j)
 
-         uL = rhouL * invRhoL    ; uR = rhouR * invRhoR
-         vL = rhovL * invRhoL    ; vR = rhovR * invRhoR
-         wL = rhowL * invRhoL    ; wR = rhowR * invRhoR
+         uL = rhouL * invRhoL   
+         uR = rhouR * invRhoR
+         vL = rhovL * invRhoL    
+         vR = rhovR * invRhoR
+         wL = rhowL * invRhoL    
+         wR = rhowR * invRhoR
 
          rhoV2L = (POW2(uL) + POW2(vL) + POW2(wL)) * rhoL
          rhoV2R = (POW2(uR) + POW2(vR) + POW2(wR)) * rhoR
@@ -1407,7 +1427,11 @@ module RiemannSolvers_NS
 !        Return momentum equations to the cartesian frame
 !        ************************************************
 !
-         flux(2:4,i,j) = nHat(:,i,j)*flux(2,i,j) + t1(:,i,j)*flux(3,i,j) + t2(:,i,j)*flux(4,i,j)
+         flux_rot    = flux(:,i,j)
+         flux(2,i,j) = nHat(1,i,j)*flux_rot(2) + t1(1,i,j)*flux_rot(3) + t2(1,i,j)*flux_rot(4)
+         flux(3,i,j) = nHat(2,i,j)*flux_rot(2) + t1(2,i,j)*flux_rot(3) + t2(2,i,j)*flux_rot(4)
+         flux(4,i,j) = nHat(3,i,j)*flux_rot(2) + t1(3,i,j)*flux_rot(3) + t2(3,i,j)*flux_rot(4)
+
 !
 !        Compute the flux: apply the lambda stabilization here.
 !        ----------------
@@ -1539,13 +1563,13 @@ module RiemannSolvers_NS
          real(kind=RP)  :: rhoR, rhouR, rhovR, rhowR, rhoeR, pR, aR, rhoV2R
          real(kind=RP)  :: QLRot(5), QRRot(5)
          real(kind=RP)  :: invRhoL, invRhoR
-         real(kind=RP)  :: lambda, stab(5)
+         real(kind=RP)  :: lambda, stab(5), flux_rot(5)
          integer :: i,j
 !
 !        Rotate the variables to the face local frame using normal and tangent vectors
 !        -----------------------------------------------------------------------------
          
-         !$acc loop vector collapse(2) private(QLRot, QRRot, stab)
+         !$acc loop vector collapse(2) private(QLRot, QRRot, stab, flux_rot)
          do j = 0, Ny
          do i = 0, Nx     
          
@@ -1584,7 +1608,7 @@ module RiemannSolvers_NS
 !        ------------------------------------------------
          QLRot = (/ rhoL, rhouL, rhovL, rhowL, rhoeL /)
          QRRot = (/ rhoR, rhouR, rhovR, rhowR, rhoeR /)
-         call AveragedState_Selector(QLRot, QRRot, pL, pR, invRhoL, invRhoR, flux(:,i,j))
+         call AveragedState_Selector(QLRot, QRRot, pL, pR, invRhoL, invRhoR, flux_rot)
 !
 !        Compute the Lax-Friedrichs stabilization
 !        ----------------------------------------
@@ -1592,14 +1616,17 @@ module RiemannSolvers_NS
 !
 !        Compute the flux: apply the lambda stabilization here.
 !        ----------------
-         flux(:,i,j) = flux(:,i,j) - lambdaStab * stab
+         flux_rot = flux_rot - lambdaStab * stab
 !
 !        ************************************************
 !        Return momentum equations to the cartesian frame
 !        ************************************************
 !
-         flux(2:4,i,j) = nHat(:,i,j)*flux(2,i,j) + t1(:,i,j)*flux(3,i,j) + t2(:,i,j)*flux(4,i,j)
-         
+         flux(1,i,j) = flux_rot(1)
+         flux(5,i,j) = flux_rot(5)
+         flux(2,i,j) = nHat(1,i,j)*flux_rot(2) + t1(1,i,j)*flux_rot(3) + t2(1,i,j)*flux_rot(4)
+         flux(3,i,j) = nHat(2,i,j)*flux_rot(2) + t1(2,i,j)*flux_rot(3) + t2(2,i,j)*flux_rot(4)
+         flux(4,i,j) = nHat(3,i,j)*flux_rot(2) + t1(3,i,j)*flux_rot(3) + t2(3,i,j)*flux_rot(4)         
          enddo
          enddo
 
@@ -1943,8 +1970,11 @@ module RiemannSolvers_NS
 
          smax = MAX(ar+ABS(qr),al+ABS(ql))
 
-         flux(:,i,j) = (flux(:,i,j) - ds*smax*(QRight(:,i,j)-QLeft(:,i,j)))/2.d0
-
+         flux(1,i,j) = (flux(1,i,j) - ds*smax*(QRight(1,i,j)-QLeft(1,i,j)))/2.d0
+         flux(2,i,j) = (flux(2,i,j) - ds*smax*(QRight(2,i,j)-QLeft(2,i,j)))/2.d0
+         flux(3,i,j) = (flux(3,i,j) - ds*smax*(QRight(3,i,j)-QLeft(3,i,j)))/2.d0
+         flux(4,i,j) = (flux(4,i,j) - ds*smax*(QRight(4,i,j)-QLeft(4,i,j)))/2.d0
+         flux(5,i,j) = (flux(5,i,j) - ds*smax*(QRight(5,i,j)-QLeft(5,i,j)))/2.d0
          enddo
          enddo
 

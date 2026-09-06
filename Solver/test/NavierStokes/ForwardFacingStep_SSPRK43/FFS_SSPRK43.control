@@ -5,6 +5,7 @@
 !
 !-------------------------- Configuration:-
                           Mesh file name = ../../TestMeshes/ForwardFacingStep.mesh
+                             partitioning = SFC
                       Solution file name = RESULTS/FFS.hsol
                Save sensor with solution = .true.
                 2D mesh offset direction = z

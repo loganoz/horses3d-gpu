@@ -1,0 +1,24 @@
+/* Control file for the uniform flow test case */
+Flow equations        = NS
+simulation type       = time-accurate 
+mesh file name        = "../../TestMeshes/Box27.h5"
+partitioning          = SFC
+restart file name     = "RESULTS/Box27.hsol"
+solution file name    = "RESULTS/Box27_saved.hsol"
+restart               = .false.
+Polynomial order      = 5
+Number of time steps  = 100
+Output Interval       = 10
+Convergence tolerance = 1.d-10
+cfl                   = 0.4
+dcfl                  = 0.4
+mach number           = 0.5
+Reynolds number       = 100.0
+AOA theta             = 30.0
+AOA phi               = 30.0
+Riemann solver        = Roe
+read partitioning from files = .true.
+
+#define boundary left__right__front__back__bottom__top
+   type = Inflow
+#end

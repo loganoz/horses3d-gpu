@@ -24,20 +24,25 @@ module ProbeClass
 !
    type Probe_t
       logical                         :: active
+      logical                         :: isFileProbe
       integer                         :: rank
       integer                         :: ID
       integer                         :: eID
+      integer                         :: nVars
       real(kind=RP)                   :: x(NDIM)
       real(kind=RP)                   :: xi(NDIM)
-      real(kind=RP), allocatable      :: values(:)
+      real(kind=RP), allocatable      :: values(:,:)
       real(kind=RP), allocatable      :: lxi(:) , leta(:), lzeta(:)
       real(kind=RP), allocatable      :: var(:,:,:)
+      real(kind=RP)                   :: saveTimestep
+      real(kind=RP)                   :: lastSavedTime
       character(len=STR_LEN_MONITORS) :: fileName
       character(len=STR_LEN_MONITORS) :: monitorName
-      character(len=STR_LEN_MONITORS) :: variable
+      character(len=STR_LEN_MONITORS), allocatable :: variableNames(:)
       contains
          procedure   :: Initialization => Probe_Initialization
          procedure   :: Update         => Probe_Update
+         procedure   :: ComputeLocal   => Probe_ComputeLocal
          procedure   :: WriteLabel     => Probe_WriteLabel
          procedure   :: WriteValues    => Probe_WriteValue
          procedure   :: WriteToFile    => Probe_WriteToFile
@@ -49,7 +54,7 @@ module ProbeClass
 
    contains
 
-      subroutine Probe_Initialization(self, mesh, ID, solution_file, FirstCall)
+      subroutine Probe_Initialization(self, mesh, ID, solution_file, FirstCall, x_in, variables_in, name_in, isFileProbe_in, outputFormat_in)
          use ParamfileRegions
          use MPI_Process_Info
          use Utilities, only: toLower
@@ -59,45 +64,82 @@ module ProbeClass
          integer                 :: ID
          character(len=*)        :: solution_file
          logical, intent(in)     :: FirstCall
+         real(kind=RP),     intent(in), optional :: x_in(NDIM)
+         character(len=*),  intent(in), optional :: variables_in(:)
+         character(len=*),  intent(in), optional :: name_in
+         logical,           intent(in), optional :: isFileProbe_in
+         character(len=*),  intent(in), optional :: outputFormat_in
 !
 !        ---------------
 !        Local variables
 !        ---------------
 !
-         integer                          :: i, j, k, fid
+         integer                          :: i, j, k, v, fid
          character(len=STR_LEN_MONITORS)  :: in_label
          character(len=STR_LEN_MONITORS)  :: fileName
          character(len=STR_LEN_MONITORS)  :: paramFile
          character(len=STR_LEN_MONITORS)  :: coordinates
-         
+         character(len=STR_LEN_MONITORS)  :: variable
+         character(len=STR_LEN_MONITORS)  :: outputFormat
+
+         self % isFileProbe = .false.
+         if ( present(isFileProbe_in) ) self % isFileProbe = isFileProbe_in
+
+         outputFormat = "ASCII"
+         if ( present(outputFormat_in) ) outputFormat = trim(outputFormat_in)
+
          if (FirstCall) then
-!
-!           Allocate memory
-!           ---------------
-            allocate ( self % values(BUFFER_SIZE) )
 !
 !           Get monitor ID
 !           --------------
             self % ID = ID
 !
-!           Search for the parameters in the case file
-!           ------------------------------------------
-            write(in_label , '(A,I0)') "#define probe " , self % ID
-         
-            call get_command_argument(1, paramFile)
-            call readValueInRegion(trim(paramFile), "name"    , self % monitorName, in_label, "# end" )
-            call readValueInRegion(trim(paramFile), "variable", self % variable   , in_label, "# end" )
-            call readValueInRegion(trim(paramFile), "position", coordinates       , in_label, "# end" )
-!
-!           Get the coordinates
-!           -------------------
-            self % x = getRealArrayFromString(coordinates)
-!
-!           Check the variable
-!           ------------------
-            call tolower(self % variable)
+!           Get the probe definition, either from a probes file (x_in/variables_in
+!           provided) or from a "#define probe" block in the case file
+!           ------------------------------------------------------------------------
+            if ( present(x_in) ) then
+               self % monitorName = name_in
+               self % x           = x_in
+               self % nVars       = size(variables_in)
+               allocate( self % variableNames(self % nVars) )
+               self % variableNames = variables_in
 
-            select case ( trim(self % variable) )
+            else
+!
+!              Search for the parameters in the case file
+!              ------------------------------------------
+               write(in_label , '(A,I0)') "#define probe " , self % ID
+
+               call get_command_argument(1, paramFile)
+               call readValueInRegion(trim(paramFile), "name"    , self % monitorName, in_label, "# end" )
+               call readValueInRegion(trim(paramFile), "variable", variable          , in_label, "# end" )
+               call readValueInRegion(trim(paramFile), "position", coordinates       , in_label, "# end" )
+!
+!              Get the coordinates
+!              -------------------
+               self % x = getRealArrayFromString(coordinates)
+
+               self % nVars = 1
+               allocate( self % variableNames(1) )
+               self % variableNames(1) = variable
+            end if
+!
+!           Allocate memory
+!           ---------------
+            if (self % isFileProbe) then
+               allocate ( self % values(self % nVars, 1) )
+            else
+               allocate ( self % values(self % nVars, BUFFER_SIZE) )
+            end if
+            self % saveTimestep  = 0.0_RP
+            self % lastSavedTime = -huge(self % lastSavedTime)
+!
+!           Check the variables
+!           --------------------
+            do v = 1, self % nVars
+            call tolower(self % variableNames(v))
+
+            select case ( trim(self % variableNames(v)) )
 #ifdef NAVIERSTOKES
             case ("pressure")
             case ("velocity")
@@ -106,8 +148,9 @@ module ProbeClass
             case ("w")
             case ("mach")
             case ("k")
+            case ("rho")
             case default
-               print*, 'Probe variable "',trim(self % variable),'" not implemented.'
+               print*, 'Probe variable "',trim(self % variableNames(v)),'" not implemented.'
                print*, "Options available are:"
                print*, "   * pressure"
                print*, "   * velocity"
@@ -116,6 +159,7 @@ module ProbeClass
                print*, "   * w"
                print*, "   * Mach"
                print*, "   * K"
+               print*, "   * rho"
             end select
 #endif
 #ifdef INCNS
@@ -124,21 +168,23 @@ module ProbeClass
             case ("u")
             case ("v")
             case ("w")
+            case ("rho")
             case default
-               print*, 'Probe variable "',trim(self % variable),'" not implemented.'
+               print*, 'Probe variable "',trim(self % variableNames(v)),'" not implemented.'
                print*, "Options available are:"
                print*, "   * pressure"
                print*, "   * velocity"
                print*, "   * u"
                print*, "   * v"
                print*, "   * w"
+               print*, "   * rho"
             end select
 #endif
 #ifdef MULTIPHASE
             case ("static-pressure")
 
             case default
-               print*, 'Probe variable "',trim(self % variable),'" not implemented.'
+               print*, 'Probe variable "',trim(self % variableNames(v)),'" not implemented.'
                print*, "Options available are:"
                print*, "   * static-pressure"
 
@@ -151,7 +197,7 @@ module ProbeClass
             case ("v")
             case ("w")
             case default
-               print*, 'Probe variable "',trim(self % variable),'" not implemented.'
+               print*, 'Probe variable "',trim(self % variableNames(v)),'" not implemented.'
                print*, "Options available are:"
                print*, "   * pressure"
                print*, "   * velocity"
@@ -160,7 +206,8 @@ module ProbeClass
                print*, "   * w"
             end select
 #endif
-         
+            end do
+
 !
 !           Find the requested point in the mesh
 !           ------------------------------------
@@ -218,33 +265,36 @@ module ProbeClass
          safedeallocate(self % var  ) ; allocate( self % var(0 : e % Nxyz(1),0 : e % Nxyz(2),0 : e % Nxyz(3)) )
          self % var = 0.0_RP
          
-         !$acc enter data copyin(self)
-         !$acc enter data copyin(self % eiD)
-         !$acc enter data copyin(self % id)
-         !$acc enter data copyin(self % var)
-         !$acc enter data copyin(self % lxi)
-         !$acc enter data copyin(self % leta)
-         !$acc enter data copyin(self % lzeta)
+         if ( .not. self % isFileProbe ) then
+            !$acc enter data copyin(self)
+            !$acc enter data copyin(self % eiD)
+            !$acc enter data copyin(self % id)
+            !$acc enter data copyin(self % var)
+            !$acc enter data copyin(self % lxi)
+            !$acc enter data copyin(self % leta)
+            !$acc enter data copyin(self % lzeta)
+         end if
 !
 !        ****************
 !        Prepare the file
 !        ****************
 !
-!        Create file
-!        -----------
-         if (FirstCall) then
-            open ( newunit = fID , file = trim(self % fileName) , status = "unknown" , action = "write" ) 
+!        Create file (skip for file-probes using HDF5 output)
+!        -----------------------------------------------------
+         if (FirstCall .and. .not. (self % isFileProbe .and. trim(outputFormat) .eq. "HDF5")) then
+            open ( newunit = fID , file = trim(self % fileName) , status = "unknown" , action = "write" )
 !
 !        Write the file headers
 !        ----------------------
             write( fID , '(A20,A  )') "Monitor name:      ", trim(self % monitorName)
-            write( fID , '(A20,A  )') "Selected variable: " , trim(self % variable)
-            write( fID , '(A20,ES24.10)') "x coordinate: ", self % x(1)
-            write( fID , '(A20,ES24.10)') "y coordinate: ", self % x(2)
-            write( fID , '(A20,ES24.10)') "z coordinate: ", self % x(3)
+            write( fID , '(A25,ES24.10,2(4X,ES24.10))') "x, y, z coordinates: ", self % x(1), self % x(2), self % x(3)
 
             write( fID , * )
-            write( fID , '(A10,2X,A24,2X,A24)' ) "Iteration" , "Time" , trim(self % variable)
+            write( fID , '(A10,2X,A24)' , advance = "no") "Iteration" , "Time"
+            do v = 1 , self % nVars
+               write( fID , '(2X,A24)' , advance = "no") trim(self % variableNames(v))
+            end do
+            write( fID , * )
 
             close ( fID )
          end if
@@ -264,59 +314,176 @@ module ProbeClass
 !        Local variables
 !        ---------------
 !
-         integer        :: i, j, k, ierr
+         integer        :: i, j, k, v, ierr
          real(kind=RP)  :: value
 
-         if ( .not. self % active ) return 
+         if ( .not. self % active ) return
 
          if ( MPI_Process % rank .eq. self % rank ) then
 
 !
 !           Update the probe
 !           ----------------
-   
-            select case (trim(self % variable))
+            do v = 1, self % nVars
+
+            if ( self % isFileProbe ) then
+!
+!              CPU path for file-probes (no OpenACC to avoid runtime table overflow)
+!              ----------------------------------------------------------------------
+               select case (trim(self % variableNames(v)))
+#ifdef NAVIERSTOKES
+               case("pressure")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = Pressure(mesh % elements(self % eID) % storage % Q(:,i,j,k))
+                  end do ; end do ; end do
+               case("velocity")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = sqrt(POW2(mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k)) + &
+                                              POW2(mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k)) + &
+                                              POW2(mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k)))/mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+                  end do ; end do ; end do
+               case("u")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k) / mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+                  end do ; end do ; end do
+               case("v")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k) / mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+                  end do ; end do ; end do
+               case("w")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k) / mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+                  end do ; end do ; end do
+               case("mach")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = (POW2(mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k)) + &
+                                          POW2(mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k)) + &
+                                          POW2(mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k)))/POW2(mesh % elements(self % eID) % storage % Q(IRHO,i,j,k))
+                     self % var(i,j,k) = sqrt( self % var(i,j,k) / ( thermodynamics % gamma*(thermodynamics % gamma-1.0_RP)*&
+                                              (mesh % elements(self % eID) % storage % Q(IRHOE,i,j,k)/mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)-0.5_RP * self % var(i,j,k)) ) )
+                  end do ; end do ; end do
+               case("k")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = 0.5_RP * (POW2(mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k)) + &
+                                                   POW2(mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k)) + &
+                                                   POW2(mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k)))/mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+                  end do ; end do ; end do
+               case("rho")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+                  end do ; end do ; end do
+#endif
+#ifdef INCNS
+               case("pressure")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSP,i,j,k)
+                  end do ; end do ; end do
+               case("velocity")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = sqrt(POW2(mesh % elements(self % eID) % storage % Q(INSRHOU,i,j,k)) + &
+                                              POW2(mesh % elements(self % eID) % storage % Q(INSRHOV,i,j,k)) + &
+                                              POW2(mesh % elements(self % eID) % storage % Q(INSRHOW,i,j,k)))/mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+                  end do ; end do ; end do
+               case("u")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHOU,i,j,k) / mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+                  end do ; end do ; end do
+               case("v")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHOV,i,j,k) / mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+                  end do ; end do ; end do
+               case("w")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHOW,i,j,k) / mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+                  end do ; end do ; end do
+               case("rho")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+                  end do ; end do ; end do
+#endif
+#ifdef MULTIPHASE
+               case("static-pressure")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IMP,i,j,k) + mesh % elements(self % eID) % storage % Q(IMC,i,j,k)*mesh % elements(self % eID) % storage % mu(1,i,j,k) &
+                                  - 12.0_RP*multiphase%sigma*multiphase%invEps*(POW2(mesh % elements(self % eID) % storage % Q(IMC,i,j,k)*(1.0_RP-mesh % elements(self % eID) % storage % Q(IMC,i,j,k)))) &
+                                  - 0.25_RP*3.0_RP*multiphase % sigma * multiphase % eps * (POW2(mesh % elements(self % eID) % storage % c_x(1,i,j,k))+POW2(mesh % elements(self % eID) % storage % c_y(1,i,j,k))+POW2(mesh % elements(self % eID) % storage % c_z(1,i,j,k)))
+                  end do ; end do ; end do
+#endif
+#ifdef ACOUSTIC
+               case("pressure")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = Q(ICAAP,i,j,k)
+                  end do ; end do ; end do
+               case("density")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = Q(ICAARHO,i,j,k)
+                  end do ; end do ; end do
+               case("u")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = Q(ICAAU,i,j,k)
+                  end do ; end do ; end do
+               case("v")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = Q(ICAAV,i,j,k)
+                  end do ; end do ; end do
+               case("w")
+                  do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                     self % var(i,j,k) = Q(ICAAW,i,j,k)
+                  end do ; end do ; end do
+#endif
+               end select
+
+               value = 0.0_RP
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  value = value + self % var(i,j,k) * self % lxi(i) * self % leta(j) * self % lzeta(k)
+               end do ; end do ; end do
+
+            else
+!
+!              GPU path for standard probes (OpenACC)
+!              ---------------------------------------
+            select case (trim(self % variableNames(v)))
 #ifdef NAVIERSTOKES
             case("pressure")
                !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = Pressure(mesh % elements(self % eID) % storage % Q(:,i,j,k))
                end do            ; end do             ; end do
                !$acc end parallel loop
-   
+
             case("velocity")
                !$acc parallel loop collapse(3) present(mesh, self) async(self % ID)
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = sqrt(POW2(mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k)) + &
                                            POW2(mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k)) + &
                                            POW2(mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k)))/mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
                end do         ; end do         ; end do
                !$acc end parallel loop
-   
+
             case("u")
                !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k) / mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
                end do            ; end do             ; end do
                !$acc end parallel loop
 
             case("v")
                !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k) / mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
                end do            ; end do             ; end do
                !$acc end parallel loop
-   
+
             case("w")
                !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k) / mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
                end do            ; end do             ; end do
                !$acc end parallel loop
-   
+
             case("mach")
                !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = (POW2(mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k)) + &
                                        POW2(mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k)) + &
                                        POW2(mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k)))/POW2(mesh % elements(self % eID) % storage % Q(IRHO,i,j,k))   ! Vabs**2
@@ -324,13 +491,20 @@ module ProbeClass
                                            (mesh % elements(self % eID) % storage % Q(IRHOE,i,j,k)/mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)-0.5_RP * self % var(i,j,k)) ) )
                end do         ; end do         ; end do
                !$acc end parallel loop
-      
+
             case("k")
                !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = 0.5_RP * (POW2(mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k)) + &
                                                 POW2(mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k)) + &
                                                 POW2(mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k)))/mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+               end do         ; end do         ; end do
+               !$acc end parallel loop
+
+            case("rho")
+               !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
                end do         ; end do         ; end do
                !$acc end parallel loop
 #endif
@@ -338,79 +512,86 @@ module ProbeClass
 
             case("pressure")
                !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSP,i,j,k)
                end do            ; end do             ; end do
                !$acc end parallel loop
-   
+
             case("velocity")
                !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = sqrt(POW2(mesh % elements(self % eID) % storage % Q(INSRHOU,i,j,k)) + &
                                            POW2(mesh % elements(self % eID) % storage % Q(INSRHOV,i,j,k)) + &
                                            POW2( mesh % elements(self % eID) % storage % Q(INSRHOW,i,j,k)))/mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
                end do         ; end do         ; end do
                !$acc end parallel loop
-   
+
             case("u")
                !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHOU,i,j,k) / mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
                end do            ; end do             ; end do
                !$acc end parallel loop
-   
+
             case("v")
                !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHOV,i,j,k) / mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
                end do            ; end do             ; end do
                !$acc end parallel loop
-   
+
             case("w")
                !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHOW,i,j,k) / mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+               end do            ; end do             ; end do
+               !$acc end parallel loop
+
+            case("rho")
+               !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
                end do            ; end do             ; end do
                !$acc end parallel loop
 #endif
 #ifdef MULTIPHASE
             case("static-pressure")
                !$acc parallel loop collapse(3) present(mesh,self) async(self % ID)
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IMP,i,j,k) + mesh % elements(self % eID) % storage % Q(IMC,i,j,k)*mesh % elements(self % eID) % storage % mu(1,i,j,k) &
                                - 12.0_RP*multiphase%sigma*multiphase%invEps*(POW2(mesh % elements(self % eID) % storage % Q(IMC,i,j,k)*(1.0_RP-mesh % elements(self % eID) % storage % Q(IMC,i,j,k)))) &
                                - 0.25_RP*3.0_RP*multiphase % sigma * multiphase % eps * (POW2(mesh % elements(self % eID) % storage % c_x(1,i,j,k))+POW2(mesh % elements(self % eID) % storage % c_y(1,i,j,k))+POW2(mesh % elements(self % eID) % storage % c_z(1,i,j,k)))
                end do         ; end do         ; end do
                !$acc end parallel loop
-#endif 
+#endif
 #ifdef ACOUSTIC
             case("pressure")
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = Q(ICAAP,i,j,k)
                end do            ; end do             ; end do
 
             case("density")
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = Q(ICAARHO,i,j,k)
                end do            ; end do             ; end do
-   
+
             case("u")
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = Q(ICAAU,i,j,k)
                end do            ; end do             ; end do
-   
+
             case("v")
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = Q(ICAAV,i,j,k)
                end do            ; end do             ; end do
-   
+
             case("w")
-               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1) 
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
                   self % var(i,j,k) = Q(ICAAW,i,j,k)
                end do            ; end do             ; end do
 #endif
             end select
-   
+
             value = 0.0_RP
             !$acc parallel loop collapse(3) present(mesh, self) reduction(+:value) async(self % ID)
             do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2)  ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
@@ -420,14 +601,18 @@ module ProbeClass
 
             !$acc wait
 
-            self % values(bufferPosition) = value
-   
-#ifdef _HAS_MPI_            
+            end if   ! isFileProbe
+
+            self % values(v, bufferPosition) = value
+
+            end do
+!
+#ifdef _HAS_MPI_
             if ( MPI_Process % doMPIAction ) then
 !
 !              Share the result with the rest of the processes
-!              -----------------------------------------------         
-               call mpi_bcast(value, 1, MPI_DOUBLE, self % rank, MPI_COMM_WORLD, ierr)
+!              -----------------------------------------------
+               call mpi_bcast(self % values(:,bufferPosition), self % nVars, MPI_DOUBLE, self % rank, MPI_COMM_WORLD, ierr)
 
             end if
 #endif
@@ -437,11 +622,159 @@ module ProbeClass
 !           --------------------------------------------------------
 #ifdef _HAS_MPI_
             if ( MPI_Process % doMPIAction ) then
-               call mpi_bcast(self % values(bufferPosition), 1, MPI_DOUBLE, self % rank, MPI_COMM_WORLD, ierr)
+               call mpi_bcast(self % values(:,bufferPosition), self % nVars, MPI_DOUBLE, self % rank, MPI_COMM_WORLD, ierr)
             end if
 #endif
          end if
       end subroutine Probe_Update
+
+      subroutine Probe_ComputeLocal(self, mesh, bufferPosition)
+!
+!        *************************************************************
+!           CPU-only computation for file-probes, no MPI.
+!           Non-owning ranks set values to 0 so a caller can
+!           accumulate results with a single MPI_Allreduce(SUM).
+!        *************************************************************
+!
+         use Physics
+         use MPI_Process_Info
+         implicit none
+         class(Probe_t) :: self
+         type(HexMesh)  :: mesh
+         integer        :: bufferPosition
+!
+!        ---------------
+!        Local variables
+!        ---------------
+!
+         integer        :: i, j, k, v
+         real(kind=RP)  :: value
+
+         if ( .not. self % active ) then
+            self % values(:, bufferPosition) = 0.0_RP
+            return
+         end if
+
+         if ( MPI_Process % rank .ne. self % rank ) then
+            self % values(:, bufferPosition) = 0.0_RP
+            return
+         end if
+
+         do v = 1, self % nVars
+
+            select case (trim(self % variableNames(v)))
+#ifdef NAVIERSTOKES
+            case("pressure")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = Pressure(mesh % elements(self % eID) % storage % Q(:,i,j,k))
+               end do ; end do ; end do
+            case("velocity")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = sqrt(POW2(mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k)) + &
+                                           POW2(mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k)) + &
+                                           POW2(mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k)))/mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+               end do ; end do ; end do
+            case("u")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k) / mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+               end do ; end do ; end do
+            case("v")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k) / mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+               end do ; end do ; end do
+            case("w")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k) / mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+               end do ; end do ; end do
+            case("mach")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = (POW2(mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k)) + &
+                                       POW2(mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k)) + &
+                                       POW2(mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k)))/POW2(mesh % elements(self % eID) % storage % Q(IRHO,i,j,k))
+                  self % var(i,j,k) = sqrt( self % var(i,j,k) / ( thermodynamics % gamma*(thermodynamics % gamma-1.0_RP)*&
+                                           (mesh % elements(self % eID) % storage % Q(IRHOE,i,j,k)/mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)-0.5_RP * self % var(i,j,k)) ) )
+               end do ; end do ; end do
+            case("k")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = 0.5_RP * (POW2(mesh % elements(self % eID) % storage % Q(IRHOU,i,j,k)) + &
+                                                 POW2(mesh % elements(self % eID) % storage % Q(IRHOV,i,j,k)) + &
+                                                 POW2(mesh % elements(self % eID) % storage % Q(IRHOW,i,j,k)))/mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+               end do ; end do ; end do
+            case("rho")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IRHO,i,j,k)
+               end do ; end do ; end do
+#endif
+#ifdef INCNS
+            case("pressure")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSP,i,j,k)
+               end do ; end do ; end do
+            case("velocity")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = sqrt(POW2(mesh % elements(self % eID) % storage % Q(INSRHOU,i,j,k)) + &
+                                           POW2(mesh % elements(self % eID) % storage % Q(INSRHOV,i,j,k)) + &
+                                           POW2(mesh % elements(self % eID) % storage % Q(INSRHOW,i,j,k)))/mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+               end do ; end do ; end do
+            case("u")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHOU,i,j,k) / mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+               end do ; end do ; end do
+            case("v")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHOV,i,j,k) / mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+               end do ; end do ; end do
+            case("w")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHOW,i,j,k) / mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+               end do ; end do ; end do
+            case("rho")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(INSRHO,i,j,k)
+               end do ; end do ; end do
+#endif
+#ifdef MULTIPHASE
+            case("static-pressure")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = mesh % elements(self % eID) % storage % Q(IMP,i,j,k) + mesh % elements(self % eID) % storage % Q(IMC,i,j,k)*mesh % elements(self % eID) % storage % mu(1,i,j,k) &
+                               - 12.0_RP*multiphase%sigma*multiphase%invEps*(POW2(mesh % elements(self % eID) % storage % Q(IMC,i,j,k)*(1.0_RP-mesh % elements(self % eID) % storage % Q(IMC,i,j,k)))) &
+                               - 0.25_RP*3.0_RP*multiphase % sigma * multiphase % eps * (POW2(mesh % elements(self % eID) % storage % c_x(1,i,j,k))+POW2(mesh % elements(self % eID) % storage % c_y(1,i,j,k))+POW2(mesh % elements(self % eID) % storage % c_z(1,i,j,k)))
+               end do ; end do ; end do
+#endif
+#ifdef ACOUSTIC
+            case("pressure")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = Q(ICAAP,i,j,k)
+               end do ; end do ; end do
+            case("density")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = Q(ICAARHO,i,j,k)
+               end do ; end do ; end do
+            case("u")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = Q(ICAAU,i,j,k)
+               end do ; end do ; end do
+            case("v")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = Q(ICAAV,i,j,k)
+               end do ; end do ; end do
+            case("w")
+               do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+                  self % var(i,j,k) = Q(ICAAW,i,j,k)
+               end do ; end do ; end do
+#endif
+            end select
+
+            value = 0.0_RP
+            do k = 0, mesh % elements(self % eID) % Nxyz(3) ; do j = 0, mesh % elements(self % eID) % Nxyz(2) ; do i = 0, mesh % elements(self % eID) % Nxyz(1)
+               value = value + self % var(i,j,k) * self % lxi(i) * self % leta(j) * self % lzeta(k)
+            end do ; end do ; end do
+
+            self % values(v, bufferPosition) = value
+
+         end do
+
+      end subroutine Probe_ComputeLocal
 
       subroutine Probe_WriteLabel ( self )
 !
@@ -469,9 +802,9 @@ module ProbeClass
          class(Probe_t) :: self
          integer                 :: bufferLine
 
-         write(STD_OUT , '(1X,A,1X,ES10.3)' , advance = "no") "|" , self % values ( bufferLine ) 
+         write(STD_OUT , '(1X,A,1X,ES10.3)' , advance = "no") "|" , self % values ( 1 , bufferLine )
 
-      end subroutine Probe_WriteValue 
+      end subroutine Probe_WriteValue
 
       subroutine Probe_WriteToFile ( self , iter , t , no_of_lines)
 !
@@ -489,22 +822,34 @@ module ProbeClass
 !        Local variables
 !        ---------------
 !
-         integer                    :: i
+         integer                    :: i, v
          integer                    :: fID
+
+         if ( .not. self % active ) then
+            if ( no_of_lines .ne. 0 ) self % values(:,1) = self % values(:,no_of_lines)
+            return
+         end if
 
          if ( MPI_Process % isRoot ) then
             open( newunit = fID , file = trim ( self % fileName ) , action = "write" , access = "append" , status = "old" )
-         
-            do i = 1 , no_of_lines
-               write( fID , '(I10,2X,ES24.16,2X,ES24.16)' ) iter(i) , t(i) , self % values(i)
 
+            do i = 1 , no_of_lines
+               if ( self % saveTimestep > 0.0_RP ) then
+                  if ( t(i) < self % lastSavedTime + self % saveTimestep ) cycle
+               end if
+               write( fID , '(I10,2X,ES24.16)' , advance = "no" ) iter(i) , t(i)
+               do v = 1 , self % nVars
+                  write( fID , '(2X,ES24.16)' , advance = "no" ) self % values(v,i)
+               end do
+               write( fID , * )
+               self % lastSavedTime = t(i)
             end do
-        
+
             close ( fID )
          end if
 
-         
-         if ( no_of_lines .ne. 0 ) self % values(1) = self % values(no_of_lines)
+
+         if ( no_of_lines .ne. 0 ) self % values(:,1) = self % values(:,no_of_lines)
       
       end subroutine Probe_WriteToFile
 
@@ -566,6 +911,7 @@ module ProbeClass
          safedeallocate (self % lxi)
          safedeallocate (self % leta)
          safedeallocate (self % lzeta)
+         safedeallocate (self % variableNames)
       end subroutine Probe_Destruct
       
       elemental subroutine Probe_Assign (to, from)
@@ -574,32 +920,47 @@ module ProbeClass
          type(Probe_t) , intent(in) :: from
          
          to % active = from % active
+         to % isFileProbe = from % isFileProbe
          to % rank = from % rank
          to % ID = from %  ID
-         to % eID = from % eID 
+         to % eID = from % eID
+         to % nVars = from % nVars
          to % x = from % x
          to % xi = from % xi
+
+         if ( allocated(from % values) ) then
+            safedeallocate ( to % values )
+            allocate ( to % values ( size(from % values, 1), size(from % values, 2) ) )
+            to % values = from % values
+         end if
+
+         if ( allocated(from % lxi) ) then
+            safedeallocate ( to % lxi )
+            allocate ( to % lxi ( size(from % lxi) ) )
+            to % lxi = from % lxi
+         end if
+
+         if ( allocated(from % leta) ) then
+            safedeallocate ( to % leta )
+            allocate ( to % leta ( size(from % leta) ) )
+            to % leta = from % leta
+         end if
+
+         if ( allocated(from % lzeta) ) then
+            safedeallocate ( to % lzeta )
+            allocate ( to % lzeta ( size(from % lzeta) ) )
+            to % lzeta = from % lzeta
+         end if
          
-         safedeallocate ( to % values )
-         allocate ( to % values ( size(from % values) ) )
-         to % values = from % values
-         
-         safedeallocate ( to % lxi )
-         allocate ( to % lxi ( size(from % lxi) ) )
-         to % lxi = from % lxi
-         
-         safedeallocate ( to % leta )
-         allocate ( to % leta ( size(from % leta) ) )
-         to % leta = from % leta
-         
-         safedeallocate ( to % lzeta )
-         allocate ( to % lzeta ( size(from % lzeta) ) )
-         to % lzeta = from % lzeta
-         
+         to % saveTimestep  = from % saveTimestep
+         to % lastSavedTime = from % lastSavedTime
          to % fileName = from % fileName
          to % monitorName = from % monitorName
-         to % variable = from % variable
-         
+
+         safedeallocate ( to % variableNames )
+         allocate ( to % variableNames ( size(from % variableNames) ) )
+         to % variableNames = from % variableNames
+
       end subroutine Probe_Assign
       
 end module ProbeClass

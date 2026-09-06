@@ -43,7 +43,7 @@ Particles: Particle
 ReadMeshFile: Read_HDF5Mesh_HOPR Read_SpecMesh HexMesh
 Read_HDF5Mesh_HOPR: HexMesh SMConstants TransfiniteMaps3D FacePatchClass
 Read_SpecMesh: HexMesh SMConstants TransfiniteMaps3D FacePatchClass
-MeshPartitioning: IntegerDataLinkedList MeshTypes HexMesh
+MeshPartitioning: IntegerDataLinkedList MeshTypes HexMesh ReadMeshFile
 IntegerDataLinkedList: Utilities
 NodalStorageClass: SMConstants LegendreAlgorithms InterpolationAndDerivatives 
 StorageClass: Physics

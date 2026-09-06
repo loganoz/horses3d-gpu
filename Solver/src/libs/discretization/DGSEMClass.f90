@@ -246,37 +246,45 @@ Module DGSEMClass
 !
 !     Initialization
 !     --------------
-      if (.not. self % mesh % child) then
-         call Initialize_MPI_Partitions ( trim(controlVariables % stringValueForKey('partitioning', requestedLength = LINE_LENGTH)) )
-!
-!        Prepare the processes to receive the partitions
-!        -----------------------------------------------
+      if(controlVariables % logicalValueForKey(readPartitioningKey)) then
+         ! Read partitioning information from files (in parallel)
          if ( MPI_Process % doMPIAction ) then
-            call RecvPartitionMPI( MeshFileType(self % mesh % meshFileName) == HOPRMESH )
+            call ReadMeshPartitioningFile(MPI_Process % nProcs, self % mesh % meshFileName)
          end if
+      else
+         ! Read-in mesh in master rank, partition there and send partitioning information to all ranks
+         if (.not. self % mesh % child) then
+            call Initialize_MPI_Partitions ( trim(controlVariables % stringValueForKey('partitioning', requestedLength = LINE_LENGTH)) )
 !
-!        Read the mesh by the root rank to perform the partitioning
-!        ----------------------------------------------------------
-         if ( MPI_Process % doMPIRootAction ) then
+!           Prepare the processes to receive the partitions
+!           -----------------------------------------------
+            if ( MPI_Process % doMPIAction ) then
+               call RecvPartitionMPI( MeshFileType(self % mesh % meshFileName) == HOPRMESH )
+            end if
 !
-!           Construct the "full" mesh
-!           -------------------------
-            call constructMeshFromFile( self % mesh, self % mesh % meshFileName, CurrentNodes, Nx, Ny, Nz, MeshInnerCurves , dir2D, useRelaxPeriodic, success )
+!           Read the mesh by the root rank to perform the partitioning
+!           ----------------------------------------------------------
+            if ( MPI_Process % doMPIRootAction ) then
 !
-!           Perform the partitioning
-!           ------------------------
-            call PerformMeshPartitioning  (self % mesh, nTotalElem, MPI_Process % nProcs, mpi_allPartitions, useWeightsPartition, Nx, Ny, Nz)
+!              Construct the "full" mesh
+!              -------------------------
+               call constructMeshFromFile( self % mesh, self % mesh % meshFileName, CurrentNodes, Nx, Ny, Nz, MeshInnerCurves , dir2D, useRelaxPeriodic, success )
 !
-!           Send the partitions
-!           -------------------
-            call SendPartitionsMPI( MeshFileType(self % mesh % meshFileName) == HOPRMESH )
+!              Perform the partitioning
+!              ------------------------
+               call PerformMeshPartitioning  (self % mesh, nTotalElem, MPI_Process % nProcs, mpi_allPartitions, useWeightsPartition, Nx, Ny, Nz)
 !
-!           Destruct the full mesh
-!           ----------------------
-            call self % mesh % Destruct()
+!              Send the partitions
+!              -------------------
+               call SendPartitionsMPI( MeshFileType(self % mesh % meshFileName) == HOPRMESH )
+!
+!              Destruct the full mesh
+!              ----------------------
+               call self % mesh % Destruct()
+
+            end if
 
          end if
-
       end if
 !
 !     **********************************************************
@@ -635,9 +643,12 @@ Module DGSEMClass
       R6 = 0.0_RP
       c    = 0.0_RP 
 
+#ifdef _OPENACC
 !$acc parallel loop gang present(mesh) reduction(max:R1,R2,R3,R4,R5,c)
+#else
 !$omp parallel shared(maxResidual, R1, R2, R3, R4, R5, R6, c, mesh) default(private)
 !$omp do reduction(max:R1,R2,R3,R4,R5,R6,c) schedule(runtime)
+#endif
       DO id = 1, SIZE( mesh % elements )
          N = mesh % elements(id) % Nxyz
          
@@ -666,7 +677,7 @@ Module DGSEMClass
             localR6 = max(localR6, abs(mesh % elements(id) % storage % QDot(6,i,j,k)))
 #endif
 
-#ifdef CAHNHILLIARD
+#if defined(CAHNHILLIARD) && (!defined(FLOW))
             localc    = max(localc, abs(mesh % elements(id) % storage % cDot(1,i,j,k)))
 #endif
          end do ; end do ; end do
@@ -686,15 +697,18 @@ Module DGSEMClass
          R6 = max(R6,localR6)
 #endif
 
-#ifdef CAHNHILLIARD
+#if defined(CAHNHILLIARD) && (!defined(FLOW))
          c    = max(c, localc)
 #endif
 
       
       END DO
+#ifdef _OPENACC
+!$acc end parallel loop
+#else
 !$omp end do
 !$omp end parallel
-!$acc end parallel loop
+#endif
       
 
 #if defined FLOW && (!(SPALARTALMARAS))
@@ -770,9 +784,12 @@ Module DGSEMClass
       TimeStep_Conv = huge(1._RP)
       TimeStep_Visc = huge(1._RP)
       if (present(MaxDtVec)) MaxDtVec = huge(1._RP)
+#ifdef _OPENACC
 !$acc parallel loop gang present(self) copyin(cfl, dcfl) reduction(min:TimeStep_Conv,TimeStep_Visc)
+#else
 !$omp parallel shared(self,TimeStep_Conv,TimeStep_Visc,NodalStorage,cfl,dcfl,flowIsNavierStokes,MaxDtVec) default(private)
 !$omp do reduction(min:TimeStep_Conv,TimeStep_Visc) schedule(runtime)
+#endif
       do eID = 1, SIZE(self % mesh % elements)
          N = self % mesh % elements(eID) % Nxyz
 
@@ -868,9 +885,12 @@ Module DGSEMClass
 
          end do ; end do ; end do
       end do
+#ifdef _OPENACC
+!$acc end parallel loop
+#else
 !$omp end do
 !$omp end parallel
-!$acc end parallel loop
+#endif
 
       !!$acc update host(TimeStep_Conv, TimeStep_Visc)
 

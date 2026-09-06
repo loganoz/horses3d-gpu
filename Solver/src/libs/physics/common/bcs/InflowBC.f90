@@ -333,13 +333,12 @@ module InflowBCClass
 #endif
          write(STD_OUT,'(30X,A,A28,F10.2)') "->", ' AoaPhi: ', self % AoAPhi * 180.0_RP / PI
          write(STD_OUT,'(30X,A,A28,F10.2)') "->", ' AoaTheta: ', self % AoATheta * 180.0_RP / PI
-#if defined(CAHNHILLIARD)
+#elif defined(MULTIPHASE)
          if ( self % isLayered ) then
             write(STD_OUT,'(30X,A,A28,A)') "->", ' Multiphase type: '," Layered"
          else
             write(STD_OUT,'(30X,A,A28,A)') "->", ' Multiphase type: '," Mixed"
          end if
-         
          if ( self % isLayered ) then
             if ( self % isXLimited ) write(STD_OUT,'(30X,A,A28,F10.2)') "->", " Interface limits x>x0: ", self % xLim
             if ( self % isYLimited ) write(STD_OUT,'(30X,A,A28,F10.2)') "->", " Interface limits y>y0: ", self % yLim
@@ -353,7 +352,6 @@ module InflowBCClass
             write(STD_OUT,'(30X,A,A28,F10.2)') "->", ' AoaPhi: ', self % AoAPhi * 180.0_RP / PI
             write(STD_OUT,'(30X,A,A28,F10.2)') "->", ' AoaTheta: ', self % AoATheta * 180.0_RP / PI
          end if
-#endif
 #elif defined(ACOUSTIC)
          write(STD_OUT,'(30X,A,A28,F10.2)') "->", ' Velocity: ', self % v * refValues % v
          write(STD_OUT,'(30X,A,A28,F10.2)') "->", ' Pressure: ', self % p * refValues % p
